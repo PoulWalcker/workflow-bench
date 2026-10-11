@@ -20,6 +20,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     if config.getoption("--run-model"):
         raise pytest.UsageError("model mode is not implemented")
+    execute = pytest.FixtureDef.execute
+
+    def gated_execute(
+        fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest
+    ) -> object:
+        _check_fixture_request(fixturedef, request)
+        return execute(fixturedef, request=request)
+
+    # Setup hooks use scope-local conftests and are skipped for cached fixtures.
+    patch = pytest.MonkeyPatch()
+    patch.setattr(pytest.FixtureDef, "execute", gated_execute)
+    config.add_cleanup(patch.undo)
 
 
 def _suite(path: Path, config: pytest.Config) -> str | None:
@@ -59,8 +71,7 @@ def pytest_collection_modifyitems(
             raise pytest.UsageError(f"{item.nodeid} requires --run-integration")
 
 
-@pytest.hookimpl(tryfirst=True)
-def pytest_fixture_setup(
+def _check_fixture_request(
     fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest
 ) -> None:
     suite = _suite(Path(getfile(fixturedef.func)), request.config)
@@ -69,7 +80,9 @@ def pytest_fixture_setup(
     if suite == "integration":
         if not request.config.getoption("--run-integration"):
             pytest.fail("integration fixtures require --run-integration")
-        if request.node.path.is_relative_to(
+        # pytest retains the consuming item here regardless of fixture scope.
+        item = request._pyfuncitem
+        if item.path.is_relative_to(
             request.config.rootpath / "tests" / "fast"
-        ) and not request.node.get_closest_marker("integration"):
+        ) and not item.get_closest_marker("integration"):
             pytest.fail("fast tests cannot request integration fixtures")

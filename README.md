@@ -97,8 +97,8 @@ uv run --locked ruff check src tests
 uv run --locked ruff format --check src tests
 ```
 
-Результат WB-03: lock соответствует конфигурации; pytest — 99 passed
-(23 S1 + 76 S2), collect-only — 99 tests collected; Ruff lint/format — exit 0,
+Текущая проверка после исправления S1: pytest — 177 passed
+(101 S1 + 76 S2), collect-only — 177 tests collected; Ruff lint/format — exit 0,
 без lint-исключений.
 Форматирование ограничено созданным Python-кодом: Ruff 0.17 также обрабатывает
 Markdown; первоначальный `ruff format --check .` завершился exit 1 на примерах
@@ -123,8 +123,19 @@ Markdown; первоначальный `ruff format --check .` завершил�
   не запускает её. Model path/marker остаются закрыты.
 - `--run-model` отклоняется с exit 4 как нереализованный режим, до collection,
   в том числе вместе с `--run-integration` или `--collect-only`.
-- Перед выполнением fixture из gated-каталога повторно проверяется gate;
-  прямой запрос такой fixture из fast-теста отклоняется до файла-сигнала setup.
+- Для function/module/package/session fixtures gate проверяется до setup
+  и получения cached value. Непомеченный fast-тест не может получить integration
+  fixture даже с opt-in; model fixtures запрещены. Проверены запрос аргументом,
+  через `request.getfixturevalue` и локальную fixture, включая повторное получение
+  после разрешённого integration setup. Collect-only не выполняет setup.
+
+Техническое исправление S1: на время pytest Config gate оборачивает
+`pytest.FixtureDef.execute` и восстанавливает метод через `config.add_cleanup`.
+Локальный `pytest_fixture_setup` недостаточен: pytest выбирает conftests по узлу
+scope fixture и не вызывает этот hook для cached value. Потребляющий тест берётся
+из `request._pyfuncitem`, поскольку `request.node` может быть Module, Package
+или Session. Это зависимость от внутреннего устройства pytest, проверенная на
+зафиксированной в lock версии 9.1.1; совместимость других версий не заявляется.
 
 В репозитории есть fast-проверки gate и Definition S2. Настоящие resource fixtures,
 integration/model-каталоги и исполняемые benchmark-проверки не созданы. Будущие ресурсы должны

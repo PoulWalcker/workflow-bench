@@ -5,10 +5,13 @@ from pathlib import Path
 import pytest
 
 pytest_plugins = ["pytester"]
+FIXTURE_SCOPES = ("function", "module", "package", "session")
 
 
 @pytest.fixture
-def gated_project(pytester: pytest.Pytester) -> pytest.Pytester:
+def gated_project(
+    pytester: pytest.Pytester, request: pytest.FixtureRequest
+) -> pytest.Pytester:
     root = Path(__file__).resolve().parents[2]
     pytester.makefile(".toml", pyproject=(root / "pyproject.toml").read_text())
     integration = pytester.path / "tests" / "integration"
@@ -20,7 +23,7 @@ def gated_project(pytester: pytest.Pytester) -> pytest.Pytester:
         "from pathlib import Path\n"
         "import pytest\n"
         'Path("collected").touch()\n'
-        "@pytest.fixture\n"
+        f'@pytest.fixture(scope="{getattr(request, "param", "function")}")\n'
         "def resource():\n"
         '    Path("resource-setup").touch()\n'
         '    return Path("resource-setup")\n'
@@ -29,6 +32,19 @@ def gated_project(pytester: pytest.Pytester) -> pytest.Pytester:
     )
 
     return pytester
+
+
+def _resource_project(project: pytest.Pytester, suite: str) -> Path:
+    tests = project.path / "tests"
+    (tests / "__init__.py").touch()
+    integration = tests / "integration"
+    (integration / "__init__.py").touch()
+    (integration / "test_probe.py").rename(integration / "resource_plugin.py")
+    if suite == "model":
+        integration.rename(integration.with_name("model"))
+    fast = tests / "fast"
+    fast.mkdir()
+    return fast
 
 
 @pytest.mark.parametrize("suite", ["integration", "model"])
@@ -65,6 +81,7 @@ def test_explicit_integration_path_rejected_before_setup(
     assert not (gated_project.path / "resource-setup").exists()
 
 
+@pytest.mark.parametrize("gated_project", FIXTURE_SCOPES, indirect=True)
 def test_integration_opt_in_allows_synthetic_fixture(
     gated_project: pytest.Pytester,
 ) -> None:
@@ -76,6 +93,7 @@ def test_integration_opt_in_allows_synthetic_fixture(
     assert (gated_project.path / "resource-setup").exists()
 
 
+@pytest.mark.parametrize("gated_project", FIXTURE_SCOPES, indirect=True)
 def test_collect_only_with_integration_opt_in_does_not_set_up_fixture(
     gated_project: pytest.Pytester,
 ) -> None:
@@ -148,29 +166,79 @@ def test_integration_marker_cannot_bypass_gate_with_marker_selection(
 
 
 @pytest.mark.parametrize("suite", ["integration", "model"])
-@pytest.mark.parametrize("flags", [(), ("--run-integration",)])
+@pytest.mark.parametrize("invocation", [(), ("tests/fast",)])
+@pytest.mark.parametrize(
+    "flags",
+    [
+        (),
+        ("--run-integration",),
+        ("--collect-only",),
+        ("--run-integration", "--collect-only"),
+    ],
+)
+@pytest.mark.parametrize("gated_project", FIXTURE_SCOPES, indirect=True)
 def test_fast_cannot_request_gated_fixture(
-    gated_project: pytest.Pytester, suite: str, flags: tuple[str, ...]
+    gated_project: pytest.Pytester,
+    suite: str,
+    invocation: tuple[str, ...],
+    flags: tuple[str, ...],
 ) -> None:
-    tests = gated_project.path / "tests"
-    (tests / "__init__.py").touch()
-    integration = tests / "integration"
-    (integration / "__init__.py").touch()
-    (integration / "test_probe.py").rename(integration / "resource_plugin.py")
-    if suite == "model":
-        integration.rename(integration.with_name("model"))
-    fast = tests / "fast"
-    fast.mkdir()
+    fast = _resource_project(gated_project, suite)
     (fast / "test_request.py").write_text(
         f'pytest_plugins = ["tests.{suite}.resource_plugin"]\n'
         "def test_resource(resource):\n"
         "    assert resource.exists()\n"
     )
 
-    result = gated_project.runpytest_subprocess("tests/fast", *flags, timeout=10)
+    result = gated_project.runpytest_subprocess(*invocation, *flags, timeout=10)
 
-    result.assert_outcomes(errors=1)
-    result.stdout.fnmatch_lines(
-        ["*fixtures*" if suite == "model" else "*integration fixtures*"]
-    )
+    if "--collect-only" in flags:
+        assert result.ret == pytest.ExitCode.OK
+        result.stdout.fnmatch_lines(["*1 test collected*"])
+    else:
+        result.assert_outcomes(errors=1)
+        result.stdout.fnmatch_lines(
+            ["*fixtures*" if suite == "model" else "*integration fixtures*"]
+        )
     assert not (gated_project.path / "resource-setup").exists()
+
+
+@pytest.mark.parametrize("gated_project", FIXTURE_SCOPES, indirect=True)
+@pytest.mark.parametrize("access", ["argument", "dynamic", "dependency"])
+def test_fast_cannot_reuse_integration_fixture(
+    gated_project: pytest.Pytester, access: str
+) -> None:
+    fast = _resource_project(gated_project, "integration")
+    # Importing into conftest gives package scope a real Package node.
+    with (fast.parent / "conftest.py").open("a") as stream:
+        stream.write("\nfrom tests.integration.resource_plugin import resource\n")
+    consumer = "def test_resource(resource):\n"
+    if access == "dynamic":
+        consumer = (
+            'def test_resource(request):\n    request.getfixturevalue("resource")\n'
+        )
+    elif access == "dependency":
+        consumer = "def test_resource(local_resource):\n"
+    (fast / "test_request.py").write_text(
+        "from pathlib import Path\n"
+        "import pytest\n"
+        "@pytest.mark.integration\n"
+        "def test_warmup(resource):\n"
+        "    assert resource.exists()\n"
+        "@pytest.fixture\n"
+        "def local_resource(request):\n"
+        '    return request.getfixturevalue("resource")\n'
+        + consumer
+        + '    Path("fast-consumed").touch()\n'
+    )
+
+    result = gated_project.runpytest_subprocess(
+        "tests/fast", "--run-integration", timeout=10
+    )
+
+    assert (gated_project.path / "resource-setup").exists()
+    assert not (gated_project.path / "fast-consumed").exists()
+    if access == "dynamic":
+        result.assert_outcomes(passed=1, failed=1)
+    else:
+        result.assert_outcomes(passed=1, errors=1)
