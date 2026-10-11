@@ -131,7 +131,10 @@ async def _run_manual(
         ),
     )
     if submission is not None:
-        shutil.copyfile(submission.path, stage / "solution/workflow.json")
+        destination = stage / "solution/workflow.json"
+        if any(path.is_symlink() for path in (destination, *destination.parents)):
+            raise DataError("unsafe_path", "solution/workflow.json")
+        shutil.copyfile(submission.path, destination)
     cases = load_cases(materials, case_ids, purpose=purpose or "development")
     case_ids = tuple(case.id for case in cases)
     rubric = read_json(materials.private_paths[1], "rubric")

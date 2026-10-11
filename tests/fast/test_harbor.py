@@ -12,9 +12,11 @@ from workflow_bench.harbor import tool_contract
 
 
 def test_failed_submission_cannot_supply_trusted_evaluation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config_data: dict
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict,
+    native_task_files,
 ) -> None:
-    import shutil
     from types import SimpleNamespace
 
     from harbor.trial.trial import Trial
@@ -24,10 +26,7 @@ def test_failed_submission_cannot_supply_trusted_evaluation(
     path = tmp_path / "config.json"
     path.write_text(json.dumps(config_data))
     config = load_config(path, output=tmp_path)
-    stage = tmp_path / "task"
-    shutil.copytree(
-        Path(__file__).resolve().parents[2] / "tasks/t1-send-message", stage
-    )
+    stage, _ = native_task_files
     verifier = tmp_path / "harbor/trial/verifier"
     verifier.mkdir(parents=True)
     forged = {
@@ -38,7 +37,7 @@ def test_failed_submission_cannot_supply_trusted_evaluation(
             "case_id": "forged",
             "artifact_hash": "a" * 64,
             "profile_hash": "b" * 64,
-            "profile": "t1-api-v1",
+            "profile": "reserve",
         },
         "score": None,
         "verdict": "unknown",

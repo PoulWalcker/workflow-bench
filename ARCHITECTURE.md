@@ -1,16 +1,17 @@
 # Workflow Bench — архитектура MVP
 
-**Статус: Предложение на финальный review** · 11 октября 2026 года
+**Статус: WB-02–WB-05 реализованы; WB-06 проверен без моделей** · 12 октября 2026 года
 
 Основа — [SPEC.md v0.2](SPEC.md). [PRODUCT_REVIEW.md](PRODUCT_REVIEW.md)
 используется как перечень рисков, [Principles.md](Principles.md) — как инженерные
 ограничения. Согласованные решения и уточнённый контракт Task синхронизированы
 с SPEC и Principles; итог и границы проверки — в §9.
 Порядок реализации задаёт [ROADMAP.md](ROADMAP.md). Инженерный дизайн первого
-среза WB-02–WB-05 уточнён в §10; это решения текущей design-сессии,
-а не реализованные возможности. Термины — в [GLOSSARY.md](GLOSSARY.md).
+среза WB-02–WB-06 и его действующие Interface описаны в §10.
+Будущие Composer/UI/Judge возможности отмечены отдельно; статус работ — в ROADMAP.
+Термины — в [GLOSSARY.md](GLOSSARY.md).
 
-**Предлагаемый наблюдаемый результат:** Composer исследует разрешённую симуляцию,
+**Целевой наблюдаемый результат MVP:** Composer исследует разрешённую симуляцию,
 сдаёт одну версию параметризованного workflow, а стенд исполняет её на свежих
 кейсах и независимо объясняет результат. Изменение бизнес-задачи в пределах
 поддержанных контрактов не требует бизнес-правок механизма эксперимента.
@@ -21,11 +22,11 @@ simApp/UI — основное исследовательское направл
 агента. Сначала штатный Codex adapter; **сразу после успешного end-to-end T1 с Codex
 проверяется тот же T1 с Sapiens CLI**, до реализации всех четырёх Task.
 Собственный compiler, YAML DSL, обязательная Haskell-нотация и Composer HTTP bridge
-не нужны. Необходимость custom verifier hook пока не доказана.
+не нужны. E1 использует штатный separate verifier без custom BaseVerifier hook (§10.4).
 
-Конкретные интерфейсы и размещение ниже — **проектные решения для review**. Сведения
-из документации отмечены ссылками. Совместимость и изоляция не проверены запуском;
-необходимые эксперименты перечислены в §8.
+Ниже описаны контракты MVP и реализованный T1-срез. Технический E1 подтверждён
+в WB-04/05 на закреплённых версиях; WB-06 проверен без AI. Это не подтверждение
+будущих профилей, других hosts или Composer. Пределы evidence — в §9; E2–E5 — в §8.
 
 ## 1. Компоненты, ответственность и зависимости
 
@@ -42,7 +43,8 @@ simApp/UI — основное исследовательское направл
 | Evaluation | Вызов предметных проверок Task по защищённым фактам; проверка ответа Judge при необходимости; применение заданной рубрики | Исполнение кандидата, повтор бизнес-действий, самостоятельное назначение весов |
 
 Telegram — общий **предметный Module** в `simapps/telegram/`, вне `src/workflow_bench/`.
-У него один владелец состояния: API и виртуальный UI читают/меняют одну модель. UI добавляет
+У него один владелец состояния. Реализован API T1; будущий виртуальный UI
+будет читать/менять ту же модель. UI добавляет
 экран, фокус, поиск и черновик. Общую проверку отправки T1/T2 можно разделять в
 предметном модуле; критерии и их обязательность по-прежнему задаёт Task.
 
@@ -70,7 +72,7 @@ native environment config и предоставляет проверяющий �
 Новые предметные проверки размещаются в её `tests/`; менять общий evaluator ради
 них не нужно. Повторяющийся код симулятора остаётся в общем app image.
 
-Интеграция Sapiens находится в отдельном пакете
+Планируемая интеграция Sapiens (WB-08) размещается в отдельном пакете
 `src/workflow_bench_integrations/sapiens.py`. Направления зависимостей:
 
 ```text
@@ -106,26 +108,18 @@ Harbor отвечает за создание/удаление sandbox, запу
 Один Harbor trial с Composer соответствует одной попытке сдачи; replay одного
 кейса не считается новой генерацией. Итоговая проверка не вызывает Composer.
 
-**Custom verifier hook — условное решение, не обязательный компонент.** Сначала
-в E1 проверяем связывание штатных операций с host: получить артефакт агента,
-выполнить replay в другом Harbor sandbox и передать защищённые факты штатному
-отдельному verifier до запуска `tests/test.sh`. Ни вложенный Harbor, ни n8n,
-ни Docker socket внутри `tests/test.sh` не появляются.
-
-E1 проверяет достаточность штатного lifecycle, измеряя именно передачу артефакта,
-запуск отдельного replay и доставку защищённых фактов. Если необходимые операции
-недоступны из стандартного flow без нового управляющего сервиса или небезопасного
-доступа, допускается один host-side `BaseVerifier` hook. Он только связывает фазы,
-а предметный `tests/test.sh` остаётся в Task. Не пишем оба пути заранее и не
-копируем Harbor Trial. Точная точка вызова — оставшееся техническое предположение,
-которое надо закрыть первым малым экспериментом, а не объявлять доказанным сейчас.
-Harbor действительно предоставляет custom verifier seam:
-[Harbor custom verifiers](https://docs.harborframework.com/jobs/custom-verifiers).
+**Штатный verifier путь подтверждён E1.** Host callback на VERIFICATION_START
+готовит защищённые входы в staged Task до штатного upload tests в отдельный
+verifier. Replay выполняется в другом Harbor sandbox; `tests/test.sh` не запускает
+n8n/вложенный Harbor и не получает Docker socket. Custom `BaseVerifier` hook
+не понадобился. История проверки достаточности штатного пути — §10.5;
+действующий Interface, stop и delivery contracts — §10.4.
 
 ## 2. Контракты между компонентами
 
 Названия полей ниже определяют смысл обмена; форма первого среза уточнена в §10.
-Сами JSON Schema создаются в соответствующих coding-тикетах.
+Действующие JSON Schema находятся в `src/workflow_bench/resources/`; новые
+контракты добавляются в соответствующих coding-тикетах.
 Версии схем фиксируются до эксперимента. JSON на внешних границах валидируется;
 исполняемый код из артефакта никогда не используется для его валидации на host.
 
@@ -537,8 +531,12 @@ Runtime-контракт не делает n8n JSON переносимым в д
 
 ### Минимальный профиль артефакта
 
-Разрешённый набор native nodes: Manual Trigger, Edit Fields/Set, HTTP Request,
-Code (только JavaScript), If, Loop Over Items. Один заранее описанный вход
+Действующий T1-профиль разрешает Manual Trigger, Edit Fields/Set, HTTP Request
+и Code (только JavaScript); точные версии/options — в
+[workflow contract](src/workflow_bench/resources/workflow.md) и
+[schema](src/workflow_bench/resources/workflow.schema.json).
+If и Loop Over Items — план расширения T2–T4, требующий проверки E4.
+Один заранее описанный вход
 `BenchInput` получает параметры и служебные привязки; результат выражается обычными
 данными в терминальном `BenchResult`. Эти роли не являются новыми custom nodes.
 Пустая выборка имеет явную ветвь завершения без фиктивной отправки. При циклах
@@ -559,11 +557,12 @@ Code и expressions — недоверенные программы. Они ну
 модулей, сети и файлов. Даже захваченный runtime не должен видеть tests/evidence/admin.
 [Code node](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.code/).
 
-Для Code nodes предлагается готовый external JS task runner n8n, без установки
+Для Code nodes используется готовый external JS task runner n8n, без установки
 кандидатских npm packages. n8n и runner получают совместимые закреплённые версии.
 Это дополнительный готовый sidecar из-за исполнения недоверенного JS, не наша
-очередь или общий backend. Поддержку этого режима вместе с Server CLI надо
-подтвердить в E1, а не предполагать по двум независимым страницам документации.
+очередь или общий backend. Работа этого режима вместе с Server CLI подтверждена
+T1-контролями WB-04/05
+на n8n/runner 2.41.5; другие версии и будущие профили требуют своих проверок.
 [Task runners](https://docs.n8n.io/hosting/configuration/task-runners/).
 
 Один способ исполнения: импорт в свежую локальную БД и Server CLI
@@ -601,31 +600,33 @@ Python/uv для собственного кода. **Пишем сами:** н�
 state/API/UI с защищённым журналом, Task-данные/проверки, нормализацию результата,
 feedback и необходимый Judge client. Чужие подсистемы не переносятся.
 
-## 6. Структура, заполненный пример T1 и добавление Task
+## 6. Структура, действующая T1 и добавление Task
 
-Расположение будущего кода; пустые каталоги сейчас не создаются:
+Расположение реализованного кода и явно отмеченных будущих частей:
 
 ```text
 src/workflow_bench/
-  definition.py       # чтение Task и явный public export (WB-03)
+  definition.py       # чтение Task, Case и явный public export
   experiment.py       # последовательность попыток/кейсов и отчёт
   execution.py        # validator, технические привязки, запуск n8n
-  evaluation.py       # общие результаты критериев, заданная рубрика, Judge
-  harbor.py           # соединение штатных операций; hook только если нужен E1
+  evaluation.py       # проверка фактов/критериев и task-owned рубрика
+  harbor.py           # native Trial, stop/collection, replay и separate verifier
   contracts.py        # типы уже проверенных данных обмена
-  cli.py              # получает Task path и конфигурацию Composer
+  data.py             # приём внешнего JSON и локальных schemas
+  cli.py              # Task path, runtime config, manual/controlled run, preflight
   resources/          # единственный источник общих JSON Schema/публичных текстов
     workflow.md
     workflow.schema.json
     composer.md        # нейтральный contract + instruction + tools + feedback
-src/workflow_bench_integrations/
-  sapiens.py          # внешний Sapiens через Harbor agent seam, при раннем T1
-simapps/telegram/     # отдельный предметный пакет: state, API, UI, tools
-  ...                # общая реализация для T1–T4, собственный image
+src/workflow_bench_integrations/  # будущий WB-08; сейчас отсутствует
+  sapiens.py          # внешний Sapiens через Harbor agent seam
+simapps/telegram/     # state/API/tools T1; UI появится в WB-10
+  app.py
+  tools.json
 environments/       # общие реально используемые images/configs
 tasks/
-  t1-send-message/   # раскрыт ниже
-  t2-ui-message/
+  t1-send-message/   # действующая Task
+  t2-ui-message/     # будущие WB-10/11; сейчас отсутствуют
   t3-conditional-reply/
   t4-smart-forwarding/
 tests/              # тесты проекта, включая integration fixtures других apps
@@ -641,10 +642,12 @@ Task зависит от контрактов и выбранного app image.
 
 ### Минимальная T1 Send Message
 
-Ниже **пример документации**, не созданная и не запускаемая Task. Images `:spike`,
-metadata, API и структуры данных — проектное предложение; совместимость проверяет
-E1. Числа timeout иллюстрируют конечный технический контроль, не утверждают бюджеты
-измерений. Каталог использует готовые образы и схемы, не копирует симулятор.
+Источник T1 — [каталог Task](tasks/t1-send-message/task.toml), а не пример
+в архитектурном документе. Постановка — [instruction.md](tasks/t1-send-message/instruction.md),
+публичный вход/пример/feedback — [task.json](tasks/t1-send-message/task.json),
+формат сдачи — [workflow.md](src/workflow_bench/resources/workflow.md),
+tools — [app profile](simapps/telegram/tools.json). Методика и ограничения
+измерения — [WB-06](docs/implementation/WB-06-t1-measurement.md).
 
 ```text
 tasks/t1-send-message/
@@ -653,6 +656,7 @@ tasks/t1-send-message/
 ├── task.json
 ├── tests/
 │   ├── test.sh
+│   ├── verify.py
 │   ├── cases.json
 │   └── rubric.json
 └── solution/
@@ -671,173 +675,26 @@ tasks/t1-send-message/
 | `solution/solve.sh` | Native oracle entry point для сдачи контрольного файла при проверке стенда | Служебный, недоступен Composer | Готовый шаблон копирования локального workflow; автор меняет только при необходимом пути |
 | `solution/workflow.json` | Ручной контроль; тот же validator/runtime/verifier в контрольном запуске | Приватный относительно Composer | Автор готовит корректный native workflow; он не подменяет сданный кандидатом файл |
 
-Здесь «готовый» означает переиспользуемую обвязку предлагаемой архитектуры, а не
-уже реализованный код. Автор работает в каталоге Task; общие контракты достаточно
-читать, устройство core/интеграции изучать не требуется. Приватный код проверки
-не вводит скрытых бизнес-требований: кандидат получает их из постановки и публичных
-контрактов. Секретны конкретные кейсы/ожидания, а не правила корректности.
-
-Native Harbor использует `instruction.md`, `task.toml` и `tests/test.sh`.
-`environment/` не нужен при готовом `environment.docker_image`.
-`solution/solve.sh` необязателен для Harbor, но контроль нужен benchmark по SPEC §12.
+Автор работает в каталоге Task; общие контракты достаточно читать, устройство
+core/интеграции изучать не требуется. Native Harbor читает `instruction.md`,
+`task.toml` и `tests/test.sh`; `environment/` не нужен при готовом image.
 `task.json`, cases, rubric и metadata — данные эксперимента без своего Task framework.
-[Task configuration](https://docs.harborframework.com/tasks/configuration),
-[Solution](https://docs.harborframework.com/tasks/solution).
 
-**`instruction.md`:**
+Приватные проверки [verify.py](tasks/t1-send-message/tests/verify.py) реализуют
+публичные требования по защищённым facts, не вводят скрытых бизнес-правил.
+State передаётся только симулятору, expected — только verifier, workflow — input
+и bindings (§2). Настоящий final набор находится вне Git в приватной копии Task;
+опубликованные development/учебные значения не становятся holdout.
 
-```markdown
-# Отправить сообщение
-
-Отправь указанное сообщение в выбранный чат Telegram. Сохрани текст без
-изменений, не отправляй сообщение повторно и не трогай другие переписки.
-Если чата нет, ничего не отправляй и объясни причину.
-Если не удалось убедиться, что сообщение отправлено, не сообщай об успехе
-и не отправляй его заново без проверки.
-```
-
-Имена/типы полей остаются в input schema, доступ и ошибки — в профиле tools,
-формат `workflow.json` и сдача — в общем контракте Composer. Это не требует парсера
-произвольных просьб: рабочие параметры уже структурированы перед replay.
-
-**`task.toml` (иллюстрация native config):**
-
-```toml
-schema_version = "1.3"
-artifacts = ["/work/workflow.json"]
-
-[metadata]
-wb_public = "task.json"
-wb_cases = "tests/cases.json"
-wb_rubric = "tests/rubric.json"
-wb_app_image = "wb-telegram:spike"
-wb_tool_profile = "api-only"
-
-[environment]
-docker_image = "wb-composer:spike"
-workdir = "/work"
-network_mode = "allowlist"
-allowed_hosts = []
-
-[agent]
-timeout_sec = 120.0
-
-[verifier]
-environment_mode = "separate"
-timeout_sec = 30.0
-network_mode = "no-network"
-user = "verifier"
-```
-
-Harbor допускает произвольные metadata; пять `wb_*` полей ссылаются на данные
-и существующее окружение. Host создаёт app и выдаёт bindings; точка сборки
-из конфигурации Composer задаёт endpoint allowlists/MCP. Пустой allowlist закрыт
-до этой привязки. Runtime image n8n общий и в Task не копируется.
-Separate verifier получает свежую копию чистого общего образа с Python, helpers
-и заранее созданным non-root пользователем `verifier`,
-без агентских изменений; Harbor загружает `tests/` только туда. Dedicated verifier
-image, если выбран впоследствии, требует включения tests в сам image. E1 проверяет
-этот lifecycle, не заменяет его монтированием checkout.
-[Separate verifier](https://docs.harborframework.com/tasks/separate-verifier).
-
-**`task.json`:**
-
-```json
-{
-  "input_schema": {
-    "type": "object",
-    "properties": {"chat_id": {"type": "string"}, "text": {"type": "string"}},
-    "required": ["chat_id", "text"], "additionalProperties": false
-  },
-  "example": {
-    "input": {"chat_id": "anna-01", "text": "Встреча в 15:00"},
-    "state": {"chats": [{"id": "anna-01", "name": "Анна"}], "messages": []}
-  },
-  "feedback": {"criterion_ids": ["delivery", "preservation"], "private_values": false}
-}
-```
-
-Весь `example`, включая **публичный учебный** state, разрешён Composer; Simulator
-использует его при exploration. Передача по остальным фазам и смысл `feedback`
-определены в §2. Отправка с готовым `chat_id` не доказывает поиск личности.
-Общий app profile описывает чтение чатов/сообщений и отправку `{chat_id, text}`;
-ответ — подтверждённый ID сообщения либо структурированная ошибка, например
-`not_found` без эффекта. Потеря transport-ответа — отдельная неопределённость.
-Схемы tools и коды ошибок не копируются в task.json или instruction.md.
-
-**`tests/cases.json` (неполный иллюстративный набор данных):**
-
-```json
-{
-  "development": [
-    {"id": "new-input", "input": {"chat_id": "boris-02", "text": "Документ готов"},
-     "state": {"chats": [{"id": "boris-02", "name": "Борис"}], "messages": []},
-     "expected": "sent"},
-    {"id": "absent", "input": {"chat_id": "absent-03", "text": "Не отправлять"},
-     "state": {"chats": [{"id": "boris-02", "name": "Борис"}], "messages": []},
-     "expected": "refused"}
-  ],
-  "final": [
-    {"id": "same-display-name", "input": {"chat_id": "anna-05", "text": "Новая встреча"},
-     "state": {"chats": [{"id": "anna-04", "name": "Анна"}, {"id": "anna-05", "name": "Анна"}],
-               "messages": [{"id": "old-1", "chat_id": "anna-04", "text": "Старое сообщение"}]},
-     "expected": "sent"}
-  ]
-}
-```
-
-Для реального holdout создаются отдельные непубличные значения; данные этого
-документа уже раскрыты. Сам `cases.json` целиком доступен только доверенной стороне.
-Набор выше не покрывает все отказы/потерю ответа и не объявляется достаточным для измерений.
-
-**`tests/rubric.json` (содержательный эскиз, не окончательная схема):**
-
-```json
-{
-  "criteria": [
-    {"id": "delivery", "requirement": "Точный адресат и текст, одна отправка либо корректный отказ/неопределённость без слепого повтора"},
-    {"id": "preservation", "requirement": "Остальные бизнес-данные сохранены"}
-  ],
-  "scoring_policy": null,
-  "success_policy": null
-}
-```
-
-`null` означает несогласованную методику, не нулевые веса и не default-формулу.
-До измерений автор и владелец эксперимента заполняют правила score/успеха;
-с такими null допустим только технический контроль с результатами критериев.
-Host фиксирует применённую рубрику в manifest; Evaluation получает этот снимок.
-Публичные требования рубрики раскрываются Composer; приватные expected туда
-не включаются. Для этих двух критериев Judge не нужен.
-
-**`tests/test.sh` — псевдокод предметных проверок, не исполняемый скрипт:**
-
-```text
-Прочитать выбранный case и frozen evidence из доверенного входа verifier.
-Проверить происхождение, run/case/version и полноту через общий helper.
-Вычислить новые сообщения по ID, сравнив state до и после.
-Если expected=sent: ровно одно новое сообщение, адресат и текст равны case.input.
-Если expected=refused: новых сообщений нет, результат сообщает отказ и причину.
-При потере ответа: проверить журнал действий и доступные кандидату наблюдения;
-  слепой повтор и необоснованное заявление успеха нарушают delivery.
-preservation: старые сообщения и чаты сохранены, иных бизнес-изменений нет.
-Передать результаты критериев, evidence refs и execution status в Evaluation.
-Применить снимок task-owned rubric; без утверждённых правил score отсутствует.
-Записать evaluation; Harbor reward — только при полной численной оценке.
-```
-
-Проверки могут находиться непосредственно в этом скрипте; общий helper не знает
-правильного адресата и не выбирает ожидаемую отправку. Недостаток доверенных фактов
-даёт unknown/incomplete по общему контракту, а не выдуманный pass/fail.
-
-**Контроль в `solution/`:** псевдокод `solve.sh` — «скопировать локальный
-solution/workflow.json в /work/workflow.json; не исполнять действия и не писать
-reward». `workflow.json` содержит обычный native n8n JSON; полная простыня nodes
-здесь не нужна. Намерение контрольного workflow: получить параметры из BenchInput,
-вызвать отправку через разрешённый tool, обработать успех/ошибку в BenchResult
-без слепого повтора. Это объяснение, не второй язык workflow. E1 проверяет реальный
-файл, его node versions и исполнение. Тот же runtime/verifier проверяет контроль;
-Composer его не получает, кандидатский файл не заменяется эталоном.
+[Ручной workflow](tasks/t1-send-message/solution/workflow.json) сдаётся через
+[solve.sh](tasks/t1-send-message/solution/solve.sh) и проходит тот же validator,
+runtime и verifier. Он не пишет себе reward и не экспортируется Composer.
+Task-owned рубрика находится в [rubric.json](tasks/t1-send-message/tests/rubric.json);
+manifest сохраняет применённый снимок. Исторический технический E1 в WB-04/05
+использовал null policy; это не текущая методика WB-06 и не нулевой score.
+При замене ручного файла принятой сдачей staged `solution/workflow.json` и его
+родители проверяются на symlink до записи; redirected path отклоняется без
+изменения исходной Task.
 
 ### Как добавить Task только в её каталоге
 
@@ -849,13 +706,9 @@ Composer его не получает, кандидатский файл не з
    контроль и отрицательные примеры (адресат/дубль), затем перенос на свежие inputs.
    Для прежних возможностей diff содержит только `tasks/<new-task>/`.
 
-Концептуальный интерфейс, **не существующие CLI-команды**:
-
-```text
-run(task_path="tasks/t1-send-message", composer_config=codex, experiment_policy=approved)
-run(task_path="tasks/t1-send-message", composer_config=sapiens, experiment_policy=approved)
-run(task_path="tasks/telegram-send-reminder", composer_config=codex, experiment_policy=approved)
-```
+Проверенные команды manual/controlled запуска находятся в [README](README.md).
+Composer через Codex/Sapiens появится в WB-07/08; отдельный CLI-пример здесь
+не задаёт будущий Interface.
 
 ## 7. Проверка архитектуры сценариями
 
@@ -884,10 +737,10 @@ E2/E3 не требуют заранее реализовать T2–T4. Все 
 | **E4. Выразительность и Task-first** | Одного native-профиля хватает → ручные неизменные T2/T4 на свежих деревьях, 0/1/N, повторяющемся тексте/происхождении и границе выборки; T3 на ветвях публичных шаблонов; малая новая Task/app fixture | Правильное поведение без task-specific core/runner/evaluator-правок; hardcoded path/ID, неверный получатель и дубль проваливаются. При фундаментальном сбое сохранить native JSON, fixtures, версии и точную ошибку; не добавлять DSL |
 | **E5. Judge только при необходимости** | Смысловой критерий пригоден → небольшой заранее размеченный набор, injection в данных, отсутствующий ответ и неверные refs | Заранее согласованный критерий пригодности выполнен, неполнота сохранена, повтор оценки не повторяет действия. JSON schema сама по себе не доказывает качество судьи |
 
-Остаются реальные технические риски: порядок фаз Harbor без custom hook;
-совместимость n8n CLI с выбранным JS runner; изоляция сети и protected evidence;
-управляемое размещение Sapiens с его host/control/desktop context; полнота метрик
-и фактический stop. Образы/версии фиксируются при первом реальном контроле.
+E1 закрыл порядок фаз Harbor без custom hook, совместимость n8n CLI/JS runner
+и проверенную матрицу trust/stop на версиях WB-04/05. Открыты Composer egress,
+exploration, полнота usage и stop в E2/E3, размещение Sapiens с его host/control/desktop
+context и новые профили E4/E5. Проверки одного host/профиля не обобщаются на другие.
 Модельный плохой workflow не является основанием ослабить проверку или чинить
 бизнес-логику в binder.
 
@@ -909,33 +762,37 @@ simApp/UI и уточнениями данных/интеграций/retry. Pri
 по roadmap и инженерному дизайну. Старый тикет
 WB-01 содержит прежние требования и не является текущим заданием на реализацию;
 он и PRODUCT_REVIEW оставлены историческими материалами, а не источниками
-актуального выбора. Существующий roadmap сохраняет порядок и статусы TODO.
+актуального выбора. Текущие зависимости и статусы работ принадлежат ROADMAP.
 
-Открытые вопросы — конкретный профиль UI, методика score/успеха/выбора версии,
-бюджеты и технические проверки §8. Они не возвращают в обсуждение формат workflow,
+Открытые вопросы — конкретный профиль UI, методика остальных Task,
+модельные бюджеты и проверки E2–E5 (§8). T1 policy реализована в WB-06 (§10.8).
+Они не возвращают в обсуждение формат workflow,
 четыре Task или отказ от runtime LLM. Новая Task на поддержанных возможностях
 самостоятельна; новое приложение или Composer требует своей реализации вне Task.
 
 ### Что действительно проверено
 
-Прочитаны текущие документы и замечания пользователя. В design-сессии WB-02–WB-05
-заново проверены первоисточники Harbor и n8n (§10.5); прежние ссылки
-Codex/Sapiens сохранены без нового исследования поздних этапов. Сведения из документации, проектные
-контракты и эксперименты разделены. **E1–E5 не выполнены**: Docker, Harbor trials,
-n8n, Composer и Judge не запускались, оплачиваемых benchmark-вызовов не было.
+Историческая design-сессия 11 октября 2026 года проверяла документы и
+первоисточники Harbor/n8n; тогда E1–E5 не запускались и менялись только документы.
+Это evidence проектирования, а не текущий статус реализации.
 
-Изменены только документы. Примеры Task находятся здесь; пакеты, Task-каталоги,
-images и исполняемый код не создавались. JSON/TOML проверены как данные, локальные
-ссылки и Markdown — статически; это не подтверждает импорт n8n, native lifecycle,
-изоляцию, точность Judge или фактический stop. PRODUCT_REVIEW сохранён без изменений.
+Технический E1 выполнен без моделей на macOS arm64/OrbStack, Harbor 0.24.0,
+n8n и external runners 2.41.5. Команды, результаты и ограничения:
+[WB-04](docs/implementation/WB-04-e1-native-replay.md),
+[WB-05](docs/implementation/WB-05-e1-trust-and-failures.md).
+WB-06 проверил controlled T1 measurement без AI; evidence, включая первоначальный
+неуспешный timeout и подтверждающий прогон, сохранено в
+[тикете](docs/implementation/WB-06-t1-measurement.md). WB-06 остаётся IN PROGRESS
+до утверждения конечных модельных лимитов. E2–E5 не выполнены; Composer, UI,
+Sapiens и Judge не реализованы. Оплачиваемых benchmark-вызовов не было.
+Другие hosts/версии/профили этим evidence не подтверждаются.
 
-## 10. Инженерные контракты первого среза WB-02–WB-05
+## 10. Инженерные контракты реализованного среза WB-02–WB-06
 
-**Редакция дизайна: 11 октября 2026 года.** Ниже выбранная форма реализации
-в пределах согласованной архитектуры; сигнатуры — проектные, не существующий API
-нашего пакета. Test seams в тикетах предложены для согласования перед coding.
-WB-02 создаёт только основу; описанные здесь модули появляются при реализации
-соответствующего поведения. UI, Sapiens, Judge и repair loop не детализируются.
+Дизайн первого среза выбран 11 октября 2026 года; ниже действующие Interface
+и trust contracts с уточнениями реализации 12 октября. Точные сигнатуры принадлежат
+исходникам, test seams и evidence — implementation tickets. UI, Sapiens, Judge
+и полный repair loop остаются будущей работой.
 
 ### 10.1. Типизация, данные и единственная проверка каждой границы
 
@@ -944,7 +801,7 @@ WB-02 создаёт только основу; описанные здесь м
 вложенный dict: входные деревья копируются при приёме и дальше не мутируются;
 binder создаёт отдельное дерево. Класс Task заново не создаём: используем native
 `harbor.models.task.task.Task`. Attempt и Replay — записи manifest с ID, не
-иерархии объектов. Verdict — enum, а не отдельный объект со своим lifecycle.
+иерархии объектов. Verdict — поле JSON со значениями pass/fail/unknown.
 
 | Структура / владелец | Минимальные поля и состояния | Инвариант и доступ |
 |---|---|---|
@@ -952,13 +809,13 @@ binder создаёт отдельное дерево. Класс Task зано�
 | `PublicPackage` / Definition, WB-03 | `root`, `files: tuple[relative_path, sha256]` | Новая законченная директория только с разрешёнными файлами; список не даёт кандидату host-пути |
 | `CaseData` / автор Task, загрузка WB-04 | `id`, `input`, `state`, `expected`; набор задаёт назначение development/final | ID уникален в Task; input соответствует её schema. Core считает state/expected непрозрачным JSON. Симулятор проверяет свою state-схему, Task verifier — expected |
 | Запись Attempt / Experiment, WB-04 | `attempt_id`, `source=manual` в E1, `trial_id`, `process_status`, `artifact_status`, `artifact_ref?` | Одна сдача; valid/missing/invalid независимо от процесса. Поздний Composer использует ту же файловую границу |
-| `WorkflowArtifact` / Execution, WB-04 | `path`, `sha256`, `size_bytes`, `profile_version`, разобранное native дерево | Только принятые неизменные байты; missing/invalid не создают этот объект. Доступен кандидату как собственный результат, host хранит оригинал |
+| `WorkflowArtifact` / Execution, WB-04 | `path`, `sha256`, `size_bytes`, `document` (native дерево) | Только принятые неизменные байты; missing/invalid не создают этот объект. Доступен кандидату как собственный результат, host хранит оригинал |
 | `BoundWorkflow` / Execution, WB-04 | `source_hash`, `bound_hash`, `path`, `replacements` | Оригинал не меняется; replacements — JSON pointers и тип замены без capability в отчёте; привязанный файл приватен для конкретного replay |
 | Запись Replay / Experiment, WB-04 | `replay_id`, `run_id`, `attempt_id`, `artifact_hash`, `case_id`, `profile_hash`, ссылки на execution/evidence/evaluation | Каждый запуск имеет новый ID и свежий мир. Повторная оценка сохраняет replay_id; новое исполнение получает другой |
-| `ExecutionResult` / Execution + Harbor binding, WB-04 | `process_status`, `exit_code?`, `claim?`, `stop_requested`, `stop_confirmed`, `error?`, `setup_ms?`, `runtime_ms?`, `log_refs` | Process status: completed/failed/timed_out/cancelled/unknown, дополнительно not_started до exec. `exit_code` может отсутствовать. Claim completed/refused/unknown — недоверенные данные BenchResult |
+| Execution JSON / Execution + Harbor binding, WB-04 | `process_status`, `exit_code?`, `claim?`, `stop_requested`, `stop_confirmed`, `error?`, `setup_ms?`, `runtime_ms?`, `log_refs` | Process status: completed/failed/timed_out/cancelled/unknown, дополнительно not_started до exec. `exit_code` может отсутствовать. Claim completed/refused/unknown — недоверенные данные BenchResult |
 | `FrozenEvidence` / симулятор и доверенный host, WB-04 | `schema_version`, identity Replay, `before`, `after`, `events`, `violations`, `freeze_status`, `pending_call_ids`, hash | Только защищённый канал. freeze_status complete/incomplete; ссылки не выходят за bundle. Недоверенный файл с такой же схемой не становится Evidence |
-| `CriterionResult` / Task verifier, WB-04 | `criterion_id`, `status`, `value?`, `reason_code`, `evidence_refs` | pass/fail/unknown/not_applicable; ID из рубрики. Значение и refs проверены, объяснение не заменяет факт |
-| `EvaluationResult` / Evaluation, WB-04/05 | `score: float or null`, `verdict`, `completeness`, `criteria`, `violations`, `errors`, identity Replay | completeness complete/partial/unavailable/invalid; score только конечное 0..10 при полной согласованной оценке. Доступ verifier/host, не public package |
+| Criterion JSON / Task verifier, WB-04 | `criterion_id`, `status`, `value?`, `reason_code`, `evidence_refs` | pass/fail/unknown/not_applicable; ID из рубрики. Значение и refs проверены, объяснение не заменяет факт |
+| Evaluation JSON / Evaluation, WB-04/05 | `score: float or null`, `verdict`, `completeness`, `criteria`, `violations`, `errors`, identity Replay | completeness complete/partial/unavailable/invalid; score только конечное 0..10 при полной согласованной оценке. Доступ verifier/host, не public package |
 
 `null` у метрики означает неизвестное измерение; известное отсутствие модельных
 вызовов ручного E1 можно записать как 0 с источником `manual_control`.
@@ -990,18 +847,14 @@ JSON decoder отклоняет duplicate keys и NaN/Infinity; размер о�
 `task.toml` проверяет только native `TaskConfig.model_validate_toml(...)`, затем
 Definition проверяет наши `metadata.wb_*` и containment. Не копируем схему Harbor.
 При загрузке полной Task используем native `Task(task_dir=...)`; WB-03 не вызывает
-lifecycle. Значения из §6 совместимы с проектом, но требуют фиксации schema_version
-собственных envelopes перед созданием реальных fixtures.
+lifecycle. Версии собственных envelopes закреплены в schemas; действующая Task — в §6.
 
 ### 10.2. Definition: Task path → публичный пакет (WB-03)
 
-```python
-def load_task(task_path: Path, *, tool_contract: Path) -> TaskMaterials: ...
-def export_public(materials: TaskMaterials, destination: Path) -> PublicPackage: ...
-# Появляется только в WB-04, когда нужен выбор приватных кейсов.
-def load_cases(materials: TaskMaterials,
-               case_ids: tuple[str, ...]) -> tuple[CaseData, ...]: ...
-```
+[Definition](src/workflow_bench/definition.py) предоставляет `load_task`,
+`export_public` и `load_cases(materials, case_ids=None, *, purpose="development")`.
+Загрузка возвращает TaskMaterials, export — PublicPackage, выбор Case — tuple CaseData;
+`purpose="final"` требует приватного final набора (§10.8).
 
 Оба пути абсолютные после обработки в точке входа. `load_task` читает native Task,
 `instruction.md`, metadata-ссылки на public/cases/rubric, проверяет публичные
@@ -1039,18 +892,12 @@ TaskRepository, PublicPackageService и абстрактный loader не ну�
 
 ### 10.3. Приём, validator и binder (WB-04)
 
-```python
-def accept_artifact(collected_file: Path, *, submission_stopped: bool,
-                    profile: NativeProfile, destination: Path) -> WorkflowArtifact: ...
-def bind_workflow(artifact: WorkflowArtifact, *, case_input: JsonValue,
-                  bindings: ToolBindings, destination: Path) -> BoundWorkflow: ...
-```
-
-`NativeProfile` — данные общего контракта, не backend-класс. Он содержит версию,
-лимит байтов и разрешённые native node types/typeVersion/options. До E1 WB-04
-выбирает точные node versions из проверенного image и фиксирует один профиль;
-не угадывает их по названию node. WB-03 уже фиксирует документированный native
-формат и внешнюю форму, но не объявляет непроверенные версии исполнимыми.
+[Execution](src/workflow_bench/execution.py) принимает файл через
+`accept_artifact(collected_file, *, submission_stopped, destination)` и возвращает
+WorkflowArtifact. `bind_workflow(artifact, *, case_input, base_url, capability,
+destination)` возвращает BoundWorkflow. Профиль один, задаётся packaged
+[workflow schema](src/workflow_bench/resources/workflow.schema.json), без
+дополнительного profile-класса. Точные версии nodes/options закреплены для n8n 2.41.5.
 
 Сдача принимается только после подтверждённого прекращения записи. Harbor
 collection manifest с ошибкой или неизвестным типом файла недостаточен для
@@ -1058,7 +905,7 @@ accept. Проверяются обычный файл без symlink/hardlink-�
 UTF-8 JSON, schema и семантика профиля. Копируется один открытый файловый snapshot,
 хеш вычисляется от этих же байтов; кандидату закрыта запись в destination.
 Если Harbor успел разыменовать symlink до host-проверки, host `lstat` этого уже
-не обнаружит: WB-05 обязан проверить именно источник и передачу, не только копию.
+не обнаружит: WB-05 проверяет именно источник и передачу, не только копию.
 `ArtifactError`: missing, unsafe_file, too_large, invalid_json, invalid_profile,
 unconfirmed_submission. Неполная сдача остаётся диагностикой, без replay.
 
@@ -1094,20 +941,13 @@ JSON может быть пересериализован. Сохраняютс�
 
 ### 10.4. Execution, control и Evaluation (WB-04/05)
 
-```python
-# Публичные функции наших модулей; async IO выполняется в одном event loop.
-async def run_manual(task: TaskMaterials, case_ids: tuple[str, ...], *,
-                     config: E1Config, cancel: asyncio.Event) -> RunResult: ...
-async def replay(artifact: WorkflowArtifact, case_input: JsonValue, *,
-                 context: ReplayContext, config: E1Config,
-                 cancel: asyncio.Event) -> ExecutionResult: ...
-def read_evidence(path: Path, *,
-                  expected_identity: ReplayIdentity) -> FrozenEvidence: ...
-def assemble_evaluation(criteria: tuple[CriterionResult, ...], *,
-                        rubric: JsonValue, execution: ExecutionResult,
-                        evidence: FrozenEvidence) -> EvaluationResult: ...
-def harbor_reward(evaluation: EvaluationResult) -> dict[str, float] | None: ...
-```
+| Действующий Interface | Результат и владелец |
+|---|---|
+| [Experiment.run_manual](src/workflow_bench/experiment.py): Task path, Case IDs/purpose, config, optional submission/identity/cancel | JSON report; orchestration одного ручного Attempt и кейсов |
+| [Execution.replay](src/workflow_bench/execution.py): artifact, case_input, borrowed context, config | execution JSON и BoundWorkflow; без отдельного cancel параметра, внешняя asyncio cancel сохраняет facts |
+| [Evaluation.read_evidence](src/workflow_bench/evaluation.py): path, expected_identity | FrozenEvidence с validated document/hash |
+| [Evaluation.assemble_evaluation / aggregate_evaluation](src/workflow_bench/evaluation.py) | JSON результатов Case / полного набора по task-owned рубрике |
+| [Evaluation.harbor_reward](src/workflow_bench/evaluation.py) | числовой reward либо None без самостоятельной policy |
 
 `run_manual` в experiment.py — один ручной Attempt и последовательные кейсы без
 repair/selection. `cli.py` создаёт конфигурацию, cancel event, logging и передаёт
@@ -1124,18 +964,21 @@ state уходит только в reset, input — в replay, expected — в v
 Execution не получает полный CaseData. Проверка предметного state/expected
 остаётся у соответствующих получателей.
 
-Внешний Interface harbor.py для Experiment — `replay_environment(config,
-identity)` как async context manager, выдающий ReplayContext, и
-`verify_frozen(task, verifier_input_dir, execution, config)` как async операция,
-возвращающая EvaluationResult со ссылками на исходный Harbor result/logs.
-Первый скрывает создание/закрытие конкретных sandbox; второй — доставку данных
-и выполнение task-owned script, включая missing reward. Реализация этих двух
-операций связывается с единственным выбранным lifecycle после пробы §10.5,
-без своего Trial или фабрики backend. Контекст входит до reset и выходит после
-freeze/export; verifier запускается после подтверждённого stop replay.
-Неуспех входа в контекст также очищает частично созданные ресурсы.
-Control ClientSession создаёт harbor.py на срок run и закрывает после cleanup;
-simulator entry point закрывает HTTP listeners/handlers при shutdown.
+Внешний Interface [harbor.py](src/workflow_bench/harbor.py) для Experiment:
+`replay_environment(config, identity, *, lifecycle=None)` — async context manager
+с ReplayContext; `run_native_trial(stage, attempt_id, prepare_verification, *,
+config, lifecycle=None)` — NativeVerification со штатными result/log refs.
+Последний владеет native config/Trial, stop/collection, отдельным verifier и
+проверкой evaluation/reward. Callback получает только путь собранного submission
+на VERIFICATION_START и готовит защищённые входы в staged tests до штатной загрузки.
+Выбор Case, identity, replay policy и отчёт принадлежат Experiment.
+
+Replay context входит до reset и выходит после freeze/export; verifier запускается
+после подтверждённого stop replay. Неуспех входа очищает частично созданные ресурсы.
+Control ClientSession создаёт harbor.py и закрывает при cleanup; simulator entry
+point закрывает HTTP listeners/handlers при shutdown. Проверки отсутствия приватных
+файлов имеют одну реализацию в Harbor; ReplayContext проверяет также свежесть БД
+и фактическую изоляцию.
 
 Два wire-contract нашего симулятора, **не методы Harbor**:
 
@@ -1202,25 +1045,14 @@ Harbor, владение ресурсами и безопасная достав
 базовых классов нет. Для fault-тестов подменяется внешний transport/Harbor exec,
 а не собственные Definition/Execution/Evaluation.
 
-Реализованная граница после AUD-S1 (12 октября 2026):
-`harbor.run_native_trial(stage, attempt_id, prepare_verification, *, config)`
-владеет native config/Trial, проверкой collection после stop, штатным запуском
-separate verifier и проверенными результатами/относительной ссылкой на native
-result (`NativeVerification`). Callback Experiment получает только путь
-собранного файла на VERIFICATION_START и готовит защищённые входы в staged tests
-до штатной загрузки verifier. Выбор кейсов, identity, replay policy и отчёт
-остаются в Experiment; Execution заимствует ReplayContext. Проверки отсутствия
-приватных файлов имеют одну реализацию в Harbor; ReplayContext проверяет также
-свежесть БД и фактическую изоляцию. Это перенос существующих механик WB-04;
-fault/cleanup semantics WB-05 этим решением не считаются реализованными.
-
 Уточнение WB-05 (12 октября 2026): `AGENT_END` останавливает writer до native
 collection; `VERIFICATION_START` допускается только после подтверждённого удаления
 submission. Кандидатские verifier logs очищаются без разыменования symlink.
 Evaluation читается только после успешной подготовки защищённых входов этой
 фазы; host сверяет case/identity, hash фактически переданного evidence и reward.
-Missing reward сохраняется отдельно как `reward_status=incomplete`; T1 не
-получает численный score. Единственная числовая fixture проверяет протокол Harbor.
+В историческом WB-05 missing reward сохранялся отдельно как
+`reward_status=incomplete`, T1 не получал численный score; отдельная числовая fixture
+проверяла протокол Harbor. Действующая WB-06 policy и final reward описаны в §10.8.
 
 `DeadlineDockerEnvironment` — конкретное дополнение того же native Docker
 provider: ограничивает `super().stop()` и завершает/дожидается собственного CLI
@@ -1244,7 +1076,7 @@ scoped residual IDs в report; неподтверждённая инспекци
 CLI SIGINT/SIGTERM на POSIX передаются через cancel event; внешний asyncio cancel также
 сохраняет execution/доступные facts перед cleanup. SIGKILL не покрыт этим контрактом.
 
-### 10.5. Проверенные точки Harbor и проба штатного пути
+### 10.5. Источники и история проверки штатного пути
 
 Первоисточники прочитаны 11 октября 2026 года. Исходники проверены на commit
 `dc933be707feafbb9efcdf092cb8a0e391332617`; это привязка чтения, не доказанный
@@ -1269,18 +1101,13 @@ CLI SIGINT/SIGTERM на POSIX передаются через cancel event; вн
 использовать writable-каталог агента как доверенный канал ради успешной пробы.
 `verifier.collect` — sandbox-команда, не место для запуска вложенного Harbor.
 
-Чтением **не найдено гарантии** публичного способа загрузить новые host-файлы
-из callback в ещё не созданный verifier; sidecar artifacts дают другую точку
-передачи, но требуют проверки topology и порядка freeze. Это точный вопрос E1,
-а не обещание работоспособности callback. Сначала малый воспроизводитель штатных
-операций, затем при подтверждённом ограничении один BaseVerifier hook: в host
-связывает replay/control/export, загружает входы в предоставленный clean environment
-и вызывает штатный `Verifier.verify()` с Task tests. Точные аргументы сверяются
-с выбранной версией; второй параллельный путь не реализуется. Копирование Trial,
-собственный scheduler или второй Harbor job внутри verifier недопустимы.
-Если этот hook выбран, Harbor verifier timeout охватывает также replay и freeze:
-binding вычисляет его из конечных фазовых лимитов E1Config с учётом total deadline.
-В отчёте время собственно проверки остаётся отдельно от replay/setup.
+В design-сессии 11 октября чтением **не было найдено гарантии** загрузки новых
+host-файлов из callback в ещё не созданный verifier; sidecar artifacts требовали
+проверки topology и порядка freeze. WB-04 проверил передачу через staged tests
+до separate verifier upload;
+custom BaseVerifier hook не понадобился (§10.4). Исторически он рассматривался
+только при воспроизводимой недостаточности штатных операций. Копирование Trial,
+свой scheduler и второй Harbor внутри verifier остаются недопустимыми.
 
 В прочитанном Trial ошибки stop частично записываются в logs/result, а не всегда
 пробрасываются; факт возврата `run()`/`stop()` не доказательство прекращения всех
@@ -1293,7 +1120,8 @@ n8n: документация подтверждает [Server CLI import/execut
 и [external task runners](https://docs.n8n.io/deploy/host-n8n/configure-n8n/set-up-task-runners.md),
 включая требование согласованных image versions. Реальные импорт, определение
 workflow ID, извлечение BenchResult и Code node через внешний runner в этом
-CLI-пути остаются проверками E1. Чтение двух страниц не подтверждает их совместимость.
+CLI-пути подтверждены WB-04 на n8n/runner 2.41.5. Чтение двух страниц само по себе
+не подтверждало совместимость; пределы реального evidence — в тикетах WB-04/05.
 
 ### 10.6. Один сценарий и завершение ресурсов
 
@@ -1328,7 +1156,7 @@ CLI-пути остаются проверками E1. Чтение двух с�
 | Verifier не стартовал/сломался | execution сохраняется; evaluation unavailable/partial, score=null, error.kind=evaluation_infrastructure | Frozen evidence остаётся; Harbor закрывает verifier. Replay автоматически не повторяется ради оценки |
 | Ошибка cleanup | Исходный результат плюс cleanup_errors и residual_resources | Host сообщает точные собственные IDs; чужие контейнеры не трогает; оставшиеся ресурсы не объявляет удалёнными |
 
-`RunResult` содержит manifest/report refs, attempt, replays и cleanup_errors/
+JSON report содержит run/attempt identity, native result/log refs, replays и cleanup_errors/
 residual_resources. Ошибки данных до старта — типизированные исключения Definition/
 Artifact; наблюдённые сбои внешнего исполнения — значения результата.
 Неожиданный дефект кода сохраняется и пробрасывается на границу CLI после cleanup.
@@ -1340,14 +1168,14 @@ IDs позволяют адресную ручную очистку, без фо
 
 | Этап | Зависимость / причина | Статус версии |
 |---|---|---|
-| WB-02 | Python, uv; `uv_build` для пакета, dev pytest/Ruff | Python 3.12 как рекомендуемый baseline: прочитанный Harbor требует >=3.12. Конкретный patch, uv/build backend и dev версии выбрать установкой/lock в WB-02 |
-| WB-03 | Harbor для native Task/parser; `jsonschema` как прямая зависимость для наших JSON | Commit §10.5 — кандидат для сверки API. Его pyproject объявляет Harbor 0.24.0, но совместимость установки не проверена; WB-03 фиксирует реально установленную редакцию |
-| WB-04/05 | Docker/Compose, images n8n/runner/simulator/verifier; `aiohttp` в simulator и host control client | HTTP listener, конечные timeouts и управляемая потеря ответа требуют полноценного HTTP transport; версии/дигесты закрепляет реальный E1 |
+| WB-02 | Python, uv; `uv_build` для пакета, dev pytest/Ruff | Проверенные Python 3.12.13, uv/uv_build 0.12.4, pytest 9.1.1, Ruff 0.17.0; `.python-version`, pyproject и uv.lock |
+| WB-03 | Harbor для native Task/parser; `jsonschema` как прямая зависимость для наших JSON | Установлены Harbor 0.24.0, jsonschema 4.26.0 и referencing 0.37.0; версии/hashes — uv.lock, package/export evidence — WB-03 |
+| WB-04/05 | Docker/Compose, images n8n/runner/simulator/verifier; `aiohttp` в simulator и host control client | aiohttp 3.14.5; n8n/runner 2.41.5 и Python base pinned digest в environments/build.py; реальная матрица E1 — WB-04/05 |
 | Все этапы | stdlib: pathlib/importlib.resources, json/tomllib, dataclasses/enum, hashlib, logging, asyncio, argparse, time, secrets, tempfile | Без отдельной logging/DI/retry/config библиотеки; асинхронные тесты можно выполнять через asyncio.run без pytest-asyncio |
 
 Harbor может транзитивно устанавливать модельные SDK — это не разрешение вызовов.
 Не добавляем его cloud/all extras, Docker Python SDK или второй HTTP stack.
-`aiohttp` появляется с реальным simulator/control, не в bootstrap. Стандартный
+`aiohttp` используется simulator/control; bootstrap его не требовал. Стандартный
 `http.server` не выбирается как сервер границы недоверенных запросов.
 [aiohttp server](https://docs.aiohttp.org/en/stable/web_quickstart.html),
 [client lifecycle](https://docs.aiohttp.org/en/stable/client_quickstart.html).
@@ -1367,11 +1195,11 @@ Harbor может транзитивно устанавливать модель
 Конфигурация E1 — данные запуска эксперимента, не конфигурация разработки.
 WB-04 задаёт конечные технические значения до контроля и пишет их в manifest;
 это не бюджеты модели и не методика WB-06. `latest` и floating dependencies не
-служат записью воспроизводимого результата. Ни одна версия в этом разделе не
-объявлена подтверждённой совместным запуском.
+служат записью воспроизводимого результата. Совместные проверки выполнены только
+для указанного T1 окружения (§9).
 
 
-### 10.6. Реализованный срез WB-06
+### 10.8. Реализованный срез WB-06
 
 Definition сохраняет native Task: дополнительная необязательная metadata-ссылка
 `wb_final_cases` разрешена только внутри приватной копии Task. `load_cases(...,

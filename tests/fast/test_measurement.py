@@ -1,19 +1,16 @@
 import json
-import shutil
 from copy import deepcopy
-from pathlib import Path
 
 import pytest
 
 from workflow_bench.data import DataError
 from workflow_bench.definition import export_public, load_cases, load_task
 
-ROOT = Path(__file__).resolve().parents[2]
 
-
-def test_private_final_set_is_selected_by_purpose_and_never_exported(tmp_path):
-    task = tmp_path / "task"
-    shutil.copytree(ROOT / "tasks/t1-send-message", task)
+def test_private_final_set_is_selected_by_purpose_and_never_exported(
+    tmp_path, native_task_files
+):
+    task, tools = native_task_files
     config = (
         (task / "task.toml")
         .read_text()
@@ -26,15 +23,15 @@ def test_private_final_set_is_selected_by_purpose_and_never_exported(tmp_path):
         "cases": [
             {
                 "id": "hidden",
-                "input": {"chat_id": "private-marker", "text": "private-marker"},
+                "input": {"item": "private-marker"},
                 "state": {},
-                "expected": {"outcome": "sent"},
+                "expected": {"reserved": "private-marker"},
             }
         ],
     }
     (task / "tests/final.json").write_text(json.dumps(final))
-    materials = load_task(task, tool_contract=ROOT / "simapps/telegram/tools.json")
-    assert load_cases(materials, purpose="final")[0].input["text"] == "private-marker"
+    materials = load_task(task, tool_contract=tools)
+    assert load_cases(materials, purpose="final")[0].input["item"] == "private-marker"
     public = export_public(materials, tmp_path / "public")
     assert all("private-marker" not in p.read_text() for p in public.root.iterdir())
     final["purpose"] = "development"
@@ -50,7 +47,7 @@ def evaluated_cases():
             "attempt_id": "attempt",
             "replay_id": f"replay-{n}",
             "case_id": f"case-{n}",
-            "profile": "t1-api-v1",
+            "profile": "reserve",
             "profile_hash": "b" * 64,
             "artifact_hash": "a" * 64,
         }
@@ -64,14 +61,7 @@ def evaluated_cases():
             "reason_code": "pass",
             "evidence_refs": ["/after"],
         }
-        for cid in [
-            "recipient",
-            "text",
-            "multiplicity",
-            "preservation",
-            "journal",
-            "refusal",
-        ]
+        for cid in ["reservation"]
     ]
     results = [
         {
@@ -94,15 +84,15 @@ def evaluated_cases():
     "passed,critical,score",
     [(5, False, 10), (4, False, 8), (4, True, 3), (1, True, 2), (0, False, 0)],
 )
-def test_full_set_scoring_examples(passed, critical, score):
+def test_full_set_scoring_examples(passed, critical, score, rubric_data):
     from workflow_bench.evaluation import aggregate_evaluation, harbor_reward
 
     identities, results = evaluated_cases()
     for result in results[passed:]:
         result["verdict"] = "fail"
         if critical:
-            result["critical_violations"] = ["wrong_recipient"]
-    rubric = json.loads((ROOT / "tasks/t1-send-message/tests/rubric.json").read_text())
+            result["critical_violations"] = ["unexpected_reservation"]
+    rubric = rubric_data
     evaluation = aggregate_evaluation(
         tuple(results), rubric=rubric, expected_identities=tuple(identities)
     )
@@ -114,7 +104,7 @@ def test_full_set_scoring_examples(passed, critical, score):
 @pytest.mark.parametrize(
     "change", ["missing", "partial", "unknown", "no-criteria", "no-hash", "known-fail"]
 )
-def test_incomplete_set_never_receives_numeric_reward(change):
+def test_incomplete_set_never_receives_numeric_reward(change, rubric_data):
     from workflow_bench.evaluation import aggregate_evaluation, harbor_reward
 
     identities, results = evaluated_cases()
@@ -131,8 +121,10 @@ def test_incomplete_set_never_receives_numeric_reward(change):
                 {**c, "status": "unknown"} for c in results[0]["criteria"]
             ]
         if change == "known-fail":
-            results[1].update(verdict="fail", critical_violations=["duplicate_send"])
-    rubric = json.loads((ROOT / "tasks/t1-send-message/tests/rubric.json").read_text())
+            results[1].update(
+                verdict="fail", critical_violations=["repeated_reservation"]
+            )
+    rubric = rubric_data
     result = aggregate_evaluation(
         tuple(results), rubric=rubric, expected_identities=tuple(identities)
     )
@@ -141,7 +133,7 @@ def test_incomplete_set_never_receives_numeric_reward(change):
 
 
 @pytest.mark.parametrize("change", ["duplicate", "hash", "case", "run", "profile"])
-def test_aggregate_rejects_results_of_another_measurement(change):
+def test_aggregate_rejects_results_of_another_measurement(change, rubric_data):
     from workflow_bench.evaluation import aggregate_evaluation
 
     identities, results = evaluated_cases()
@@ -155,27 +147,26 @@ def test_aggregate_rejects_results_of_another_measurement(change):
             "profile": "profile_hash",
         }[change]
         results[0]["identity"] = {**results[0]["identity"], key: "d" * 64}
-    rubric = json.loads((ROOT / "tasks/t1-send-message/tests/rubric.json").read_text())
+    rubric = rubric_data
     with pytest.raises(DataError):
         aggregate_evaluation(
             tuple(results), rubric=rubric, expected_identities=tuple(identities)
         )
 
 
-def test_selection_uses_first_full_pass_or_last_valid_and_redacts_feedback(tmp_path):
+def test_selection_uses_first_full_pass_or_last_valid_and_redacts_feedback(
+    tmp_path, native_task_files, rubric_data
+):
     from workflow_bench.evaluation import aggregate_evaluation
     from workflow_bench.execution import accept_artifact
     from workflow_bench.experiment import Attempt, select_attempts
 
-    materials = load_task(
-        ROOT / "tasks/t1-send-message",
-        tool_contract=ROOT / "simapps/telegram/tools.json",
-    )
-    rubric = json.loads((ROOT / "tasks/t1-send-message/tests/rubric.json").read_text())
+    task, tools = native_task_files
+    materials = load_task(task, tool_contract=tools)
+    workflow_file = task / "solution/workflow.json"
+    rubric = rubric_data
     second_source = tmp_path / "second.json"
-    workflow = json.loads(
-        (ROOT / "tasks/t1-send-message/solution/workflow.json").read_text()
-    )
+    workflow = json.loads(workflow_file.read_text())
     workflow["name"] = "Second controlled submission"
     second_source.write_text(json.dumps(workflow))
     artifacts = [
@@ -184,9 +175,7 @@ def test_selection_uses_first_full_pass_or_last_valid_and_redacts_feedback(tmp_p
             submission_stopped=True,
             destination=tmp_path / f"version-{i}.json",
         )
-        for i, source in enumerate(
-            [ROOT / "tasks/t1-send-message/solution/workflow.json", second_source]
-        )
+        for i, source in enumerate([workflow_file, second_source])
     ]
     identities, results = evaluated_cases()
     for identity in identities:
@@ -259,13 +248,15 @@ def test_selection_uses_first_full_pass_or_last_valid_and_redacts_feedback(tmp_p
 
 
 @pytest.mark.parametrize("fault", ["partial", "unknown", "stop"])
-def test_selection_blocks_continuation_on_uncertainty(tmp_path, fault):
+def test_selection_blocks_continuation_on_uncertainty(
+    tmp_path, fault, workflow_file, rubric_data
+):
     from workflow_bench.evaluation import aggregate_evaluation
     from workflow_bench.execution import accept_artifact
     from workflow_bench.experiment import Attempt, select_attempts
 
     artifact = accept_artifact(
-        ROOT / "tasks/t1-send-message/solution/workflow.json",
+        workflow_file,
         submission_stopped=True,
         destination=tmp_path / "accepted.json",
     )
@@ -273,7 +264,7 @@ def test_selection_blocks_continuation_on_uncertainty(tmp_path, fault):
     for identity in identities:
         identity["artifact_hash"] = artifact.sha256
     cases[0].update(completeness="partial", verdict="unknown")
-    rubric = json.loads((ROOT / "tasks/t1-send-message/tests/rubric.json").read_text())
+    rubric = rubric_data
     development = aggregate_evaluation(
         tuple(cases),
         rubric=rubric,
@@ -389,9 +380,10 @@ def test_preflight_rejects_exhausted_or_unknown_shared_budget(config_data):
         model_preflight(budget, runtime=config_data, authorized=True, usage=usage)
 
 
-def test_private_set_cannot_reuse_development_identity_or_input(tmp_path):
-    task = tmp_path / "task"
-    shutil.copytree(ROOT / "tasks/t1-send-message", task)
+def test_private_set_cannot_reuse_development_identity_or_input(
+    tmp_path, native_task_files
+):
+    task, tools = native_task_files
     path = task / "task.toml"
     path.write_text(
         path.read_text().replace(
@@ -401,24 +393,26 @@ def test_private_set_cannot_reuse_development_identity_or_input(tmp_path):
     development = json.loads((task / "tests/cases.json").read_bytes())
     development.update(purpose="final")
     (task / "tests/final.json").write_text(json.dumps(development))
-    materials = load_task(task, tool_contract=ROOT / "simapps/telegram/tools.json")
+    materials = load_task(task, tool_contract=tools)
     with pytest.raises(DataError, match="overlapping_cases"):
         load_cases(materials, purpose="final")
 
 
 @pytest.mark.parametrize("critical, expected_score", [(False, 8), (True, 1)])
-def test_aggregate_uses_task_owned_set_size_points_and_cap(critical, expected_score):
+def test_aggregate_uses_task_owned_set_size_points_and_cap(
+    critical, expected_score, rubric_data
+):
     from workflow_bench.evaluation import aggregate_evaluation
 
     identities, cases = evaluated_cases()
-    rubric = json.loads((ROOT / "tasks/t1-send-message/tests/rubric.json").read_text())
+    rubric = rubric_data
     rubric["scoring_policy"].update(case_count=2, points_per_pass=4, critical_cap=1)
     if critical:
         cases[0]["verdict"] = "fail"
         cases[0]["criteria"][0].update(
-            status="fail", value=False, reason_code="wrong_recipient"
+            status="fail", value=False, reason_code="unexpected_reservation"
         )
-        cases[0]["critical_violations"] = ["wrong_recipient"]
+        cases[0]["critical_violations"] = ["unexpected_reservation"]
     result = aggregate_evaluation(
         tuple(cases[:2]), rubric=rubric, expected_identities=tuple(identities[:2])
     )
@@ -428,7 +422,7 @@ def test_aggregate_uses_task_owned_set_size_points_and_cap(critical, expected_sc
 
 
 def test_measurement_preserves_existing_output_before_any_resources(
-    tmp_path, config_data
+    tmp_path, config_data, native_task_files
 ):
     import asyncio
 
@@ -444,7 +438,7 @@ def test_measurement_preserves_existing_output_before_any_resources(
     with pytest.raises(FileExistsError):
         asyncio.run(
             run_measurement(
-                ROOT / "tasks/t1-send-message",
+                native_task_files[0],
                 (ControlledSubmission(None),),
                 config=config,
             )
@@ -452,14 +446,15 @@ def test_measurement_preserves_existing_output_before_any_resources(
     assert (output / "report.json").read_text() == "original"
 
 
-def test_measurement_uses_task_owned_case_count(tmp_path, monkeypatch, config_data):
+def test_measurement_uses_task_owned_case_count(
+    tmp_path, monkeypatch, config_data, native_task_files
+):
     import asyncio
 
     from workflow_bench.cli import load_config
     from workflow_bench.experiment import ControlledSubmission, run_measurement
 
-    task = tmp_path / "task"
-    shutil.copytree(ROOT / "tasks/t1-send-message", task)
+    task, tools = native_task_files
     path = task / "task.toml"
     path.write_text(
         path.read_text().replace(
@@ -473,7 +468,7 @@ def test_measurement_uses_task_owned_case_count(tmp_path, monkeypatch, config_da
     final["purpose"] = "final"
     for case in final["cases"]:
         case["id"] = "final-" + case["id"]
-        case["input"]["text"] = "synthetic-new-input-" + case["input"]["text"]
+        case["input"]["item"] = "synthetic-new-input-" + case["input"]["item"]
     (task / "tests/final.json").write_text(json.dumps(final))
     path = task / "tests/rubric.json"
     rubric = json.loads(path.read_bytes())
@@ -483,7 +478,7 @@ def test_measurement_uses_task_owned_case_count(tmp_path, monkeypatch, config_da
     config_path.write_text(json.dumps(config_data))
 
     async def exported_tools(config, **kwargs):
-        return ROOT / "simapps/telegram/tools.json"
+        return tools
 
     monkeypatch.setattr("workflow_bench.experiment.tool_contract", exported_tools)
     result = asyncio.run(
@@ -528,18 +523,20 @@ def test_cli_model_gate_rejects_before_any_run_or_credential_access(
     assert marker not in result.stderr and "Traceback" not in result.stderr
 
 
-def test_selection_rejects_development_of_another_artifact(tmp_path):
+def test_selection_rejects_development_of_another_artifact(
+    tmp_path, workflow_file, rubric_data
+):
     from workflow_bench.evaluation import aggregate_evaluation
     from workflow_bench.execution import accept_artifact
     from workflow_bench.experiment import Attempt, select_attempts
 
     artifact = accept_artifact(
-        ROOT / "tasks/t1-send-message/solution/workflow.json",
+        workflow_file,
         submission_stopped=True,
         destination=tmp_path / "accepted.json",
     )
     identities, cases = evaluated_cases()
-    rubric = json.loads((ROOT / "tasks/t1-send-message/tests/rubric.json").read_text())
+    rubric = rubric_data
     development = aggregate_evaluation(
         tuple(cases),
         rubric=rubric,
@@ -554,7 +551,7 @@ def test_selection_rejects_development_of_another_artifact(tmp_path):
 
 
 def test_independent_measurements_use_distinct_native_submission_projects(
-    tmp_path, monkeypatch, config_data
+    tmp_path, monkeypatch, config_data, native_task_files
 ):
     import asyncio
 
@@ -563,8 +560,7 @@ def test_independent_measurements_use_distinct_native_submission_projects(
     from workflow_bench.cli import load_config
     from workflow_bench.experiment import ControlledSubmission, run_measurement
 
-    task = tmp_path / "private-task"
-    shutil.copytree(ROOT / "tasks/t1-send-message", task)
+    task, tools = native_task_files
     path = task / "task.toml"
     path.write_text(
         path.read_text().replace(
@@ -575,7 +571,7 @@ def test_independent_measurements_use_distinct_native_submission_projects(
     final["purpose"] = "final"
     for case in final["cases"]:
         case["id"] = "final-" + case["id"]
-        case["input"]["text"] = "synthetic-new-input-" + case["input"]["text"]
+        case["input"]["item"] = "synthetic-new-input-" + case["input"]["item"]
     (task / "tests/final.json").write_text(json.dumps(final))
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config_data))
@@ -585,7 +581,7 @@ def test_independent_measurements_use_distinct_native_submission_projects(
         pass
 
     async def exported_tools(config, **kwargs):
-        return ROOT / "simapps/telegram/tools.json"
+        return tools
 
     async def observe_creation(config):
         projects.append(config.trial_name)

@@ -6,13 +6,11 @@ import pytest
 
 from workflow_bench.execution import ArtifactError, accept_artifact, bind_workflow
 
-CONTROL = (
-    Path(__file__).resolve().parents[2] / "tasks/t1-send-message/solution/workflow.json"
-)
 
-
-def test_closed_branch_cannot_claim_a_terminal_result(tmp_path: Path) -> None:
-    workflow = json.loads(CONTROL.read_bytes())
+def test_closed_branch_cannot_claim_a_terminal_result(
+    tmp_path: Path, workflow_file: Path
+) -> None:
+    workflow = json.loads(workflow_file.read_bytes())
     workflow["nodes"].append({**workflow["nodes"][2], "id": "trap", "name": "Trap"})
     edge = {"node": "Trap", "type": "main", "index": 0}
     workflow["connections"]["BenchInput"]["main"][0].append(edge)
@@ -26,7 +24,10 @@ def test_closed_branch_cannot_claim_a_terminal_result(tmp_path: Path) -> None:
 
 
 def test_external_exec_failure_preserves_unknown_and_confirmed_stop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config_data: dict
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict,
+    workflow_file: Path,
 ) -> None:
     import asyncio
     from types import SimpleNamespace
@@ -41,7 +42,7 @@ def test_external_exec_failure_preserves_unknown_and_confirmed_stop(
     path.write_text(json.dumps(config_data))
     config = load_config(path, output=tmp_path)
     artifact = accept_artifact(
-        CONTROL, submission_stopped=True, destination=tmp_path / "accepted.json"
+        workflow_file, submission_stopped=True, destination=tmp_path / "accepted.json"
     )
     command = tmp_path / "docker"
     command.write_text("#!/bin/sh\nexit 0\n")
@@ -86,9 +87,7 @@ def test_external_exec_failure_preserves_unknown_and_confirmed_stop(
         config,
     )
     execution, _ = asyncio.run(
-        replay(
-            artifact, {"chat_id": "42", "text": "exact"}, context=context, config=config
-        )
+        replay(artifact, {"item": "pen"}, context=context, config=config)
     )
     assert execution["process_status"] == "unknown"
     assert execution["stop_confirmed"] and stopped == {"n8n", "runner"}
@@ -105,8 +104,10 @@ def test_missing_submission_cannot_be_replayed(tmp_path: Path) -> None:
         )
 
 
-def test_credential_reference_is_rejected_even_on_unused_node(tmp_path: Path) -> None:
-    workflow = json.loads(CONTROL.read_bytes())
+def test_credential_reference_is_rejected_even_on_unused_node(
+    tmp_path: Path, workflow_file: Path
+) -> None:
+    workflow = json.loads(workflow_file.read_bytes())
     workflow["nodes"][3]["credentials"] = {"httpHeaderAuth": {"id": "private"}}
     submitted = tmp_path / "workflow.json"
     submitted.write_text(json.dumps(workflow))
@@ -118,14 +119,15 @@ def test_credential_reference_is_rejected_even_on_unused_node(tmp_path: Path) ->
 
 def test_binding_preserves_source_logic_and_encodes_input_as_data(
     tmp_path: Path,
+    workflow_file: Path,
 ) -> None:
-    original = CONTROL.read_bytes()
+    original = workflow_file.read_bytes()
     artifact = accept_artifact(
-        CONTROL, submission_stopped=True, destination=tmp_path / "accepted.json"
+        workflow_file, submission_stopped=True, destination=tmp_path / "accepted.json"
     )
     bound = bind_workflow(
         artifact,
-        case_input={"chat_id": "new", "text": '={{danger}}\n"quoted"'},
+        case_input={"item": '={{danger}}\n"quoted"'},
         base_url="http://simulator:9000",
         capability="test-capability",
         destination=tmp_path / "bound.json",
@@ -135,8 +137,7 @@ def test_binding_preserves_source_logic_and_encodes_input_as_data(
     literal = result["nodes"][1]["parameters"]["assignments"]["assignments"][0]["value"]
     assert isinstance(literal, str) and literal.startswith("{")
     assert json.loads(literal)["input"] == {
-        "chat_id": "new",
-        "text": '={{danger}}\n"quoted"',
+        "item": '={{danger}}\n"quoted"',
     }
     result["nodes"][1]["parameters"]["assignments"]["assignments"][0]["value"] = source[
         "nodes"
@@ -161,9 +162,9 @@ def test_binding_preserves_source_logic_and_encodes_input_as_data(
     ],
 )
 def test_unsupported_native_configuration_is_rejected(
-    tmp_path: Path, change: str
+    tmp_path: Path, change: str, workflow_file: Path
 ) -> None:
-    workflow = json.loads(CONTROL.read_bytes())
+    workflow = json.loads(workflow_file.read_bytes())
     if change in {"pinData", "staticData"}:
         workflow[change] = {}
     elif change == "version":
@@ -207,20 +208,20 @@ def test_unsupported_native_configuration_is_rejected(
     ],
 )
 def test_unsafe_or_unfinished_submission_cannot_become_artifact(
-    tmp_path: Path, kind: str
+    tmp_path: Path, kind: str, workflow_file: Path
 ) -> None:
     path = tmp_path / "candidate.json"
     expected = "unsafe_file"
     if kind == "symlink":
-        path.symlink_to(CONTROL)
+        path.symlink_to(workflow_file)
     elif kind == "hardlink":
         original = tmp_path / "original.json"
-        original.write_bytes(CONTROL.read_bytes())
+        original.write_bytes(workflow_file.read_bytes())
         path.hardlink_to(original)
     elif kind == "fifo":
         os.mkfifo(path)
     elif kind == "unconfirmed":
-        path.write_bytes(CONTROL.read_bytes())
+        path.write_bytes(workflow_file.read_bytes())
         expected = "unconfirmed_submission"
     elif kind == "duplicate_json":
         path.write_text('{"name":"a","name":"b"}')

@@ -10,17 +10,72 @@ from harbor.trial.trial import Trial
 
 from workflow_bench.cli import load_config
 from workflow_bench.definition import load_cases, load_task
+from workflow_bench.execution import accept_artifact
 from workflow_bench.experiment import run_manual
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 class PreparationObserved(Exception):
     pass
 
 
+@pytest.mark.parametrize("linked", ["workflow", "solution"])
+def test_staged_submission_rejects_links_without_modifying_source_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict,
+    linked: str,
+    native_task_files,
+) -> None:
+    from workflow_bench.data import DataError
+
+    task, tools = native_task_files
+    solution = task / "solution"
+    if linked == "workflow":
+        workflow = solution / "workflow.json"
+        target = solution / "original.json"
+        workflow.rename(target)
+        workflow.symlink_to(target)
+    else:
+        target = task / "original-solution"
+        solution.rename(target)
+        solution.symlink_to(target, target_is_directory=True)
+    before = {
+        p.relative_to(task): p.read_bytes() for p in task.rglob("*") if p.is_file()
+    }
+    candidate = tmp_path / "candidate.json"
+    document = json.loads((solution / "workflow.json").read_bytes())
+    document["name"] = "replacement submission"
+    candidate.write_text(json.dumps(document))
+    submission = accept_artifact(
+        candidate, submission_stopped=True, destination=tmp_path / "accepted.json"
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config_data))
+    config = load_config(config_path, output=tmp_path / "run")
+
+    async def exported_tools(config, **kwargs):
+        return tools
+
+    async def observe_preparation(native_config):
+        raise PreparationObserved()
+
+    monkeypatch.setattr("workflow_bench.experiment.tool_contract", exported_tools)
+    monkeypatch.setattr(Trial, "create", observe_preparation)
+    try:
+        with pytest.raises(DataError) as error:
+            asyncio.run(
+                run_manual(task, ("fresh",), config=config, submission=submission)
+            )
+        assert error.value.code == "unsafe_path"
+        assert not (config.output_root / "manifest.json").exists()
+    finally:
+        assert {
+            p.relative_to(task): p.read_bytes() for p in task.rglob("*") if p.is_file()
+        } == before
+
+
 def test_explicit_cancel_preserves_a_report_without_starting_a_trial(
-    tmp_path: Path, config_data: dict
+    tmp_path: Path, config_data: dict, native_task_files
 ) -> None:
     path = tmp_path / "config.json"
     path.write_text(json.dumps(config_data))
@@ -30,7 +85,7 @@ def test_explicit_cancel_preserves_a_report_without_starting_a_trial(
         cancel = asyncio.Event()
         cancel.set()
         result = await run_manual(
-            ROOT / "tasks/t1-send-message", ("fresh-a",), config=config, cancel=cancel
+            native_task_files[0], ("fresh",), config=config, cancel=cancel
         )
         assert result["error"] == "cancelled" and result["score"] is None
         assert result["completeness"] == "unavailable"
@@ -40,11 +95,12 @@ def test_explicit_cancel_preserves_a_report_without_starting_a_trial(
 
 
 def test_manifest_identifies_consumed_private_snapshots_after_source_removal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config_data: dict
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict,
+    native_task_files,
 ) -> None:
-    task = tmp_path / "task"
-    shutil.copytree(ROOT / "tasks/t1-send-message", task)
-    tools = ROOT / "simapps/telegram/tools.json"
+    task, tools = native_task_files
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config_data))
     config = load_config(config_path, output=tmp_path / "run-0")
@@ -65,11 +121,11 @@ def test_manifest_identifies_consumed_private_snapshots_after_source_removal(
         rubric_path.write_text(json.dumps(rubric))
         cases_path = task / "tests/cases.json"
         cases = json.loads(cases_path.read_bytes())
-        cases["cases"][0]["input"]["text"] = f"revision-{revision}"
+        cases["cases"][0]["input"]["item"] = f"revision-{revision}"
         cases_path.write_text(json.dumps(cases))
         config = replace(config, output_root=tmp_path / f"run-{revision}")
         with pytest.raises(PreparationObserved):
-            asyncio.run(run_manual(task, ("fresh-a",), config=config))
+            asyncio.run(run_manual(task, ("fresh",), config=config))
         manifest = json.loads((config.output_root / "manifest.json").read_bytes())
         for role in ("rubric_snapshot", "case_snapshot"):
             snapshot = manifest[role]
@@ -84,15 +140,15 @@ def test_manifest_identifies_consumed_private_snapshots_after_source_removal(
         staged_materials = load_task(
             config.output_root / "native-task", tool_contract=tools
         )
-        consumed = load_cases(staged_materials, ("fresh-a",))
-        assert consumed[0].input["text"] == f"revision-{revision}"
+        consumed = load_cases(staged_materials, ("fresh",))
+        assert consumed[0].input["item"] == f"revision-{revision}"
         recorded = json.loads(
             (config.output_root / manifest["case_snapshot"]["ref"]).read_bytes()
         )
         assert (
             recorded == cases and manifest["case_snapshot"]["schema_version"] == "1.0"
         )
-        assert manifest["case_ids"] == ["fresh-a"] and manifest["model_calls"] == 0
+        assert manifest["case_ids"] == ["fresh"] and manifest["model_calls"] == 0
         manifests.append(manifest)
     shutil.rmtree(task)
     for revision, manifest in enumerate(manifests):
@@ -103,7 +159,7 @@ def test_manifest_identifies_consumed_private_snapshots_after_source_removal(
 
 @pytest.mark.parametrize("invalid", ["schema", "ports"])
 def test_cli_preflight_preserves_safe_reason_without_starting_a_run(
-    tmp_path: Path, config_data: dict, invalid: str
+    tmp_path: Path, config_data: dict, invalid: str, native_task_files
 ) -> None:
     import subprocess
     import sys
@@ -124,13 +180,13 @@ def test_cli_preflight_preserves_safe_reason_without_starting_a_run(
             "-m",
             "workflow_bench.cli",
             "--task",
-            str(ROOT / "tasks/t1-send-message"),
+            str(native_task_files[0]),
             "--config",
             str(config_path),
             "--output",
             str(output),
             "--case",
-            "fresh-a",
+            "fresh",
         ],
         capture_output=True,
         text=True,
@@ -152,7 +208,7 @@ def test_cli_preflight_preserves_safe_reason_without_starting_a_run(
     ],
 )
 def test_cli_failure_keeps_safe_code_and_existing_log_reference(
-    tmp_path: Path, config_data: dict, failure: str, code: str
+    tmp_path: Path, config_data: dict, failure: str, code: str, native_task_files
 ) -> None:
     import subprocess
     import sys
@@ -168,9 +224,9 @@ from harbor.trial.trial import Trial
 from types import SimpleNamespace
 from workflow_bench import cli, experiment, harbor
 from workflow_bench.execution import ArtifactError
-root, config_path, output, failure = sys.argv[1:]
+task_path, tools_path, config_path, output, failure = sys.argv[1:]
 async def tools(config, **kwargs):
-    return Path(root) / "simapps/telegram/tools.json"
+    return Path(tools_path)
 async def fail(config):
     (Path(output) / "harbor").mkdir()
     if failure == "artifact":
@@ -189,8 +245,8 @@ async def docker(*args):
 harbor.docker = docker
 experiment.tool_contract = tools
 Trial.create = fail
-sys.argv = ["cli", "--task", str(Path(root) / "tasks/t1-send-message"),
-            "--config", config_path, "--output", output, "--case", "fresh-a"]
+sys.argv = ["cli", "--task", task_path,
+            "--config", config_path, "--output", output, "--case", "fresh"]
 cli.main()
 """
     result = subprocess.run(
@@ -198,7 +254,8 @@ cli.main()
             sys.executable,
             "-c",
             script,
-            str(ROOT),
+            str(native_task_files[0]),
+            str(native_task_files[1]),
             str(config_path),
             str(output),
             failure,
@@ -222,12 +279,14 @@ cli.main()
 
 
 def test_preparation_does_not_hide_an_unsafe_source_behind_a_copy(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config_data: dict
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict,
+    native_task_files,
 ) -> None:
     from workflow_bench.data import DataError
 
-    task = tmp_path / "task"
-    shutil.copytree(ROOT / "tasks/t1-send-message", task)
+    task, tools = native_task_files
     instruction = task / "instruction.md"
     target = tmp_path / "outside.md"
     instruction.rename(target)
@@ -237,7 +296,7 @@ def test_preparation_does_not_hide_an_unsafe_source_behind_a_copy(
     config = load_config(config_path, output=tmp_path / "run")
 
     async def exported_tools(config, **kwargs):
-        return ROOT / "simapps/telegram/tools.json"
+        return tools
 
     async def observe_preparation(native_config):
         raise PreparationObserved()
@@ -245,6 +304,6 @@ def test_preparation_does_not_hide_an_unsafe_source_behind_a_copy(
     monkeypatch.setattr("workflow_bench.experiment.tool_contract", exported_tools)
     monkeypatch.setattr(Trial, "create", observe_preparation)
     with pytest.raises(DataError) as error:
-        asyncio.run(run_manual(task, ("fresh-a",), config=config))
+        asyncio.run(run_manual(task, ("fresh",), config=config))
     assert error.value.code == "unsafe_path"
     assert not (config.output_root / "manifest.json").exists()

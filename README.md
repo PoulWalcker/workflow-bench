@@ -98,9 +98,26 @@ uv run --locked ruff check src tests simapps environments tasks
 uv run --locked ruff format --check src tests simapps environments tasks
 ```
 
+После разделения core и предметных тестов 12 октября 2026 года default fast
+suite — 253 passed, в том числе в копии checkout без всего каталога `tasks/`.
+Generic Definition, Execution, Experiment, Harbor и Evaluation используют
+синтетическую Task резервирования из `tests/fast/conftest.py`; core-набор без
+двух тестов самого Telegram simulator также прошёл без
+`simapps/telegram/tools.json` — 251 passed. Тестам simulator нужен его собственный
+app-контракт.
+
+29 проверок настоящего T1 verifier сохранены в
+`tests/integration/test_t1_evaluation.py`. Это opt-in интеграция Task script с
+Evaluation на синтетических frozen inputs; Docker и `--e1-config` ей не нужны.
+Вместе с общей проверкой reward выполнена команда — 30 passed:
+
+```sh
+uv run --locked --offline pytest -q tests/fast/test_evaluation.py tests/integration/test_t1_evaluation.py --run-integration
+```
+
 В WB-04 быстрый pytest — 206 passed (101 S1 + 76 S2 + 29 S3/S5); Ruff lint/format — exit 0,
 без lint-исключений.
-После [audit remediation](docs/reviews/REMEDIATION_PLAN.md) 12 октября 2026 года
+После технических исправлений 12 октября 2026 года
 fast suite — 216 passed; default collection — 216 tests, без integration/model.
 Форматирование ограничено созданным Python-кодом: Ruff 0.17 также обрабатывает
 Markdown; первоначальный `ruff format --check .` завершился exit 1 на примерах
@@ -304,8 +321,9 @@ BaseVerifier hook не понадобился: используется публ
 
 `report.json` разделяет execution/claim/criteria, содержит hashes/bindings и refs
 на protected evidence и native Harbor/n8n logs. `manifest.json` фиксирует версии,
-материалы, конфигурацию и отсутствие model calls. Score = null, verdict = unknown:
-методика scoring ещё не утверждена. Harbor 0.24.0 ожидает reward-файл и записывает
+материалы, конфигурацию и отсутствие model calls. В историческом контроле WB-04
+score = null, verdict = unknown: на том этапе методика scoring ещё не была утверждена.
+Harbor 0.24.0 ожидает reward-файл и записывает
 `RewardFileNotFoundError`; evaluation сохраняется, фиктивный численный reward не
 создаётся. Его deprecation warning Task.checksum также не подавляется.
 CLI 2.41.5 не выводит native execution ID (проверен установленный execute.js):
@@ -397,3 +415,31 @@ E1 schema. `--model-preflight --config <file>` отклоняет unapproved bud
 отсутствие отдельного разрешения до credentials/ресурсов. WB-06 вообще не
 исполняет модели: даже допустимый программный план имеет execution_enabled=false.
 Provider enforcement и наблюдаемость tokens/retries предстоит проверить в WB-07.
+
+## Cleanup перед WB-07 · 12 октября 2026 года
+
+Регрессия S1 проверяет `run_manual(submission=...)` с symlink файла и родительского
+`solution/`: отказ до записи, исходная Task побайтно сохранена. Red воспроизвёл
+изменение source в обоих случаях; после исправления focused Experiment/Measurement
+suite — 46 passed. Полный fast suite — 282 passed; Ruff lint/format — exit 0.
+Локальные ссылки/anchors и уникальность заголовков ARCHITECTURE/README проверены.
+Раздельные Standards/Spec reviews scoped diff — по 0 замечаний. `instruction.md`
+не изменён; остальные optional findings complexity review остаются будущей работой.
+
+Проверенные fast-команды (с UV-переменными из раздела установки):
+
+```sh
+uv run --locked --offline pytest -q tests/fast/test_experiment.py tests/fast/test_measurement.py
+uv run --locked --offline pytest -q
+uv run --locked --offline ruff check src tests simapps environments tasks
+uv run --locked --offline ruff format --check src tests simapps environments tasks
+```
+
+Замена custom lock traversal на `uv export` отклонена после реальной сборки.
+`uv export --frozen --offline --no-dev --no-emit-project --prune harbor
+--no-annotate --no-header` сохраняет 14 names/versions и все 663 package hashes,
+но marker `python_full_version < "3.13"` исключает `typing-extensions` из
+закреплённого Python 3.13 image: устанавливаются 13 пакетов вместо прежних 14.
+Это нарушает условие точного dependency set. Builder восстановлен побайтно;
+дополнительная обработка export и новые dependency groups не добавлены.
+Локальные build logs spike сохранены в `runs/pre-wb07-cleanup/`.
