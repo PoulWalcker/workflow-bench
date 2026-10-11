@@ -1211,6 +1211,36 @@ result (`NativeVerification`). Callback Experiment получает только
 свежесть БД и фактическую изоляцию. Это перенос существующих механик WB-04;
 fault/cleanup semantics WB-05 этим решением не считаются реализованными.
 
+Уточнение WB-05 (12 октября 2026): `AGENT_END` останавливает writer до native
+collection; `VERIFICATION_START` допускается только после подтверждённого удаления
+submission. Кандидатские verifier logs очищаются без разыменования symlink.
+Evaluation читается только после успешной подготовки защищённых входов этой
+фазы; host сверяет case/identity, hash фактически переданного evidence и reward.
+Missing reward сохраняется отдельно как `reward_status=incomplete`; T1 не
+получает численный score. Единственная числовая fixture проверяет протокол Harbor.
+
+`DeadlineDockerEnvironment` — конкретное дополнение того же native Docker
+provider: ограничивает `super().stop()` и завершает/дожидается собственного CLI
+subprocess при отмене buffered IO. Штатные Trial, Compose, collection и verifier
+сохранены; второго lifecycle нет. Native `environment.import_path` применяет его
+также к отдельному verifier, profile export и replay используют тот же provider.
+Это решение WB-05: Harbor 0.24.0 shielded cleanup не имеет конечного native
+deadline, а `_collect_buffered_output` не закрывает процесс при внешнем
+`CancelledError`. Узкое переопределение этого приватного метода делегирует работу
+`super`, не копирует её. Совместимость привязана к Harbor 0.24.0 и проверяется
+regression с инертным subprocess; обновление Harbor требует повторной проверки.
+
+Simulator принимает host-only `fault(identity, mode, delay_sec)` для следующего
+send: `drop_response` после commit либо `stall_before_commit`. Это управляемая
+техническая инъекция E1, не публичный tool или параметр Task. Freeze закрывает
+admission, ограничивает drain, фиксирует pending/unknown и запрещает поздний commit.
+`ReplayContext.finish` пытается остановить оба untrusted service даже при сбое
+control. Execution сохраняет stop request, исходный статус при unconfirmed stop
+и безопасные ошибки. `LifecycleFacts` передаёт наблюдённые cleanup failures и
+scoped residual IDs в report; неподтверждённая инспекция остаётся unknown.
+CLI SIGINT/SIGTERM на POSIX передаются через cancel event; внешний asyncio cancel также
+сохраняет execution/доступные facts перед cleanup. SIGKILL не покрыт этим контрактом.
+
 ### 10.5. Проверенные точки Harbor и проба штатного пути
 
 Первоисточники прочитаны 11 октября 2026 года. Исходники проверены на commit
@@ -1222,7 +1252,7 @@ fault/cleanup semantics WB-05 этим решением не считаются 
 | [`Task`, native config](https://github.com/harbor-framework/harbor/blob/dc933be707feafbb9efcdf092cb8a0e391332617/src/harbor/models/task/task.py) | `Task(task_dir=...)` читает native config; `TaskConfig.model_validate_toml(...)` — parser. Для WB-03 достаточно чтения без Trial |
 | [`Trial`](https://github.com/harbor-framework/harbor/blob/dc933be707feafbb9efcdf092cb8a0e391332617/src/harbor/trial/trial.py), [`TrialEvent`](https://github.com/harbor-framework/harbor/blob/dc933be707feafbb9efcdf092cb8a0e391332617/src/harbor/trial/hooks.py) | `await Trial.create(config)`, `await trial.run()`, `trial.add_hook(event, async_callback)`. Есть AGENT_END и VERIFICATION_START; event несёт config/result/lock, **не** готовый verifier environment |
 | [`SingleStepTrial`](https://github.com/harbor-framework/harbor/blob/dc933be707feafbb9efcdf092cb8a0e391332617/src/harbor/trial/single_step.py) | Порядок separate: agent → collection → stop agent environment → VERIFICATION_START → создание verifier. Нельзя считать AGENT_END подтверждением stop или готовности собранного файла |
-| [`BaseEnvironment`](https://github.com/harbor-framework/harbor/blob/dc933be707feafbb9efcdf092cb8a0e391332617/src/harbor/environments/base.py) | `start(force_build)`, `stop(delete)`, `exec(command, cwd, env, timeout_sec, user)`, upload/download_file/dir; для sidecars service_exec/service_download_file/stop_service. Используем существующий Docker provider, не свой subclass |
+| [`BaseEnvironment`](https://github.com/harbor-framework/harbor/blob/dc933be707feafbb9efcdf092cb8a0e391332617/src/harbor/environments/base.py) | `start(force_build)`, `stop(delete)`, `exec(command, cwd, env, timeout_sec, user)`, upload/download_file/dir; для sidecars service_exec/service_download_file/stop_service. Используем существующий Docker provider с узким deadline adapter WB-05, описанным выше; lifecycle не копируем |
 | [Artifacts](https://docs.harborframework.com/tasks/artifacts), [collection](https://docs.harborframework.com/jobs/artifact-collection) | source/destination/service, collection manifest; `[[verifier.collect]]` выполняет команду выбранного service. Ошибка collection не обязана провалить Trial; проверяем manifest и наличие данных сами |
 | [Separate verifier](https://docs.harborframework.com/tasks/separate-verifier) | `environment_mode="separate"`; свежая среда, объявленные артефакты восстанавливаются по source. Runtime mounts/Compose overlays не наследуются. Общий image позволяет upload tests; dedicated image должен содержать tests |
 | [`BaseVerifier`](https://github.com/harbor-framework/harbor/blob/dc933be707feafbb9efcdf092cb8a0e391332617/src/harbor/verifier/base.py), [custom verifiers](https://docs.harborframework.com/jobs/custom-verifiers) | `async verify() -> VerifierResult` на host, `self.environment`; выбор через `verifier.import_path`/kwargs. Это замена штатной проверки, не дополнительный автоматический callback |

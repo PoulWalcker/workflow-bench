@@ -1,6 +1,6 @@
 # Workflow Bench
 
-**Статус: WB-02–WB-04 выполнены; реальный native T1 без AI проверен.**
+**Статус: WB-02–WB-05 выполнены; технический E1 без AI проверен.**
 Продуктовая основа — SPEC v0.2 с согласованными уточнениями · 11 октября 2026 года.
 
 Workflow Bench — инструмент для проверки того, как AI исследует доступные
@@ -290,7 +290,8 @@ n8n и runner имеют read-only root, tmpfs, CPU/RAM limit, cap_drop/no-new-p
 проверяются реальные mounts/networks, недоступность control из n8n/runner и
 отсутствие tests/solution/checkout/socket/control-secret. SSRF protection n8n
 отключена для локального HTTP tool; сетевую границу обеспечивают Docker internal
-networks. Это базовая изоляция, расширенные escape/fault-контроли остаются WB-05.
+networks. Расширенные escape/fault-контроли описаны в
+[WB-05](docs/implementation/WB-05-e1-trust-and-failures.md).
 
 После revoke/freeze и подтверждённого stop host получает snapshots и журнал
 acceptance/effect/response. Protected bundle помещается в staged native Task tests
@@ -314,6 +315,35 @@ native ID недоступен; replay ID и logs связывают испол�
 ## Статус разработки
 
 Статус и результаты WB-04 — в [тикете](docs/implementation/WB-04-e1-native-replay.md).
-WB-05 остаётся TODO: fault injection/потеря ответа, расширенные file/network
-отрицательные контроли, missing/unknown, stop/cleanup failures. Composer, Judge,
+Статус trust/failure-контролей и связанное evidence — в
+[тикете WB-05](docs/implementation/WB-05-e1-trust-and-failures.md). Composer, Judge,
 repair loop, T2–T4 и полный scoring не реализованы. Модели не запускались.
+
+## Реальные контроли WB-05
+
+WB-05 использует тот же native Harbor/n8n путь. Матрица контроля, фактические
+результаты и ограничения — в [тикете WB-05](docs/implementation/WB-05-e1-trust-and-failures.md#реализация-и-evidence-12-октября-2026).
+Подготовка образа требует доступного Docker/Compose и сети при пустом cache;
+запуск tests требует готового config с immutable image IDs. Отсутствие образа
+или Docker — ошибка, не skip. Из корня checkout с UV-переменными из раздела
+установки:
+
+```sh
+uv run --locked --offline python environments/build.py --output runs/wb05-final/config.json
+uv run --locked --offline pytest -q tests/integration/test_manual.py tests/integration/test_trust.py tests/integration/test_delivery.py --run-integration --e1-config runs/wb05-final/config.json --basetemp runs/wb05-final-native --log-cli-level=INFO
+uv run --locked --offline pytest -q tests/integration/test_lifecycle.py tests/integration/test_isolation.py --run-integration --e1-config runs/wb05-final/config.json --basetemp runs/wb05-final-lifecycle --log-cli-level=INFO
+uv run --locked --offline python -m workflow_bench.cli --task tasks/t1-send-message --config runs/wb05-final/config.json --output runs/wb05-final/manual --case fresh-a --case fresh-b --case missing
+```
+
+Используйте новый output/config; pytest `--basetemp` предназначен только для
+собственных disposable evidence: pytest удаляет старое содержимое этого каталога.
+Для повторения проверки выбирайте новое имя, чтобы сохранить прежние facts.
+Fast/Ruff запускаются прежними командами отдельно и не создают Docker resources.
+
+Report хранит `reward_status`, completeness, structured cleanup errors и scoped
+residual IDs. T1 остаётся без scoring policy: score=null/verdict=unknown даже при
+известных критериях. Missing native reward даёт incomplete assessment; отдельная
+числовая fixture проверяет parser. CLI SIGINT/SIGTERM запрашивают cancel с
+ограниченным cleanup. Docker stop проверяется по actual metadata, stop request
+сам по себе не считается подтверждением. Границы deadline adapter и его coupling
+к Harbor 0.24.0 — в [ARCHITECTURE](ARCHITECTURE.md#104-execution-control-и-evaluation-wb-0405).

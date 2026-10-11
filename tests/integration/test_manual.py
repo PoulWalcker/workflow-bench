@@ -5,21 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from workflow_bench.cli import load_config
 from workflow_bench.data import read_json
 from workflow_bench.experiment import run_manual
 
 TASK = Path(__file__).resolve().parents[2] / "tasks/t1-send-message"
-
-
-@pytest.fixture
-def e1_config(request: pytest.FixtureRequest, tmp_path: Path):
-    if not request.config.getoption("--run-integration"):
-        pytest.fail("integration resources require --run-integration")
-    path = request.config.getoption("--e1-config")
-    if not path:
-        pytest.fail("prepare images and pass --e1-config; no integration skip")
-    return load_config(Path(path).resolve(), output=tmp_path / "run")
 
 
 def test_manual_t1_reaches_independent_verifier(e1_config) -> None:

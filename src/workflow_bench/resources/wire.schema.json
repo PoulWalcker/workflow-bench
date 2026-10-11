@@ -139,6 +139,119 @@
               "stage",
               "details",
               "timestamp"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "stage": {
+                      "const": "accepted"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "accepted",
+                            "rejected"
+                          ]
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "error"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "stage": {
+                      "const": "effect"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "committed",
+                            "no_effect",
+                            "unknown"
+                          ]
+                        },
+                        "message_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "evidence_ref": {
+                          "type": "string",
+                          "pattern": "^/"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "message_id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "stage": {
+                      "const": "response"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "sent",
+                            "failed",
+                            "unknown"
+                          ]
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "error"
+                      ]
+                    }
+                  }
+                }
+              }
             ]
           }
         },
@@ -311,6 +424,25 @@
         },
         "stop_confirmed": {
           "type": "boolean"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stop_requested": {
+          "type": "boolean"
+        },
+        "initial_process_status": {
+          "enum": [
+            "completed",
+            "failed",
+            "timed_out",
+            "unknown",
+            "not_started",
+            "cancelled"
+          ]
         }
       },
       "required": [
@@ -353,10 +485,19 @@
           "$ref": "#/$defs/identity"
         },
         "score": {
-          "type": "null"
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 10
         },
         "verdict": {
-          "const": "unknown"
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
         },
         "completeness": {
           "enum": [

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import logging
+import signal
 from pathlib import Path
 
 from workflow_bench.contracts import E1Config
@@ -21,7 +22,9 @@ def load_config(path: Path, *, output: Path) -> E1Config:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    logging.basicConfig(level=logging.INFO, handlers=[console])
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
@@ -30,9 +33,21 @@ def main() -> None:
     args = parser.parse_args()
     try:
         config = load_config(args.config.resolve(), output=args.output.resolve())
-        result = asyncio.run(
-            run_manual(args.task.resolve(), tuple(args.case), config=config)
-        )
+
+        async def execute():
+            cancel = asyncio.Event()
+            loop = asyncio.get_running_loop()
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(signum, cancel.set)
+            try:
+                return await run_manual(
+                    args.task.resolve(), tuple(args.case), config=config, cancel=cancel
+                )
+            finally:
+                for signum in (signal.SIGINT, signal.SIGTERM):
+                    loop.remove_signal_handler(signum)
+
+        result = asyncio.run(execute())
         if not result["evaluation"]["cases"]:
             raise DataError("missing_evaluation", "evaluation")
     except Exception as error:

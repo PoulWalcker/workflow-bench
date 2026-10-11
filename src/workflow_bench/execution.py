@@ -5,12 +5,15 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import stat
 import time
 from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from aiohttp import ClientError
 
 from workflow_bench.contracts import (
     BoundWorkflow,
@@ -134,6 +137,16 @@ def _check_graph(workflow: dict[str, JsonValue]) -> None:
         raise ValueError("unreachable_node")
     if any(not edges.get(name) for name in names - {"BenchResult"}):
         raise ValueError("unclaimed_terminal")
+    terminating = {"BenchResult"}
+    pending = ["BenchResult"]
+    while pending:
+        target = pending.pop()
+        for source, targets in edges.items():
+            if target in targets and source not in terminating:
+                terminating.add(source)
+                pending.append(source)
+    if terminating != names:
+        raise ValueError("closed_branch")
 
 
 def bind_workflow(
@@ -229,14 +242,14 @@ async def replay(
             uploaded = await context.environment.service_exec(
                 f"printf %s '{encoded}' | base64 -d > /tmp/workflow.json",
                 service="n8n",
-                timeout_sec=int(config.control_timeout_sec),
+                timeout_sec=math.ceil(config.control_timeout_sec),
             )
             if uploaded.return_code:
                 raise RuntimeError("workflow_transfer_failed")
             imported = await context.environment.service_exec(
                 f'n8n import:workflow --input=/tmp/workflow.json > /tmp/import-output 2>&1; status=$?; head -c {MAX_JSON_BYTES} /tmp/import-output; exit "$status"',
                 service="n8n",
-                timeout_sec=int(config.execute_timeout_sec),
+                timeout_sec=math.ceil(config.execute_timeout_sec),
             )
             (logs / "import.log").write_text(
                 (imported.stdout or "") + (imported.stderr or "")
@@ -248,7 +261,7 @@ async def replay(
                 executed = await context.environment.service_exec(
                     f'n8n execute --id={workflow_id} --rawOutput > /tmp/execute-output 2>&1; status=$?; head -c {MAX_JSON_BYTES} /tmp/execute-output; exit "$status"',
                     service="n8n",
-                    timeout_sec=int(config.execute_timeout_sec),
+                    timeout_sec=math.ceil(config.execute_timeout_sec),
                 )
                 output = (executed.stdout or "") + (executed.stderr or "")
                 (logs / "execute.log").write_text(output)
@@ -278,10 +291,23 @@ async def replay(
                         pass
     except TimeoutError:
         result["process_status"] = "timed_out"
+    except (ConnectionError, ClientError, RuntimeError) as error:
+        result.update(
+            process_status="unknown", errors=["exec_failed:" + type(error).__name__]
+        )
+    except asyncio.CancelledError:
+        result["process_status"] = "cancelled"
+        raise
     finally:
         LOGGER.info("phase=freeze case_id=%s", context.identity["case_id"])
-        await context.finish()
-        result["stop_confirmed"] = True
+        result["stop_requested"] = True
+        result["stop_confirmed"] = await context.finish()
+        stop = json.loads((context.root / "stop.json").read_text())
+        result["errors"] = result.get("errors", []) + stop["errors"]
+        if not result["stop_confirmed"]:
+            result["initial_process_status"] = result["process_status"]
+            result["process_status"] = "unknown"
+        (context.root / "execution.json").write_text(json.dumps(result))
         LOGGER.info(
             "phase=replay result=%s case_id=%s elapsed=%.2fs",
             result["process_status"],

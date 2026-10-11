@@ -35,15 +35,15 @@ def criteria_for(
     complete = facts["freeze_status"] == "complete" and not facts["pending_call_ids"]
 
     def criterion(
-        id: str, value: bool, *, applicable: bool = True
+        id: str, value: bool, *, applicable: bool = True, definite_failure: bool = False
     ) -> dict[str, JsonValue]:
         status = "not_applicable" if not applicable else ("pass" if value else "fail")
-        if not complete:
+        if not complete and not (applicable and not value and definite_failure):
             status = "unknown"
         return {
             "criterion_id": id,
             "status": status,
-            "value": value if complete and applicable else None,
+            "value": value if applicable and status != "unknown" else None,
             "reason_code": status,
             "evidence_refs": refs,
         }
@@ -77,14 +77,20 @@ def criteria_for(
                 for m in new
             ),
             applicable=sent,
+            definite_failure=bool(new),
         ),
         criterion(
             "text",
             bool(new) and all(m["text"] == case["input"]["text"] for m in new),
             applicable=sent,
+            definite_failure=bool(new),
         ),
-        criterion("multiplicity", len(new) == (1 if sent else 0)),
-        criterion("preservation", preserved),
+        criterion(
+            "multiplicity",
+            len(new) == (1 if sent else 0),
+            definite_failure=len(new) > (1 if sent else 0),
+        ),
+        criterion("preservation", preserved, definite_failure=True),
         criterion("journal", journal),
         criterion("refusal", refusal, applicable=not sent),
     )

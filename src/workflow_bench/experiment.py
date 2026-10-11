@@ -12,10 +12,15 @@ from pathlib import Path
 from uuid import uuid4
 
 from workflow_bench.contracts import E1Config, JsonValue
-from workflow_bench.data import read_json, validate_contract
+from workflow_bench.data import DataError, read_json, validate_contract
 from workflow_bench.definition import export_public, load_cases, load_task
 from workflow_bench.execution import accept_artifact, replay
-from workflow_bench.harbor import replay_environment, run_native_trial, tool_contract
+from workflow_bench.harbor import (
+    LifecycleFacts,
+    replay_environment,
+    run_native_trial,
+    tool_contract,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,29 +30,80 @@ def _write(path: Path, document: JsonValue) -> None:
 
 
 async def run_manual(
-    task_path: Path, case_ids: tuple[str, ...], *, config: E1Config
+    task_path: Path,
+    case_ids: tuple[str, ...],
+    *,
+    config: E1Config,
+    cancel: asyncio.Event | None = None,
 ) -> dict[str, JsonValue]:
     started = time.monotonic()
+    lifecycle = LifecycleFacts()
+    config.output_root.mkdir(mode=0o700)
+    task = asyncio.current_task()
+
+    async def cancelled():
+        await cancel.wait()
+        task.cancel()
+
+    watcher = asyncio.create_task(cancelled()) if cancel is not None else None
     try:
+        if cancel is not None and cancel.is_set():
+            raise asyncio.CancelledError()
+
         async with asyncio.timeout(config.total_timeout_sec):
-            result = await _run_manual(task_path, case_ids, config=config)
+            result = await _run_manual(
+                task_path, case_ids, config=config, lifecycle=lifecycle
+            )
         LOGGER.info(
             "phase=manual result=completed elapsed=%.2fs", time.monotonic() - started
         )
         return result
-    except Exception:
+    except (Exception, asyncio.CancelledError) as error:
+        if config.output_root.is_dir():
+            report = {
+                "evaluation": {"schema_version": "1.0", "cases": []},
+                "completeness": "invalid"
+                if isinstance(error, DataError) and error.relative_path == "evaluation"
+                else "unavailable",
+                "score": None,
+                "error": "cancelled"
+                if isinstance(error, asyncio.CancelledError)
+                else (
+                    error.code if isinstance(error, DataError) else type(error).__name__
+                ),
+                "execution_refs": [
+                    str(p.relative_to(config.output_root))
+                    for p in config.output_root.glob("wb04-replay-*/execution.json")
+                ],
+                "cleanup_errors": lifecycle.cleanup_errors,
+                "residual_resources": lifecycle.residual_resources,
+            }
+            _write(config.output_root / "report.json", report)
         LOGGER.error(
             "phase=manual result=failed elapsed=%.2fs", time.monotonic() - started
         )
+        if (
+            isinstance(error, asyncio.CancelledError)
+            and cancel is not None
+            and cancel.is_set()
+        ):
+            return report
         raise
+    finally:
+        if watcher is not None:
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
 
 
 async def _run_manual(
-    task_path: Path, case_ids: tuple[str, ...], *, config: E1Config
+    task_path: Path,
+    case_ids: tuple[str, ...],
+    *,
+    config: E1Config,
+    lifecycle: LifecycleFacts,
 ) -> dict[str, JsonValue]:
-    config.output_root.mkdir(mode=0o700)
     run_id, attempt_id = uuid4().hex, uuid4().hex
-    contract = await tool_contract(config)
+    contract = await tool_contract(config, lifecycle=lifecycle)
     materials = load_task(task_path, tool_contract=contract)
     stage = config.output_root / "native-task"
     shutil.copytree(
@@ -133,7 +189,9 @@ async def _run_manual(
                     "identity": identity,
                 },
             )
-            async with replay_environment(config, identity) as context:
+            async with replay_environment(
+                config, identity, lifecycle=lifecycle
+            ) as context:
                 await context.control(
                     "reset",
                     {
@@ -144,11 +202,13 @@ async def _run_manual(
                     },
                 )
                 await context.check_isolation()
-                execution, bound = await replay(
-                    artifact, case.input, context=context, config=config
-                )
-                evidence = await context.control("export")
-                _write(case_root / "evidence.json", evidence)
+                try:
+                    execution, bound = await replay(
+                        artifact, case.input, context=context, config=config
+                    )
+                finally:
+                    evidence = await context.control("export")
+                    _write(case_root / "evidence.json", evidence)
                 _write(case_root / "execution.json", execution)
                 replays.append(
                     {
@@ -171,8 +231,23 @@ async def _run_manual(
                 )
         LOGGER.info("phase=verification inputs=protected result=ready")
 
-    native_result = await run_native_trial(stage, attempt_id, prepared, config=config)
+    native_result = await run_native_trial(
+        stage, attempt_id, prepared, config=config, lifecycle=lifecycle
+    )
     evaluation = native_result.evaluation
+    if not evaluation["cases"]:
+        completeness = "unavailable"
+    elif any(c["completeness"] == "invalid" for c in evaluation["cases"]):
+        completeness = "invalid"
+    elif (
+        lifecycle.cleanup_errors
+        or lifecycle.residual_resources
+        or native_result.reward_status != "complete"
+        or any(c["completeness"] != "complete" for c in evaluation["cases"])
+    ):
+        completeness = "partial"
+    else:
+        completeness = "complete"
     report = {
         "run_id": run_id,
         "attempt_id": attempt_id,
@@ -181,8 +256,10 @@ async def _run_manual(
         "evaluation": evaluation,
         "harbor_exception": native_result.exception_type,
         "harbor_result_ref": native_result.result_ref,
-        "cleanup_errors": [],
-        "residual_resources": [],
+        "reward_status": native_result.reward_status,
+        "cleanup_errors": lifecycle.cleanup_errors,
+        "residual_resources": lifecycle.residual_resources,
+        "completeness": completeness,
     }
     _write(config.output_root / "report.json", report)
     LOGGER.info(

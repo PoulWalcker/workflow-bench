@@ -193,6 +193,77 @@ def test_incomplete_freeze_produces_unknown_criteria(
     assert all(c["status"] == "unknown" for c in result["criteria"])
 
 
+def test_committed_effect_with_lost_response_keeps_execution_incomplete(
+    protected_inputs: Path, tmp_path: Path
+) -> None:
+    root = protected_inputs / "fresh"
+    execution = json.loads((root / "execution.json").read_bytes())
+    execution.update(process_status="failed", exit_code=1, claim=None)
+    (root / "execution.json").write_text(json.dumps(execution))
+    facts = json.loads((root / "evidence.json").read_bytes())
+    facts["events"][-1]["details"]["status"] = "failed"
+    (root / "evidence.json").write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["completeness"] == "partial"
+    assert (
+        next(c for c in result["criteria"] if c["criterion_id"] == "multiplicity")[
+            "status"
+        ]
+        == "pass"
+    )
+    assert result["score"] is None
+
+
+def test_proven_duplicate_survives_incomplete_drain(
+    protected_inputs: Path, tmp_path: Path
+) -> None:
+    path = protected_inputs / "fresh/evidence.json"
+    facts = json.loads(path.read_bytes())
+    facts["freeze_status"] = "incomplete"
+    facts["pending_call_ids"] = ["pending"]
+    message = facts["after"]["state"]["messages"][0]
+    facts["after"]["state"]["messages"].append({**message, "id": "duplicate"})
+    path.write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["completeness"] == "partial"
+    assert (
+        next(c for c in result["criteria"] if c["criterion_id"] == "multiplicity")[
+            "status"
+        ]
+        == "fail"
+    )
+
+
+def test_reward_maps_only_a_complete_numeric_fixture(
+    protected_inputs: Path, tmp_path: Path
+) -> None:
+    from workflow_bench.evaluation import harbor_reward
+
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert harbor_reward(result) is None
+    result.update(score=7.25, verdict="pass")
+    assert harbor_reward(result) == {"reward": 7.25}
+    result["completeness"] = "partial"
+    assert harbor_reward(result) is None
+
+
+@pytest.mark.parametrize("change", ["details", "call_arguments", "revision"])
+def test_corrupted_event_facts_are_invalid_before_business_checks(
+    protected_inputs: Path, tmp_path: Path, change: str
+) -> None:
+    path = protected_inputs / "fresh/evidence.json"
+    facts = json.loads(path.read_bytes())
+    if change == "details":
+        facts["events"][1]["details"]["status"] = "made-up-commit"
+    elif change == "call_arguments":
+        facts["events"][2]["arguments"]["text"] = "different-call"
+    else:
+        facts["before"]["revision"] = 2
+    path.write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["completeness"] == "invalid" and not result["criteria"]
+
+
 @pytest.mark.parametrize("change", ["identity", "sequence", "reference"])
 def test_invalid_protected_envelope_has_no_business_verdict(
     protected_inputs: Path, tmp_path: Path, change: str
@@ -228,7 +299,7 @@ def refusal_inputs(inputs: Path) -> None:
             "operation": "send_message",
             "arguments": case["input"],
             "stage": "response",
-            "details": {"error": "not_found"},
+            "details": {"status": "sent", "error": "not_found"},
             "timestamp": 1,
         }
     ]
@@ -237,13 +308,13 @@ def refusal_inputs(inputs: Path) -> None:
             **facts["events"][0],
             "seq": 1,
             "stage": "accepted",
-            "details": {"status": "accepted"},
+            "details": {"status": "accepted", "error": None},
         },
         {
             **facts["events"][0],
             "seq": 2,
             "stage": "effect",
-            "details": {"status": "no_effect"},
+            "details": {"status": "no_effect", "message_id": None},
         },
         *facts["events"],
     ]

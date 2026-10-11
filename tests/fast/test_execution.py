@@ -11,6 +11,91 @@ CONTROL = (
 )
 
 
+def test_closed_branch_cannot_claim_a_terminal_result(tmp_path: Path) -> None:
+    workflow = json.loads(CONTROL.read_bytes())
+    workflow["nodes"].append({**workflow["nodes"][2], "id": "trap", "name": "Trap"})
+    edge = {"node": "Trap", "type": "main", "index": 0}
+    workflow["connections"]["BenchInput"]["main"][0].append(edge)
+    workflow["connections"]["Trap"] = {"main": [[edge]]}
+    path = tmp_path / "candidate.json"
+    path.write_text(json.dumps(workflow))
+    with pytest.raises(ArtifactError, match="invalid_profile"):
+        accept_artifact(
+            path, submission_stopped=True, destination=tmp_path / "accepted.json"
+        )
+
+
+def test_external_exec_failure_preserves_unknown_and_confirmed_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config_data: dict
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from harbor.environments.base import ExecResult
+
+    from workflow_bench.cli import load_config
+    from workflow_bench.execution import replay
+    from workflow_bench.harbor import ReplayContext
+
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config_data))
+    config = load_config(path, output=tmp_path)
+    artifact = accept_artifact(
+        CONTROL, submission_stopped=True, destination=tmp_path / "accepted.json"
+    )
+    command = tmp_path / "docker"
+    command.write_text("#!/bin/sh\nexit 0\n")
+    command.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    (tmp_path / "harbor").mkdir()
+    executions = []
+    stopped = set()
+
+    async def external_exec(command, **kwargs):
+        executions.append(command)
+        if command.startswith("n8n execute"):
+            raise ConnectionResetError("private transport details")
+        return ExecResult(return_code=0, stdout="")
+
+    async def stop_service(service):
+        stopped.add(service)
+
+    class Response:
+        status = 200
+
+        class Content:
+            async def iter_chunked(self, size):
+                yield b'{"capability":"test-capability"}'
+
+        content = Content()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+    context = ReplayContext(
+        SimpleNamespace(service_exec=external_exec, stop_service=stop_service),
+        SimpleNamespace(request=lambda *args, **kwargs: Response()),
+        "http://tools",
+        "secret",
+        {"case_id": "fresh"},
+        tmp_path,
+        "own",
+        config,
+    )
+    execution, _ = asyncio.run(
+        replay(
+            artifact, {"chat_id": "42", "text": "exact"}, context=context, config=config
+        )
+    )
+    assert execution["process_status"] == "unknown"
+    assert execution["stop_confirmed"] and stopped == {"n8n", "runner"}
+    assert sum(c.startswith("n8n execute") for c in executions) == 1
+    assert "private" not in json.dumps(execution)
+
+
 def test_missing_submission_cannot_be_replayed(tmp_path: Path) -> None:
     with pytest.raises(ArtifactError, match="missing"):
         accept_artifact(

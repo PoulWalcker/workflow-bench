@@ -21,6 +21,19 @@ class FrozenEvidence:
     sha256: str
 
 
+def harbor_reward(evaluation: dict[str, JsonValue]) -> dict[str, float] | None:
+    """Map an already evaluated score; this function defines no scoring policy."""
+    validate_contract("evaluation", evaluation)
+    if (
+        evaluation["completeness"] != "complete"
+        or evaluation["score"] is None
+        or evaluation["errors"]
+        or any(c["status"] == "unknown" for c in evaluation["criteria"])
+    ):
+        return None
+    return {"reward": float(evaluation["score"])}
+
+
 def resolve_ref(document: JsonValue, reference: str) -> JsonValue:
     """Resolve a JSON pointer within one bundle, including escaped keys."""
     if not reference.startswith("/"):
@@ -50,11 +63,17 @@ def read_evidence(
     validate_contract("evidence", document)
     if document["identity"] != dict(expected_identity):
         raise DataError("identity_mismatch", "evidence")
+    if document["after"]["revision"] < document["before"]["revision"]:
+        raise DataError("invalid_revision", "evidence")
     stages: dict[str, list[str]] = {}
+    calls: dict[str, tuple[str, JsonValue]] = {}
     for seq, event in enumerate(document["events"], 1):
         if event["seq"] != seq or event["profile"] != expected_identity["profile"]:
             raise DataError("invalid_sequence", "evidence")
         call_stages = stages.setdefault(event["call_id"], [])
+        call = (event["operation"], event["arguments"])
+        if calls.setdefault(event["call_id"], call) != call:
+            raise DataError("call_mismatch", "evidence")
         call_stages.append(event["stage"])
         if call_stages != ["accepted", "effect", "response"][: len(call_stages)]:
             raise DataError("invalid_sequence", "evidence")
@@ -88,6 +107,9 @@ def assemble_evaluation(
     complete = (
         evidence.document["freeze_status"] == "complete"
         and execution["stop_confirmed"]
+        and execution["process_status"] == "completed"
+        and execution["claim"] is not None
+        and execution["claim"]["status"] != "unknown"
         and all(c["status"] != "unknown" for c in criteria)
     )
     result = {

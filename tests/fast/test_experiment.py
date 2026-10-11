@@ -15,32 +15,28 @@ from workflow_bench.experiment import run_manual
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture
-def config_data() -> dict:
-    return {
-        "app_image": "sha256:" + "a" * 64,
-        "n8n_image": "sha256:" + "b" * 64,
-        "runner_image": "sha256:" + "c" * 64,
-        "setup_timeout_sec": 90,
-        "submission_timeout_sec": 20,
-        "execute_timeout_sec": 45,
-        "tool_timeout_sec": 5,
-        "control_timeout_sec": 10,
-        "drain_timeout_sec": 10,
-        "verifier_timeout_sec": 30,
-        "cleanup_timeout_sec": 25,
-        "total_timeout_sec": 360,
-        "cpus": 1,
-        "memory_mb": 1024,
-        "max_calls": 8,
-        "tools_port": 8080,
-        "control_port": 8081,
-        "broker_port": 5679,
-    }
-
-
 class PreparationObserved(Exception):
     pass
+
+
+def test_explicit_cancel_preserves_a_report_without_starting_a_trial(
+    tmp_path: Path, config_data: dict
+) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config_data))
+    config = load_config(path, output=tmp_path / "cancelled")
+
+    async def check():
+        cancel = asyncio.Event()
+        cancel.set()
+        result = await run_manual(
+            ROOT / "tasks/t1-send-message", ("fresh-a",), config=config, cancel=cancel
+        )
+        assert result["error"] == "cancelled" and result["score"] is None
+        assert result["completeness"] == "unavailable"
+        assert not (config.output_root / "harbor").exists()
+
+    asyncio.run(check())
 
 
 def test_manifest_identifies_consumed_private_snapshots_after_source_removal(
@@ -53,7 +49,7 @@ def test_manifest_identifies_consumed_private_snapshots_after_source_removal(
     config_path.write_text(json.dumps(config_data))
     config = load_config(config_path, output=tmp_path / "run-0")
 
-    async def exported_tools(config):
+    async def exported_tools(config, **kwargs):
         return tools
 
     async def observe_preparation(native_config):
@@ -166,13 +162,14 @@ def test_cli_failure_keeps_safe_code_and_existing_log_reference(
     output = tmp_path / "run"
     script = """
 import sys
+import logging
 from pathlib import Path
 from harbor.trial.trial import Trial
 from types import SimpleNamespace
 from workflow_bench import cli, experiment, harbor
 from workflow_bench.execution import ArtifactError
 root, config_path, output, failure = sys.argv[1:]
-async def tools(config):
+async def tools(config, **kwargs):
     return Path(root) / "simapps/telegram/tools.json"
 async def fail(config):
     (Path(output) / "harbor").mkdir()
@@ -185,6 +182,7 @@ async def fail(config):
                                 verifier_dir=Path(output) / "harbor/trial/verifier",
                                 result_path=Path(output) / "harbor/trial/result.json")
         return SimpleNamespace(paths=paths, run=run, add_hook=lambda *args: None)
+    logging.getLogger("harbor.utils.logger").debug("private-input expected-value secret-token")
     raise RuntimeError("private-input expected-value secret-token")
 async def docker(*args):
     return ""
@@ -215,7 +213,12 @@ cli.main()
         value not in result.stderr
         for value in ("private-input", "expected-value", "secret-token", "Traceback")
     )
-    assert (output / "report.json").exists() == (failure == "unavailable")
+    assert (output / "report.json").exists()
+    if failure == "unavailable":
+        assert (
+            json.loads((output / "report.json").read_bytes())["completeness"]
+            == "unavailable"
+        )
 
 
 def test_preparation_does_not_hide_an_unsafe_source_behind_a_copy(
@@ -233,7 +236,7 @@ def test_preparation_does_not_hide_an_unsafe_source_behind_a_copy(
     config_path.write_text(json.dumps(config_data))
     config = load_config(config_path, output=tmp_path / "run")
 
-    async def exported_tools(config):
+    async def exported_tools(config, **kwargs):
         return ROOT / "simapps/telegram/tools.json"
 
     async def observe_preparation(native_config):

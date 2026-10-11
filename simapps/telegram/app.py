@@ -47,6 +47,11 @@ class Telegram:
         self.call_timeout = 0.0
         self.admission = False
         self.frozen: dict[str, JsonValue] | None = None
+        self.fault_mode: str | None = None
+        self.fault_delay = 0.0
+        self.pending: dict[str, tuple[str, JsonValue]] = {}
+        self.drained = asyncio.Event()
+        self.drained.set()
 
     async def control(self, request: web.Request) -> web.Response:
         if not secrets.compare_digest(
@@ -68,6 +73,7 @@ class Telegram:
                     "issue": {"identity", "actor", "ttl_sec", "max_calls"},
                     "revoke": {"identity"},
                     "freeze": {"identity", "drain_sec"},
+                    "fault": {"identity", "mode", "delay_sec"},
                 }
                 if operation not in fields or set(data) != fields[operation]:
                     raise ValueError()
@@ -99,6 +105,7 @@ class Telegram:
                     if (
                         self.identity is None
                         or self.capability is not None
+                        or self.frozen is not None
                         or data["identity"] != self.identity
                     ):
                         raise ValueError()
@@ -119,31 +126,68 @@ class Telegram:
                 if operation == "revoke":
                     self.admission = False
                     return web.json_response({"revoked": True})
+                if operation == "fault":
+                    if (
+                        data["mode"] not in {"drop_response", "stall_before_commit"}
+                        or self.frozen is not None
+                    ):
+                        raise ValueError()
+                    validate_json(
+                        data["delay_sec"],
+                        {"type": "number", "minimum": 0, "maximum": 3600},
+                        "fault_delay",
+                    )
+                    self.fault_delay = float(data["delay_sec"])
+                    self.fault_mode = data["mode"]
+                    return web.json_response({"configured": True})
                 if operation == "freeze":
                     validate_json(
                         data["drain_sec"], LIMITS["drain_timeout_sec"], "drain"
                     )
                     self.admission = False
-                    if self.frozen is None:
-                        self.frozen = {
-                            "schema_version": "1.0",
-                            "identity": self.identity,
-                            "before": self.before,
-                            "after": {
-                                "revision": self.revision,
-                                "state": deepcopy(self.state),
-                            },
-                            "events": deepcopy(self.events),
-                            "violations": [],
-                            "freeze_status": "complete",
-                            "pending_call_ids": [],
-                        }
-                    return web.json_response(
-                        {"freeze_status": "complete", "pending_call_ids": []}
-                    )
-                raise ValueError()
+                else:
+                    raise ValueError()
             except (DataError, ValueError, KeyError, TypeError):
                 raise web.HTTPBadRequest(reason="invalid_control") from None
+        try:
+            async with asyncio.timeout(data["drain_sec"]):
+                await self.drained.wait()
+        except TimeoutError:
+            pass
+        async with self.lock:
+            if self.frozen is None:
+                pending_ids = list(self.pending)
+                for call_id, (name, arguments) in self.pending.items():
+                    self._event(
+                        call_id,
+                        name,
+                        arguments,
+                        "effect",
+                        {"status": "unknown", "message_id": None},
+                    )
+                    self._event(
+                        call_id,
+                        name,
+                        arguments,
+                        "response",
+                        {"status": "unknown", "error": None},
+                    )
+                self.frozen = {
+                    "schema_version": "1.0",
+                    "identity": self.identity,
+                    "before": self.before,
+                    "after": {"revision": self.revision, "state": deepcopy(self.state)},
+                    "events": deepcopy(self.events),
+                    "violations": [],
+                    "freeze_status": "incomplete" if pending_ids else "complete",
+                    "pending_call_ids": pending_ids,
+                }
+            return web.json_response(
+                {
+                    "freeze_status": self.frozen["freeze_status"],
+                    "pending_call_ids": self.frozen["pending_call_ids"],
+                }
+            )
 
     @staticmethod
     def _check_state(state: dict[str, JsonValue]) -> None:
@@ -224,6 +268,30 @@ class Telegram:
                 "accepted",
                 {"status": "accepted" if error is None else "rejected", "error": error},
             )
+            admitted = error is None
+            mode = self.fault_mode if admitted and operation == "send_message" else None
+            delay = self.fault_delay
+            if mode:
+                self.fault_mode = None
+            if admitted:
+                self.pending[call_id] = (operation, arguments)
+                self.drained.clear()
+        if mode == "stall_before_commit":
+            await asyncio.sleep(delay)
+        async with self.lock:
+            if self.frozen is not None:
+                self.pending.pop(call_id, None)
+                if not self.pending:
+                    self.drained.set()
+                return web.json_response(
+                    {
+                        "call_id": call_id,
+                        "error": {
+                            "code": error or "transport_unknown",
+                            "retryable": False,
+                        },
+                    }
+                )
             effect: dict[str, JsonValue] = {"status": "no_effect", "message_id": None}
             if error is None:
                 chat = next(
@@ -269,6 +337,10 @@ class Telegram:
             response = web.json_response(body)
             status = "unknown"
             try:
+                if mode == "drop_response" and effect["status"] == "committed":
+                    if request.transport is not None:
+                        request.transport.abort()
+                    raise ConnectionResetError()
                 async with asyncio.timeout(self.call_timeout):
                     await response.prepare(request)
                     await response.write_eof()
@@ -282,6 +354,9 @@ class Telegram:
                 "response",
                 {"status": status, "error": error},
             )
+            self.pending.pop(call_id, None)
+            if not self.pending:
+                self.drained.set()
             return response
 
 

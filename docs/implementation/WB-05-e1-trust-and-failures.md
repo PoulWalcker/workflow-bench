@@ -1,6 +1,7 @@
 # WB-05 — E1: доверие, отрицательные контроли и остановка
 
-Статус: **TODO**. Этап 1 [ROADMAP](../../ROADMAP.md).
+Статус: **DONE** (12 октября 2026). Технический E1 закрыт вместе с WB-04.
+Этап 1 [ROADMAP](../../ROADMAP.md).
 
 ## Цель и наблюдаемый результат
 
@@ -56,7 +57,7 @@ stop/cleanup Harbor binding. Новые бизнес-правила core не п
 
 ## Уместные проверки поведения
 
-### Техническое уточнение и test seams (на согласование)
+### Техническое уточнение и согласованные test seams
 
 Используется единственный путь, полученный WB-04, и контракты
 [ARCHITECTURE §10.4–10.6](../../ARCHITECTURE.md). Не вводить второй verifier.
@@ -135,3 +136,130 @@ WB-06 получает сводку E1, закреплённые версии/п
 методических решений для T1. Численные значения E1 не переносятся автоматически
 в бюджеты E2. Поздние тикеты уточняются по этим фактам, без объявления уже
 готовыми Composer, UI, исправлений, Judge или MVP.
+
+## Реализация и evidence, 12 октября 2026
+
+Исходный HEAD: `46a5cc84df67d49d9eb56552ac3a3eeeeb6348c6`. WB-04 и исправления
+AUD-S1/S2/F1–F3 проверены до основной реализации: 216 fast tests и 3 настоящих
+integration tests на заново собранном image текущего HEAD. Старый config ссылался
+на отсутствующий image: первый real запуск завершился ошибкой до старта, не skip.
+После подготовки образа baseline прошёл. CODE_QUALITY_AUDIT прочитан в начале;
+REMEDIATION_PLAN отсутствовал. Audit также отсутствовал при финальном осмотре
+рабочего дерева; эти внешние документы не восстанавливались и не редактировались.
+Существующее AD-состояние ZIP сохранено. Commit/push не выполнялись.
+
+S3–S8 явно согласованы пользователем в этой сессии. Установленные codebase-design,
+domain-modeling и tdd применены без установки/обновления. Термины GLOSSARY сохранены.
+Red → green зафиксирован для W1, W2, cleanup residuals, отказа revoke, lost response,
+pending drain, unknown exec, reward helper, повреждённых facts, явного cancel,
+подделки evaluation до verifier, конечного native stop/kill-reap и безопасных CLI
+logs. Реальная red-проба stale reward показала принятие кандидатского reward;
+после очистки фазового каталога regression прошёл.
+
+Технические решения и coupling к Harbor принадлежат [ARCHITECTURE §10.4](../../ARCHITECTURE.md#104-execution-control-и-evaluation-wb-0405).
+W1 закрыт обратной достижимостью BenchResult, W2 — ceil native limits при точном
+внешнем deadline, W3 — structured cleanup errors/residual resources. Числовая
+fixture `7.25` не задаёт веса, thresholds или агрегацию T1. У T1 score=null,
+verdict=unknown; известные критерии сохраняются, missing reward — отдельная
+неполнота assessment. Повтор оценки не повторяет действия.
+
+Команды и prerequisites — в [README](../../README.md#реальные-контроли-wb-05).
+Группы ниже обозначают точные команды оттуда: **fast**, **native**, **lifecycle**.
+Сырые evidence/logs/config/manifest находятся только в игнорируемом `runs/`.
+
+| Исходный контроль | Команда / regression | Ожидание и наблюдение / evidence |
+|---|---|---|
+| Неверные получатель/текст, дубль, постороннее изменение | native: `test_negative_native_effect_cannot_pass`; fast: preservation fixture | Native effects проверяются отдельным Task verifier; адресат/текст/кратность и дополнительный send дают fail. Изменение старого состояния отдельно выявляет preservation. Защищённые bundles в `runs/wb05-final-negative-confirm/test_negative_native_effect_ca*/run/task/tests/bench-input/` |
+| Запомненный учебный input | native: вариант memorized; positive T1 fresh-a/fresh-b/missing | Идентичная неправильная логика на новом input проваливает multiplicity; правильный контроль остаётся рабочим |
+| Missing/invalid, traversal/symlink, nodes/options | fast: Definition/Execution; native: collection symlink и artifact-parent canary | Missing/unsafe/invalid отклоняются до replay; source symlink отклоняется receiver. Native collection не следует candidate parent symlink к синтетическому host canary; исходный marker сохранён, штатный файл принят. W1 Trap запрещён. Native result/logs в `test_symlink_during_native_col*/run/harbor/` и `test_candidate_artifact_parent0/` |
+| Приватные tests/solution/fixtures/marker | fast: public export; lifecycle: isolation; native: JS escape probes | Синтетический private marker положен только в tests. Submission/replay/runner не читают private paths; попытки Code node проходят через настоящий JS runner. Public export/build allowlists исключают tests/solution/checkouts/home |
+| Control/admin, чужой run, host/Internet, Docker socket | lifecycle: network/files/cross-run; native: unauthorized/JS probes | Отказ в реальных n8n/runner; denied control, другой tools IP, host listener, unrouted external address и socket. Scope подменой actor/run в body не меняется. Internal networks/no bind mounts подтверждены metadata; разрешённые tools работают. `isolation.json` |
+| Подмена evidence/reward, refs/identity | native: file/symlink/background stale reward; fast: phase gate/envelope; numeric fixture | Agent-phase файлы удалены после stop; fake evaluation до verifier игнорируется. Mismatch и повреждённые refs/events/revisions invalid, без business verdict. Native rewards не заменяют отсутствующий evaluation |
+| Потеря ответа после commit | native: lost response; lifecycle: observation/blind retry | Один commit и response failed при runtime failed; partial, score=null. Разрешённое чтение наблюдает эффект. Преднамеренный слепой retry создаёт два commit/дубль; штатный replay пишет один раз. `lost-response-evidence.json` и protected native bundle |
+| Timeout/cancel во время исполнения | lifecycle: children [False/True] и manual submission cancel | Активные n8n exec и submission `sleep 600` зафиксированы Docker top до cancel; среды сдачи, n8n и runner stopped, собственные контейнеры/сети/volume удалены. Timeout и cancel сохранены; unconfirmed stop не подменяет исходную причину. `execution.json`, `stop.json`, `processes-before-cancel.txt`, `submission-before-cancel.txt` и cancelled/null report |
+| Reuse/expiry capability | lifecycle: revoke/max_calls/cross-run, expiry/drain | Новый send после revoke/лимита/expiry не меняет state. Freeze pending фиксирует unknown; late commit запрещён, повтор export совпадает. `pending-evidence.json` |
+| Start/verifier failure, missing facts | lifecycle: failed image/verifier error/timeout; fast: missing evidence/expectation | Неуспех infrastructure → unavailable/partial и null, без candidate zero; known fail при неполноте сохраняется. Native logs/result и failed-start report сохранены |
+| Numeric/missing Harbor reward | native: numeric и forged/missing; positive T1 | Настоящий Harbor parser прочитал 7.25; отсутствующий reward не заменён числом. T1 сохраняет evaluation и RewardFileNotFoundError/reward_status=incomplete |
+| Cleanup success/error/cancel | обе real группы; lifecycle: stop refusal/cleanup fault и соседний run | Подтверждены собственные удаления после успеха, faults и cancel. При управляемом отказе transport реально остаются owned containers/networks/volume; их IDs сохранены в `cleanup-failure.json`, затем удалены исходным Harbor handle. Соседний run продолжает работать |
+
+### Фактически выполненная verification
+
+Каждый из 29 уникальных integration controls имеет подтверждённый green;
+это объединение отдельных запусков, не заявление о единой suite из 29 tests.
+Индекс результатов: `runs/wb05-e1-summary.json` (29 expected, 29 confirmed,
+missing=[]). Команды ниже выполнены из корня checkout с UV cache/install paths
+из README. `uv run --locked --offline` обозначен как `uv run` для краткости.
+
+| Команда | Фактический результат / log |
+|---|---|
+| `uv run pytest` | 233 passed, 24.94 s; `runs/wb05-final-fast.log` |
+| `uv run ruff check src tests simapps environments tasks` | exit 0, All checks passed |
+| `uv run ruff format --check src tests simapps environments tasks` | exit 0, 31 files already formatted |
+| `uv lock --check --offline`; `git diff --check` | exit 0; lock неизменён, 97 packages |
+| `uv run python environments/build.py --output runs/wb05-final/config.json` | exit 0; allowlisted build context удалён, immutable app image сохранён |
+| `uv run pytest -q tests/integration/test_manual.py tests/integration/test_trust.py --run-integration --e1-config runs/wb05-final/config.json --basetemp runs/wb05-final-native --log-cli-level=INFO` | 14 passed, 2 failed, 764.71 s; все 3 WB-04 manual/read controls passed. Два новых fixture-сбоя исправлены и перепроверены ниже; этот запуск не объявляется полностью passed |
+| `uv run pytest -q tests/integration/test_trust.py::test_negative_native_effect_cannot_pass --run-integration --e1-config runs/wb05-final/config.json --basetemp runs/wb05-final-negative-confirm --log-cli-level=INFO` | exit 0, 5 passed, 296.65 s; `runs/wb05-final-negative-confirm.log` |
+| `uv run pytest -q tests/integration/test_trust.py tests/integration/test_delivery.py -k 'not negative_native_effect' --run-integration --e1-config runs/wb05-final/config.json --basetemp runs/wb05-final-boundaries-confirm --log-cli-level=INFO` | exit 0, 9 passed, 5 deselected, 343.35 s; `runs/wb05-final-boundaries-confirm.log`. Deselected пять вариантов проверены предыдущей командой |
+| `uv run pytest -q tests/integration/test_lifecycle.py tests/integration/test_isolation.py --run-integration --e1-config runs/wb05-final/config.json --basetemp runs/wb05-final-lifecycle --log-cli-level=INFO` | exit 0, 11 passed, 269.37 s; `runs/wb05-final-lifecycle.log`, до добавления submission cancel |
+| `uv run pytest -q tests/integration/test_lifecycle.py::test_real_manual_cancellation_stops_submission_process tests/integration/test_lifecycle.py::test_real_verifier_failure_does_not_become_candidate_zero --run-integration --e1-config runs/wb05-final/config.json --basetemp runs/wb05-final-submission-cancel --log-cli-level=INFO` | exit 0, 3 passed, 95.78 s; один новый submission cancel и два повторных verifier controls; `runs/wb05-final-submission-cancel.log` |
+| `uv run python -m workflow_bench.cli --task tasks/t1-send-message --config runs/wb05-final/config.json --output runs/wb05-final/manual-confirm --case fresh-a --case fresh-b --case missing` | exit 0, 131.37 s; все критерии pass/not_applicable, три completed replay, cleanup_errors/residual_resources=[], null scores. Stdout содержит JSON ref, stderr без DEBUG; `runs/wb05-final-cli-confirm.*` и `manual-confirm/report.json` |
+| Read-only Docker Compose label inspection после завершения controls | 0 benchmark containers/networks/volumes; `runs/wb05-final-resources.json`. Чужие ресурсы не удалялись |
+
+Сохранены и ранние отрицательные результаты проверки стенда. Синхронизация cancel
+по console output не наблюдала реально активный процесс: заменена наблюдением
+Docker top, затем 2 passed (`runs/wb05-cancel-confirm.log`). В native fixtures
+были malformed expression постороннего send и запрещённое n8n обращение
+`$json.arguments`; исправлена только упаковка запросов, исходные expected effects
+сохранены. Повтор, начатый до исправления второго fixture, дал 13 passed/1 failed
+(`runs/wb05-final-trust-confirm.log`); окончательные два green-запуска приведены
+выше. Первый artifact-parent canary уже прошёл без изменения production-кода
+(`runs/wb05-delivery-red.log`, 1 passed): это подтверждение существующей защиты,
+а не выдуманный red. Broad `ruff format --check .` по-прежнему отмечает старые
+Python-примеры Markdown; установленная code-only команда прошла. Harbor
+Task.checksum deprecation warnings сохранены, не подавлены.
+
+### Проверенное окружение и пределы
+
+Docker 29.4.0 / Compose 5.1.2, Harbor 0.24.0, aiohttp 3.14.5,
+pytest 9.1.1, Ruff 0.17.0; n8n/runner 2.41.5. Образы:
+
+- app: `sha256:b4f2655ddc74e113133abc79cf92a5f822f2a2a2f5d693608f15e10473344da3`;
+- n8n: `n8nio/n8n@sha256:6f532d3b819cfe66c6a13c5375228f312c53df1abaa11a377eb8c3d3f105c363`;
+- runner: `ghcr.io/n8n-io/runners@sha256:32619142405e7f4a02eedffe8584214c7e0b9b09d3753094e4212aee5f4d0045`.
+
+Конфигурация из `runs/wb05-final/config.json`: setup/submission/execute/tool/control/
+drain/verifier/cleanup/total = 90/20/45/5/10/10/30/25/360 s; 1 CPU, 1024 MiB,
+8 calls; tools/control/broker = 8080/8081/5679, host management port динамический.
+У отдельных lifecycle fixtures пределы намеренно сокращены; их фактический config
+и native result находятся в соответствующем run. Это технические пределы E1,
+не принятые бюджеты E2.
+
+Изоляция доказана для этого Docker host и T1-профиля. Сетевые пробы обращались к
+собственному host listener, control/соседнему run и reserved unrouted address;
+реальный Telegram/desktop не использовались. Нет заявления об универсальной
+защите любого Docker host или нового профиля. Native stop/revoke/freeze проверены
+по реальным metadata/facts, включая отрицательные transport injections.
+POSIX signal handling и asyncio cancellation допускают конечный cleanup;
+SIGKILL/падение Docker daemon не покрываются graceful контрактом. Adapter зависит
+от приватного buffered IO метода Harbor 0.24.0; upgrade требует regression и
+реальных controls. Native n8n execution ID по-прежнему недоступен (§10.5
+ARCHITECTURE); replay IDs/log refs связывают исполнение.
+
+У T1 остаются score=null/verdict=unknown и reward_status=incomplete, поэтому
+aggregate report completeness=partial даже при полностью известных criteria.
+Это ожидаемое отсутствие утверждённой методики, а не незакрытый технический
+контроль. WB-06 должен утвердить методику и конечные модельные лимиты; Codex
+эксперимент дополнительно требует отдельного разрешения. Model calls — 0.
+
+### Финальный review
+
+**Standards:** незакрытых findings — 0. Проверены весь source/test diff,
+дублирование, ownership, portability, cleanup и отсутствие новых dependencies.
+Исправлены найденные deadline/subprocess cleanup и потеря исходного process status.
+
+**Spec:** незакрытых findings — 0. Все строки исходной матрицы имеют подтверждённый
+контроль; native Harbor/n8n путь и Task-owned business checks сохранены. Нет
+нового scoring, второго orchestrator/verifier, UI, T2–T4 или model runs.
+
+Итог по осям: Standards — 0, Spec — 0; незакрытых критических findings нет.
+HEAD остался исходным; commit/push не выполнялись.
