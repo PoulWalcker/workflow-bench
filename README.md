@@ -1,6 +1,7 @@
 # Workflow Bench
 
-**Статус: WB-02–WB-05 выполнены; технический E1 без AI проверен.**
+**Статус: WB-02–WB-05 выполнены; реализация WB-06 проверена без AI.**
+WB-06 остаётся IN PROGRESS до утверждения конечного модельного бюджета; E2 не запускался.
 Продуктовая основа — SPEC v0.2 с согласованными уточнениями · 11 октября 2026 года.
 
 Workflow Bench — инструмент для проверки того, как AI исследует доступные
@@ -317,7 +318,8 @@ native ID недоступен; replay ID и logs связывают испол�
 Статус и результаты WB-04 — в [тикете](docs/implementation/WB-04-e1-native-replay.md).
 Статус trust/failure-контролей и связанное evidence — в
 [тикете WB-05](docs/implementation/WB-05-e1-trust-and-failures.md). Composer, Judge,
-repair loop, T2–T4 и полный scoring не реализованы. Модели не запускались.
+универсальный repair loop и T2–T4 не реализованы. T1 scoring и ограниченный
+выбор версий реализованы в WB-06 (см. ниже). Модели не запускались.
 
 ## Реальные контроли WB-05
 
@@ -341,9 +343,57 @@ uv run --locked --offline python -m workflow_bench.cli --task tasks/t1-send-mess
 Fast/Ruff запускаются прежними командами отдельно и не создают Docker resources.
 
 Report хранит `reward_status`, completeness, structured cleanup errors и scoped
-residual IDs. T1 остаётся без scoring policy: score=null/verdict=unknown даже при
+residual IDs. В технических контролях WB-05 T1 использовался без scoring policy: score=null/verdict=unknown даже при
 известных критериях. Missing native reward даёт incomplete assessment; отдельная
 числовая fixture проверяет parser. CLI SIGINT/SIGTERM запрашивают cancel с
 ограниченным cleanup. Docker stop проверяется по actual metadata, stop request
 сам по себе не считается подтверждением. Границы deadline adapter и его coupling
 к Harbor 0.24.0 — в [ARCHITECTURE](ARCHITECTURE.md#104-execution-control-и-evaluation-wb-0405).
+
+
+## Проверенный WB-06 без модели
+
+Методика и evidence — в [WB-06](docs/implementation/WB-06-t1-measurement.md).
+Пять development Case находятся в Task; для итогового измерения нужна заранее
+зафиксированная приватная копия Task с `metadata.wb_final_cases`, указывающей
+на её `tests/final.json` (`purpose="final"`, пять Case по матрице тикета).
+Файл и значения не входят в Git или public export. Используйте сохранённую
+приватную копию; опубликованные примеры не становятся holdout. Текущая локальная
+копия — `runs/wb06-private/task`, hashes наборов — `runs/wb06-private/sets.json`.
+После исправления Task-first для новых запусков подготовлена копия
+`runs/wb06-task-first-correction/task`; её проверенный public export находится в
+`runs/wb06-task-first-correction/public`. Приватные материалы совпадают побайтно
+с исходными; прежние копия и evidence сохранены.
+
+Выполнено 12 октября 2026 года, с UV-переменными из раздела установки:
+
+```sh
+uv run --locked --offline python environments/build.py --output runs/wb06-images/config.json
+uv run --locked --offline pytest -q tests/integration/test_measurement.py tests/integration/test_trust.py --run-integration --e1-config runs/wb06-images/config.json --measurement-task runs/wb06-private/task --basetemp runs/wb06-native --log-cli-level=INFO
+uv run --locked --offline pytest -q tests/integration/test_measurement.py --run-integration --e1-config runs/wb06-images/config.json --measurement-task runs/wb06-private/task --basetemp runs/wb06-measurement-confirm --log-cli-level=INFO
+uv run --locked --offline pytest -q
+uv run --locked --offline ruff check src tests simapps environments tasks
+uv run --locked --offline ruff format --check src tests simapps environments tasks
+```
+
+Builder сохраняет технический total 360 s. Первый прогон 5+5 был остановлен этим
+deadline: 1 failed (timeout), 13 trust controls passed. Для повторного полного
+ручного измерения `total_timeout_sec` явно изменён на 1800 s в локальном config;
+остальные технические limits сохранены. Подтверждающий прогон — 1 passed,
+388.39 s: одна версия, 5/5 development, 5/5 final, score=10, pass, complete,
+native reward=10.0. Это технический лимит контроля, не модельный бюджет.
+Fast suite — 277 passed; Ruff lint/format — exit 0.
+Пути config/output/basetemp для повторения должны быть новыми; прежние facts
+сохраняются. Полный результат первого timeout не переименован в успешное измерение.
+
+CLI предоставляет `--controlled-submission` (до двух файлов) вместо `--case` для
+проверенного Interface `run_measurement`; реальные Codex/exploration относятся
+к WB-07. Файлы принимаются прежним validator, hash фиксируется до final;
+при unknown/incomplete следующий шаг блокируется. Отдельного repair loop нет.
+
+Model preflight читает один JSON с `budget` по
+`src/workflow_bench/resources/model-budget.schema.json` и `runtime` по прежней
+E1 schema. `--model-preflight --config <file>` отклоняет unapproved budget либо
+отсутствие отдельного разрешения до credentials/ресурсов. WB-06 вообще не
+исполняет модели: даже допустимый программный план имеет execution_enabled=false.
+Provider enforcement и наблюдаемость tokens/retries предстоит проверить в WB-07.

@@ -32,7 +32,7 @@ from workflow_bench.data import (
     read_json,
     validate_contract,
 )
-from workflow_bench.evaluation import harbor_reward, read_evidence
+from workflow_bench.evaluation import aggregate_evaluation, harbor_reward, read_evidence
 
 LOGGER = logging.getLogger(__name__)
 
@@ -305,10 +305,28 @@ async def run_native_trial(
                 )
                 if result["evidence_hash"] != evidence.sha256:
                     raise DataError("evidence_hash_mismatch", "evaluation")
+    if "aggregate" in evaluation:
+        inputs = stage / "tests/bench-input"
+        identities = tuple(
+            read_json(inputs / case_id / "case.json", "case")["identity"]
+            for case_id in expected_cases
+        )
+        aggregate = aggregate_evaluation(
+            tuple(evaluation["cases"]),
+            rubric=read_json(inputs / "rubric.json", "rubric"),
+            expected_identities=identities,
+            purpose=read_json(inputs / "purpose.json", "purpose"),
+        )
+        if evaluation["aggregate"] != aggregate:
+            raise DataError("aggregate_mismatch", "evaluation")
     verifier_result = getattr(native_result, "verifier_result", None)
     rewards = verifier_result.rewards if verifier_result is not None else None
     expected_reward = (
-        harbor_reward(evaluation["cases"][0]) if len(evaluation["cases"]) == 1 else None
+        harbor_reward(evaluation["aggregate"])
+        if "aggregate" in evaluation
+        else harbor_reward(evaluation["cases"][0])
+        if len(evaluation["cases"]) == 1
+        else None
     )
     if rewards is not None and rewards != expected_reward:
         raise DataError("reward_mismatch", "evaluation")

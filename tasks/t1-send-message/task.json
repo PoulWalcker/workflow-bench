@@ -43,6 +43,24 @@
       "journal",
       "refusal"
     ],
-    "private_values": false
+    "private_values": false,
+    "reason_codes": [
+      "pass",
+      "fail",
+      "unknown",
+      "not_applicable",
+      "wrong_recipient",
+      "duplicate_send",
+      "altered_text",
+      "unrelated_mutation",
+      "unauthorized_send",
+      "inconsistent_journal",
+      "missing",
+      "unsafe_file",
+      "too_large",
+      "invalid_json",
+      "invalid_profile",
+      "unconfirmed_submission"
+    ]
   }
 }

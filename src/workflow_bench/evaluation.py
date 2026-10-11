@@ -1,4 +1,4 @@
-"""Validate frozen facts and criterion references; WB-04 has no scoring policy."""
+"""Evaluate frozen criteria and apply the Task-owned complete-set policy."""
 
 import hashlib
 from collections.abc import Mapping
@@ -23,12 +23,14 @@ class FrozenEvidence:
 
 def harbor_reward(evaluation: dict[str, JsonValue]) -> dict[str, float] | None:
     """Map an already evaluated score; this function defines no scoring policy."""
-    validate_contract("evaluation", evaluation)
+    aggregate = "cases" in evaluation
+    validate_contract("aggregate" if aggregate else "evaluation", evaluation)
+    cases = evaluation["cases"] if aggregate else [evaluation]
     if (
         evaluation["completeness"] != "complete"
         or evaluation["score"] is None
         or evaluation["errors"]
-        or any(c["status"] == "unknown" for c in evaluation["criteria"])
+        or any(c["status"] == "unknown" for result in cases for c in result["criteria"])
     ):
         return None
     return {"reward": float(evaluation["score"])}
@@ -104,23 +106,121 @@ def assemble_evaluation(
         validate_contract("criterion", criterion)
         for reference in criterion["evidence_refs"]:
             resolve_ref(evidence.document, reference)
+    policy = rubric["scoring_policy"]
+    critical = sorted(
+        {
+            c["reason_code"]
+            for c in criteria
+            if c["status"] == "fail"
+            and policy is not None
+            and c["reason_code"] in policy["critical_codes"]
+        }
+    )
+    required = {c["id"] for c in rubric["criteria"] if c["required"]}
+    relevant = [c for c in criteria if c["criterion_id"] in required]
+    known_fail = any(c["status"] == "fail" for c in relevant)
     complete = (
         evidence.document["freeze_status"] == "complete"
         and execution["stop_confirmed"]
         and execution["process_status"] == "completed"
         and execution["claim"] is not None
         and execution["claim"]["status"] != "unknown"
-        and all(c["status"] != "unknown" for c in criteria)
+        and all(c["status"] != "unknown" for c in relevant)
     )
     result = {
         "identity": evidence.document["identity"],
         "score": None,
-        "verdict": "unknown",
+        "verdict": ("fail" if known_fail else "pass" if complete else "unknown")
+        if rubric["success_policy"] is not None
+        else "unknown",
         "completeness": "complete" if complete else "partial",
         "criteria": list(criteria),
         "violations": evidence.document["violations"],
         "errors": [],
+        "critical_violations": critical,
         "evidence_hash": evidence.sha256,
     }
     validate_contract("evaluation", result)
     return result
+
+
+def aggregate_evaluation(
+    results: tuple[dict[str, JsonValue], ...],
+    *,
+    rubric: dict[str, JsonValue],
+    expected_identities: tuple[dict[str, str], ...],
+    purpose: str = "final",
+) -> dict[str, JsonValue]:
+    """Evaluate the entire fixed set; never average the available subset."""
+    validate_contract("rubric", rubric)
+    policy = rubric["scoring_policy"]
+    if policy is None or rubric["success_policy"] != "all-required-v1":
+        raise DataError("missing_methodology", "rubric")
+    ids = [identity["case_id"] for identity in expected_identities]
+    scopes = [
+        {k: v for k, v in identity.items() if k not in {"case_id", "replay_id"}}
+        for identity in expected_identities
+    ]
+    if (
+        len(ids) != policy["case_count"]
+        or len(set(ids)) != len(ids)
+        or any(scope != scopes[0] for scope in scopes)
+    ):
+        raise DataError("invalid_set_identity", "evaluation")
+    expected = {identity["case_id"]: identity for identity in expected_identities}
+    seen = set()
+    for result in results:
+        validate_contract("evaluation", result)
+        case_id = result["identity"]["case_id"]
+        if case_id in seen or result["identity"] != expected.get(case_id):
+            raise DataError("identity_mismatch", "evaluation")
+        seen.add(case_id)
+        if not set(result.get("critical_violations", [])) <= set(
+            policy["critical_codes"]
+        ):
+            raise DataError("unknown_critical_code", "evaluation")
+    missing = seen != set(ids)
+    criterion_ids = {c["id"] for c in rubric["criteria"]}
+    complete = not missing and all(
+        r["completeness"] == "complete"
+        and r["evidence_hash"] is not None
+        and not r["errors"]
+        and r["verdict"] != "unknown"
+        and len(r["criteria"]) == len(criterion_ids)
+        and {c["criterion_id"] for c in r["criteria"]} == criterion_ids
+        and all(c["status"] != "unknown" for c in r["criteria"])
+        for r in results
+    )
+    critical = sorted(
+        {code for r in results for code in r.get("critical_violations", [])}
+    )
+    failed = bool(critical) or any(r["verdict"] == "fail" for r in results)
+    score = None
+    if complete and purpose == "final":
+        score = policy["points_per_pass"] * sum(r["verdict"] == "pass" for r in results)
+        if critical:
+            score = min(score, policy["critical_cap"])
+    completeness = (
+        "complete"
+        if complete
+        else (
+            "invalid"
+            if any(r["completeness"] == "invalid" for r in results)
+            else "unavailable"
+            if not results
+            else "partial"
+        )
+    )
+    evaluation = {
+        "schema_version": "1.0",
+        "purpose": purpose,
+        "case_ids": ids,
+        "cases": list(results),
+        "score": score,
+        "verdict": "fail" if failed else "pass" if complete else "unknown",
+        "completeness": completeness,
+        "critical_violations": critical,
+        "errors": ["missing_cases"] if missing else [],
+    }
+    validate_contract("aggregate", evaluation)
+    return evaluation

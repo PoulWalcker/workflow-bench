@@ -33,7 +33,7 @@ def test_manual_t1_reaches_independent_verifier(e1_config) -> None:
         result["evaluation"]["cases"], result["replays"], strict=True
     ):
         assert case["completeness"] == "complete"
-        assert case["score"] is None and case["verdict"] == "unknown"
+        assert case["score"] is None and case["verdict"] == "pass"
         assert all(c["status"] in {"pass", "not_applicable"} for c in case["criteria"])
         assert replay["execution"]["process_status"] == "completed"
         assert replay["identity"]["artifact_hash"] == result["artifact_hash"]

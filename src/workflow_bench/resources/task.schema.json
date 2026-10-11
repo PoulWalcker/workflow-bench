@@ -19,6 +19,8 @@
       "properties": {
         "criterion_ids": {"type": "array", "uniqueItems": true,
           "items": {"type": "string", "minLength": 1}},
+        "reason_codes": {"type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z_]+$"}},
         "private_values": {"const": false}
       }
     }

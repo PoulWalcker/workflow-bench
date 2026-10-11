@@ -43,13 +43,30 @@ MAX_MATERIAL_BYTES = MAX_JSON_BYTES
 
 
 def load_cases(
-    materials: TaskMaterials, case_ids: tuple[str, ...]
+    materials: TaskMaterials,
+    case_ids: tuple[str, ...] | None = None,
+    *,
+    purpose: str = "development",
 ) -> tuple[CaseData, ...]:
     """Select fresh cases; state and expectations remain opaque to core."""
-    path = materials.private_paths[0]
+    if purpose not in {"development", "final"}:
+        raise DefinitionError("purpose_mismatch", "cases")
+    if purpose == "final" and len(materials.private_paths) < 3:
+        raise DefinitionError("missing_final_cases", "cases")
+    path = materials.private_paths[0 if purpose == "development" else 2]
     document = _decode(_read(path, "cases"), "cases")
     _validate(document, _schema("cases.schema.json"), "cases")
+    if document["purpose"] != purpose:
+        raise DefinitionError("purpose_mismatch", "cases")
+    if purpose == "final":
+        development = load_cases(materials, purpose="development")
+        if {c.id for c in development} & {c["id"] for c in document["cases"]} or any(
+            d.input == f["input"] for d in development for f in document["cases"]
+        ):
+            raise DefinitionError("overlapping_cases", "cases")
     by_id = {case["id"]: case for case in document["cases"]}
+    if case_ids is None:
+        case_ids = tuple(by_id)
     if (
         len(by_id) != len(document["cases"])
         or not case_ids
@@ -210,7 +227,8 @@ def load_task(task_path: Path, *, tool_contract: Path) -> TaskMaterials:
     )
     private_references = {
         key: _task_path(task_path, config.metadata[key], f"metadata.{key}")
-        for key in ("wb_cases", "wb_rubric")
+        for key in ("wb_cases", "wb_rubric", "wb_final_cases")
+        if key in config.metadata
     }
     private_paths = tuple(private_references.values())
     _public_reference(

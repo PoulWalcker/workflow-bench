@@ -891,7 +891,10 @@ E2/E3 не требуют заранее реализовать T2–T4. Все 
 Модельный плохой workflow не является основанием ослабить проверку или чинить
 бизнес-логику в binder.
 
-Методические решения до оцениваемого запуска: конкретные рубрики, partial credit,
+T1 использует [WB-06](docs/implementation/WB-06-t1-measurement.md); методика,
+selection и feedback заданы для этого среза. Модельные бюджеты остаются
+неутверждёнными. Для остальных Task методические решения до оцениваемого запуска:
+конкретные рубрики, partial credit,
 thresholds, агрегация, budgets, версия/stop selection и разрешённый feedback.
 Правило «первая успешная, иначе последний результат» остаётся предложением SPEC,
 а не неявным default. Размеры выборок, признаки UI-идентичности и наблюдаемость
@@ -1366,3 +1369,49 @@ WB-04 задаёт конечные технические значения до
 это не бюджеты модели и не методика WB-06. `latest` и floating dependencies не
 служат записью воспроизводимого результата. Ни одна версия в этом разделе не
 объявлена подтверждённой совместным запуском.
+
+
+### 10.6. Реализованный срез WB-06
+
+Definition сохраняет native Task: дополнительная необязательная metadata-ссылка
+`wb_final_cases` разрешена только внутри приватной копии Task. `load_cases(...,
+purpose="development"|"final", case_ids=None)` выбирает весь набор в его порядке,
+проверяет назначение и непересечение ID/input. Git-копия T1 содержит только пять
+development Case; настоящий final файл существует вне Git. Public export прежний.
+
+Task-owned `case-pass-v1` в rubric задаёт размер набора, вклад pass и critical cap;
+общая wire schema проверяет форму и диапазоны, не повторяет числа T1.
+`all-required-v1` определяет Verdict. Task verifier классифицирует нарушения
+через защищённые snapshots/events; core не интерпретирует Telegram. Per-Case
+score остаётся null: единственный численный score считает `aggregate_evaluation`
+по пяти результатам и ожидаемым Replay identity. Missing/unknown даёт null,
+чужая identity/дубликат отклоняется; известный fail сохраняется при неполноте.
+Development aggregate имеет Verdict/completeness без численного score.
+
+`select_attempts` принимает записи остановленных сдач и development Evaluation;
+`run_measurement` проверяет максимум два контролируемых файла существующим
+validator и native Harbor/n8n путём. Первая полная успешная версия останавливает
+приём; fallback — последняя valid. `selection.json` с attempt ID/hash публикуется
+до final Replay. Feedback — allowlist IDs/status/reason codes из публичной Task,
+без Case values/refs. Неполная development Evaluation и unknown/unconfirmed stop
+блокируют продолжение. Codex и универсальный repair loop здесь отсутствуют.
+
+Для каждой фазы используется прежний native oracle Trial как доставка неизменного
+контрольного файла, не новая генерация. Отдельный verifier записывает общий
+aggregate и только полный final reward; host заново сверяет aggregate по
+protected inputs, identity/hash и parsed native reward. Отчёт разделяет business
+completeness и reward_status; ожидаемый missing reward development не снижает
+его полноту. При final missing reward бизнес-оценка сохраняется, сопряжение неполно.
+
+Один файл model config содержит `budget` и `runtime`. `model_preflight` проверяет
+методику, профиль, версии harness/backend/model, конечные Attempt/total limits,
+credential cap, retry/enforcement и остаток общего бюджета до credentials или
+ресурсов. Неутверждённый бюджет и отсутствие отдельного разрешения отклоняются.
+Даже допустимый план имеет `execution_enabled=false`, `enforcement_verified=false`:
+настоящий provider enforcement и Codex transport принадлежат WB-07.
+
+Phase manifests сохраняют config, public/material/profile hashes, case/rubric
+snapshots; верхний manifest фиксирует оба набора и их порядок через snapshots.
+Расходы отдельно: host wall timings/accepted tool counts, native timing refs,
+подтверждённые нулевые model/Judge calls ручного контроля. Недоступные tokens/цены
+остаются null. Все приватные logs и facts находятся под закрытым run root.

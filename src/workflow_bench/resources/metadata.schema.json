@@ -7,6 +7,7 @@
   "properties": {
     "wb_public": {"$ref": "#/$defs/text"},
     "wb_cases": {"$ref": "#/$defs/text"},
+    "wb_final_cases": {"$ref": "#/$defs/text"},
     "wb_rubric": {"$ref": "#/$defs/text"},
     "wb_app_image": {"$ref": "#/$defs/text"},
     "wb_tool_profile": {"$ref": "#/$defs/text"}

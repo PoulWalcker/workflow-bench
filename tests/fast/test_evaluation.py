@@ -361,3 +361,142 @@ def test_invalid_expectation_is_rejected_instead_of_assessed_as_refusal(
     assert not output.exists() and not result.stdout
     assert "misspelled-outcome" not in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_t1_methodology_preserves_critical_fail_with_null_score(
+    protected_inputs, tmp_path
+):
+    rubric = json.loads((CHECK.parent / "rubric.json").read_text())
+    (protected_inputs / "rubric.json").write_text(json.dumps(rubric))
+    path = protected_inputs / "fresh/evidence.json"
+    facts = json.loads(path.read_bytes())
+    facts["after"]["state"]["messages"][0]["text"] = "changed"
+    facts["freeze_status"] = "incomplete"
+    path.write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["score"] is None and result["verdict"] == "fail"
+    assert result["critical_violations"] == ["altered_text"]
+
+
+def prepare_final_inputs(inputs: Path) -> None:
+    import shutil
+
+    ids = ["fresh", "second", "third", "fourth", "fifth"]
+    for case_id in ids[1:]:
+        shutil.copytree(inputs / "fresh", inputs / case_id)
+        for filename in ["case.json", "evidence.json"]:
+            path = inputs / case_id / filename
+            value = json.loads(path.read_bytes())
+            value["identity"].update(case_id=case_id, replay_id=case_id)
+            if filename == "case.json":
+                value["id"] = case_id
+            path.write_text(json.dumps(value))
+    (inputs / "index.json").write_text(json.dumps(ids))
+    (inputs / "purpose.json").write_text('"final"')
+    (inputs / "rubric.json").write_bytes((CHECK.parent / "rubric.json").read_bytes())
+
+
+def test_final_verifier_writes_one_aggregate_reward_for_five_cases(
+    protected_inputs, tmp_path
+):
+    prepare_final_inputs(protected_inputs)
+    output = tmp_path / "evaluation.json"
+    run_checks(protected_inputs, output)
+    result = json.loads(output.read_bytes())
+    assert result["aggregate"]["score"] == 10
+    assert json.loads((tmp_path / "reward.json").read_bytes()) == {"reward": 10.0}
+
+
+@pytest.mark.parametrize(
+    "change,reason",
+    [
+        ("recipient", "wrong_recipient"),
+        ("text", "altered_text"),
+        ("duplicate", "duplicate_send"),
+        ("mutation", "unrelated_mutation"),
+        ("unauthorized", "unauthorized_send"),
+    ],
+)
+def test_task_classifies_all_five_critical_categories(
+    protected_inputs, tmp_path, change, reason
+):
+    (protected_inputs / "rubric.json").write_bytes(
+        (CHECK.parent / "rubric.json").read_bytes()
+    )
+    path = protected_inputs / "fresh/evidence.json"
+    facts = json.loads(path.read_bytes())
+    message = facts["after"]["state"]["messages"][0]
+    if change == "recipient":
+        message["chat_id"] = "other"
+    elif change == "text":
+        message["text"] = "wrong"
+    elif change == "duplicate":
+        facts["after"]["state"]["messages"].append({**message, "id": "second"})
+    elif change == "mutation":
+        facts["after"]["state"]["chats"][0]["display_name"] = "changed"
+    else:
+        facts["events"][0]["details"] = {"status": "rejected", "error": "forbidden"}
+    path.write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert reason in result["critical_violations"] and result["verdict"] == "fail"
+
+
+def test_no_send_is_ordinary_failure_and_historical_same_text_is_not_duplicate(
+    protected_inputs, tmp_path
+):
+    (protected_inputs / "rubric.json").write_bytes(
+        (CHECK.parent / "rubric.json").read_bytes()
+    )
+    path = protected_inputs / "fresh/evidence.json"
+    facts = json.loads(path.read_bytes())
+    message = facts["after"]["state"]["messages"][0]
+    old = {**message, "id": "historical"}
+    facts["before"]["state"]["messages"] = [old]
+    facts["after"]["state"]["messages"].insert(0, old)
+    facts["events"][1]["details"]["evidence_ref"] = "/after/state/messages/1"
+    path.write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["verdict"] == "pass" and not result["critical_violations"]
+    facts["after"] = facts["before"]
+    facts["events"] = []
+    path.write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["verdict"] == "fail" and not result["critical_violations"]
+
+
+def test_final_missing_facts_remove_stale_numeric_reward(protected_inputs, tmp_path):
+    prepare_final_inputs(protected_inputs)
+    output = tmp_path / "evaluation.json"
+    run_checks(protected_inputs, output)
+    (protected_inputs / "fifth/evidence.json").unlink()
+    run_checks(protected_inputs, output)
+    aggregate = json.loads(output.read_bytes())["aggregate"]
+    assert aggregate["score"] is None and aggregate["completeness"] != "complete"
+    assert not (tmp_path / "reward.json").exists()
+
+
+def test_protected_repeat_commit_is_critical_even_if_snapshot_has_one_new_message(
+    protected_inputs, tmp_path
+):
+    (protected_inputs / "rubric.json").write_bytes(
+        (CHECK.parent / "rubric.json").read_bytes()
+    )
+    path = protected_inputs / "fresh/evidence.json"
+    facts = json.loads(path.read_bytes())
+    events = [{**e, "seq": e["seq"] + 3, "call_id": "repeat"} for e in facts["events"]]
+    facts["events"].extend(events)
+    path.write_text(json.dumps(facts))
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["score"] is None and result["verdict"] == "fail"
+    assert "duplicate_send" in result["critical_violations"]
+
+
+def test_missing_execution_keeps_frozen_criteria_unavailable(
+    protected_inputs, tmp_path
+):
+    (protected_inputs / "rubric.json").write_bytes(
+        (CHECK.parent / "rubric.json").read_bytes()
+    )
+    (protected_inputs / "fresh/execution.json").unlink()
+    result = run_checks(protected_inputs, tmp_path / "evaluation.json")
+    assert result["score"] is None and result["completeness"] == "unavailable"

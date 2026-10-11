@@ -7,7 +7,12 @@ from pathlib import Path
 
 from workflow_bench.contracts import JsonValue
 from workflow_bench.data import DataError, read_json, validate_contract, validate_json
-from workflow_bench.evaluation import assemble_evaluation, read_evidence
+from workflow_bench.evaluation import (
+    aggregate_evaluation,
+    assemble_evaluation,
+    harbor_reward,
+    read_evidence,
+)
 
 EXPECTATION_SCHEMA = {
     "type": "object",
@@ -35,7 +40,12 @@ def criteria_for(
     complete = facts["freeze_status"] == "complete" and not facts["pending_call_ids"]
 
     def criterion(
-        id: str, value: bool, *, applicable: bool = True, definite_failure: bool = False
+        id: str,
+        value: bool,
+        *,
+        applicable: bool = True,
+        definite_failure: bool = False,
+        reason: str | None = None,
     ) -> dict[str, JsonValue]:
         status = "not_applicable" if not applicable else ("pass" if value else "fail")
         if not complete and not (applicable and not value and definite_failure):
@@ -44,7 +54,9 @@ def criteria_for(
             "criterion_id": id,
             "status": status,
             "value": value if applicable and status != "unknown" else None,
-            "reason_code": status,
+            "reason_code": reason
+            if status == "fail" and reason and definite_failure
+            else status,
             "evidence_refs": refs,
         }
 
@@ -54,20 +66,38 @@ def criteria_for(
         and len(after["messages"]) == len(before["messages"]) + len(new)
         and len({m["id"] for m in after["messages"]}) == len(after["messages"])
     )
+    preserved = preserved and all(
+        m["chat_id"] == case["input"]["chat_id"] and m["direction"] == "outgoing"
+        for m in new
+    )
     journal = len(sends) == len(new) and {
         e["details"]["message_id"] for e in sends
     } == {m["id"] for m in new}
-    journal = journal and all(e["arguments"] == case["input"] for e in sends)
+    journal = journal and all(
+        e["arguments"].get("chat_id") == m["chat_id"]
+        and e["arguments"].get("text") == m["text"]
+        for e in sends
+        for m in new
+        if e["details"]["message_id"] == m["id"]
+    )
+    unauthorized = (not sent and bool(new)) or any(
+        e["operation"] == "send_message"
+        and e["stage"] == "accepted"
+        and e["details"].get("error") == "forbidden"
+        for e in facts["events"]
+    )
     refusal = (
         isinstance(claim, dict)
         and claim.get("status") == "refused"
         and claim.get("reason_code") == "not_found"
     )
     refusal = refusal and any(
-        e["stage"] == "response" and e["details"].get("error") == "not_found"
+        e["stage"] == "response"
+        and e["arguments"].get("chat_id") == case["input"]["chat_id"]
+        and e["details"].get("error") == "not_found"
         for e in facts["events"]
     )
-    return (
+    results = (
         criterion(
             "recipient",
             bool(new)
@@ -78,22 +108,40 @@ def criteria_for(
             ),
             applicable=sent,
             definite_failure=bool(new),
+            reason="wrong_recipient",
         ),
         criterion(
             "text",
             bool(new) and all(m["text"] == case["input"]["text"] for m in new),
             applicable=sent,
             definite_failure=bool(new),
+            reason="altered_text",
         ),
         criterion(
             "multiplicity",
-            len(new) == (1 if sent else 0),
-            definite_failure=len(new) > (1 if sent else 0),
+            len(new) == len(sends) == (1 if sent else 0),
+            definite_failure=max(len(new), len(sends)) > (1 if sent else 0),
+            reason="duplicate_send" if sent else "unauthorized_send",
         ),
-        criterion("preservation", preserved, definite_failure=True),
-        criterion("journal", journal),
+        criterion(
+            "preservation",
+            preserved,
+            definite_failure=True,
+            reason="unrelated_mutation",
+        ),
+        criterion(
+            "journal",
+            journal and not unauthorized,
+            definite_failure=unauthorized,
+            reason="unauthorized_send" if unauthorized else None,
+        ),
         criterion("refusal", refusal, applicable=not sent),
     )
+    if not journal and not unauthorized:
+        results[4].update(
+            status="unknown", value=None, reason_code="inconsistent_journal"
+        )
+    return results
 
 
 def verify(inputs: Path, output: Path, state_schema_path: Path) -> None:
@@ -104,6 +152,7 @@ def verify(inputs: Path, output: Path, state_schema_path: Path) -> None:
     if not isinstance(ids, list) or not ids or len(set(ids)) != len(ids):
         raise DataError("invalid_index", "index")
     results = []
+    identities = []
     for case_id in ids:
         if (
             not isinstance(case_id, str)
@@ -113,13 +162,16 @@ def verify(inputs: Path, output: Path, state_schema_path: Path) -> None:
         root = inputs / case_id
         case = read_json(root / "case.json", "case")
         validate_contract("case", case)
+        if case["id"] != case_id or case["identity"]["case_id"] != case_id:
+            raise DataError("identity_mismatch", "case")
+        identities.append(case["identity"])
         try:
             validate_json(case["expected"], EXPECTATION_SCHEMA, "case.expected")
         except DataError:
             raise DataError("invalid_expectation", "case.expected") from None
-        execution = read_json(root / "execution.json", "execution")
-        validate_contract("execution", execution)
         try:
+            execution = read_json(root / "execution.json", "execution")
+            validate_contract("execution", execution)
             evidence = read_evidence(
                 root / "evidence.json", expected_identity=case["identity"]
             )
@@ -150,6 +202,20 @@ def verify(inputs: Path, output: Path, state_schema_path: Path) -> None:
             }
         results.append(result)
     document = {"schema_version": "1.0", "cases": results}
+    purpose_path = inputs / "purpose.json"
+    reward_path = output.parent / "reward.json"
+    reward_path.unlink(missing_ok=True)
+    if purpose_path.exists():
+        aggregate = aggregate_evaluation(
+            tuple(results),
+            rubric=rubric,
+            expected_identities=tuple(identities),
+            purpose=read_json(purpose_path, "purpose"),
+        )
+        document["aggregate"] = aggregate
+        reward = harbor_reward(aggregate)
+        if reward is not None:
+            reward_path.write_text(json.dumps(reward))
     temporary = output.with_suffix(".tmp")
     temporary.write_text(json.dumps(document, ensure_ascii=False, allow_nan=False))
     temporary.replace(output)

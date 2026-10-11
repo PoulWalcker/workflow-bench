@@ -1,16 +1,17 @@
-"""The WB-04 entry point: explicit paths, one image/limit config, no model calls."""
+"""Explicit manual controls and budget preflight, without model execution."""
 
 import argparse
 import asyncio
 import json
 import logging
+import math
 import signal
 from pathlib import Path
 
-from workflow_bench.contracts import E1Config
+from workflow_bench.contracts import E1Config, JsonValue
 from workflow_bench.data import DataError, read_json, resource_schema, validate_json
 from workflow_bench.execution import ArtifactError
-from workflow_bench.experiment import run_manual
+from workflow_bench.experiment import ControlledSubmission, run_manual, run_measurement
 
 
 def load_config(path: Path, *, output: Path) -> E1Config:
@@ -21,17 +22,93 @@ def load_config(path: Path, *, output: Path) -> E1Config:
     return E1Config(output_root=output, **data)
 
 
+def model_preflight(
+    budget: dict[str, JsonValue],
+    *,
+    runtime: dict[str, JsonValue],
+    authorized: bool,
+    usage: dict[str, JsonValue] | None = None,
+) -> dict[str, JsonValue]:
+    """Validate a finite plan without accessing credentials or running a model."""
+    validate_json(budget, resource_schema("model-budget.schema.json"), "model_budget")
+    validate_json(runtime, resource_schema("e1.schema.json"), "e1_config")
+    if (
+        len({runtime["tools_port"], runtime["control_port"], runtime["broker_port"]})
+        != 3
+    ):
+        raise DataError("invalid_ports", "e1_config")
+    for phase in ("attempt", "total"):
+        if any(not math.isfinite(value) for value in budget[phase].values()):
+            raise DataError("nonfinite_budget", "model_budget")
+    if (
+        not math.isfinite(budget["credential_cap_usd"])
+        or budget["credential_cap_usd"] > budget["total"]["usd"]
+        or any(budget["attempt"][key] > limit for key, limit in budget["total"].items())
+        or runtime["total_timeout_sec"] > budget["total"]["seconds"]
+    ):
+        raise DataError("inconsistent_budget", "model_budget")
+    if not budget["finalized"]:
+        raise DataError("unapproved_budget", "model_budget")
+    if not authorized:
+        raise DataError("model_not_authorized", "model_budget")
+    usage = usage if usage is not None else dict.fromkeys(budget["total"], 0)
+    if set(usage) != set(budget["total"]) or any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+        for value in usage.values()
+    ):
+        raise DataError("unknown_usage", "model_budget")
+    remaining = {key: limit - usage[key] for key, limit in budget["total"].items()}
+    if any(value <= 0 for value in remaining.values()):
+        raise DataError("budget_exhausted", "model_budget")
+    return {
+        "remaining": remaining,
+        "execution_enabled": False,
+        "enforcement_verified": False,
+        "max_attempts": 2,
+        "model": budget["model"],
+        "harness": budget["harness"],
+    }
+
+
 def main() -> None:
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
     logging.basicConfig(level=logging.INFO, handlers=[console])
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", type=Path, required=True)
+    parser.add_argument("--task", type=Path)
     parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--case", action="append", required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--case", action="append")
+    parser.add_argument("--controlled-submission", type=Path, action="append")
+    parser.add_argument("--model-preflight", action="store_true")
     args = parser.parse_args()
     try:
+        if args.model_preflight:
+            document = read_json(args.config.resolve(), "model_config")
+            if not isinstance(document, dict) or set(document) != {"budget", "runtime"}:
+                raise DataError("invalid_schema", "model_config")
+            plan = model_preflight(
+                document["budget"], runtime=document["runtime"], authorized=False
+            )
+            print(json.dumps(plan))
+            return
+        if (
+            args.task is None
+            or args.output is None
+            or (not args.case and not args.controlled_submission)
+        ):
+            parser.error(
+                "manual runs require --task, --output and --case or --controlled-submission"
+            )
+        if args.controlled_submission and (
+            args.case or len(args.controlled_submission) > 2
+        ):
+            parser.error(
+                "controlled measurement accepts up to two submissions and selects full sets"
+            )
         config = load_config(args.config.resolve(), output=args.output.resolve())
 
         async def execute():
@@ -40,6 +117,16 @@ def main() -> None:
             for signum in (signal.SIGINT, signal.SIGTERM):
                 loop.add_signal_handler(signum, cancel.set)
             try:
+                if args.controlled_submission:
+                    return await run_measurement(
+                        args.task.resolve(),
+                        tuple(
+                            ControlledSubmission(path.absolute())
+                            for path in args.controlled_submission
+                        ),
+                        config=config,
+                        cancel=cancel,
+                    )
                 return await run_manual(
                     args.task.resolve(), tuple(args.case), config=config, cancel=cancel
                 )
@@ -48,7 +135,7 @@ def main() -> None:
                     loop.remove_signal_handler(signum)
 
         result = asyncio.run(execute())
-        if not result["evaluation"]["cases"]:
+        if not args.controlled_submission and not result["evaluation"]["cases"]:
             raise DataError("missing_evaluation", "evaluation")
     except Exception as error:
         code = (
@@ -61,7 +148,7 @@ def main() -> None:
             (
                 ref
                 for ref in ("harbor", "profile-export/harbor")
-                if (args.output / ref).is_dir()
+                if args.output is not None and (args.output / ref).is_dir()
             ),
             None,
         )
@@ -77,7 +164,8 @@ def main() -> None:
         json.dumps(
             {
                 "report": str(config.output_root / "report.json"),
-                "harbor_exception": result["harbor_exception"],
+                "harbor_exception": result.get("harbor_exception"),
+                "score": result.get("score"),
             }
         )
     )
