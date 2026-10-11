@@ -209,3 +209,84 @@ def test_invalid_protected_envelope_has_no_business_verdict(
     result = run_checks(protected_inputs, tmp_path / "evaluation.json")
     assert result["completeness"] == "invalid"
     assert not result["criteria"] and result["verdict"] == "unknown"
+
+
+def refusal_inputs(inputs: Path) -> None:
+    root = inputs / "fresh"
+    case = json.loads((root / "case.json").read_bytes())
+    case["input"] = {"chat_id": "absent", "text": "exact"}
+    case["expected"] = {"outcome": "refused"}
+    (root / "case.json").write_text(json.dumps(case))
+    facts = json.loads((root / "evidence.json").read_bytes())
+    facts["after"] = facts["before"]
+    facts["events"] = [
+        {
+            "seq": 3,
+            "call_id": "refusal",
+            "actor": "workflow",
+            "profile": "t1-api-v1",
+            "operation": "send_message",
+            "arguments": case["input"],
+            "stage": "response",
+            "details": {"error": "not_found"},
+            "timestamp": 1,
+        }
+    ]
+    facts["events"] = [
+        {
+            **facts["events"][0],
+            "seq": 1,
+            "stage": "accepted",
+            "details": {"status": "accepted"},
+        },
+        {
+            **facts["events"][0],
+            "seq": 2,
+            "stage": "effect",
+            "details": {"status": "no_effect"},
+        },
+        *facts["events"],
+    ]
+    (root / "evidence.json").write_text(json.dumps(facts))
+    execution = json.loads((root / "execution.json").read_bytes())
+    execution["claim"] = {"status": "refused", "reason_code": "not_found", "result": {}}
+    (root / "execution.json").write_text(json.dumps(execution))
+
+
+@pytest.mark.parametrize(
+    "expected", [{"outcome": "misspelled-outcome"}, {}, {"outcome": 42}]
+)
+def test_invalid_expectation_is_rejected_instead_of_assessed_as_refusal(
+    protected_inputs: Path, tmp_path: Path, expected: dict
+) -> None:
+    refusal_inputs(protected_inputs)
+    output = tmp_path / "evaluation.json"
+    valid = run_checks(protected_inputs, output)
+    assert valid["completeness"] == "complete"
+    assert valid["score"] is None and valid["verdict"] == "unknown"
+    assert all(c["status"] in {"pass", "not_applicable"} for c in valid["criteria"])
+    output.unlink()
+    path = protected_inputs / "fresh/case.json"
+    case = json.loads(path.read_bytes())
+    case["expected"] = expected
+    path.write_text(json.dumps(case))
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CHECK),
+            "--input-dir",
+            str(protected_inputs),
+            "--output",
+            str(output),
+            "--state-schema",
+            str(CHECK.parents[3] / "simapps/telegram/state.schema.json"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
+    assert "invalid_expectation" in result.stderr and "case.expected" in result.stderr
+    assert not output.exists() and not result.stdout
+    assert "misspelled-outcome" not in result.stderr
+    assert "Traceback" not in result.stderr

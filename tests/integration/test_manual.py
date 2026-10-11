@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -24,6 +25,19 @@ def e1_config(request: pytest.FixtureRequest, tmp_path: Path):
 def test_manual_t1_reaches_independent_verifier(e1_config) -> None:
     case_ids = ("fresh-a", "fresh-b", "missing")
     result = asyncio.run(run_manual(TASK, case_ids, config=e1_config))
+    manifest = read_json(e1_config.output_root / "manifest.json", "manifest")
+    for role in ("rubric_snapshot", "case_snapshot"):
+        snapshot = manifest[role]
+        reference = Path(snapshot["ref"])
+        assert not reference.is_absolute() and ".." not in reference.parts
+        content = (e1_config.output_root / reference).read_bytes()
+        assert hashlib.sha256(content).hexdigest() == snapshot["sha256"]
+    assert manifest["case_snapshot"]["schema_version"] == "1.0"
+    case_snapshot = read_json(
+        e1_config.output_root / manifest["case_snapshot"]["ref"], "cases"
+    )
+    applied_cases = {case["id"]: case for case in case_snapshot["cases"]}
+    assert manifest["case_ids"] == list(case_ids)
     assert result["harbor_exception"] == "RewardFileNotFoundError"
     assert len(result["evaluation"]["cases"]) == len(case_ids)
     for case, replay in zip(
@@ -37,6 +51,15 @@ def test_manual_t1_reaches_independent_verifier(e1_config) -> None:
         assert replay["database_fresh"] and replay["isolation_confirmed"]
         facts = read_json(e1_config.output_root / replay["evidence_ref"], "facts")
         assert facts["before"]["revision"] == 0
+        assert (
+            facts["before"]["state"]
+            == applied_cases[case["identity"]["case_id"]]["state"]
+        )
+        case_root = (e1_config.output_root / replay["evidence_ref"]).parent
+        verifier_case = read_json(case_root / "case.json", "case")
+        applied = applied_cases[case["identity"]["case_id"]]
+        assert verifier_case["input"] == applied["input"]
+        assert verifier_case["expected"] == applied["expected"]
         log = (e1_config.output_root / replay["log_ref"] / "execute.log").read_text()
         assert "Registered runner" in log and "JS Task Runner" in log
         workflow = read_json(TASK / "solution/workflow.json", "control")

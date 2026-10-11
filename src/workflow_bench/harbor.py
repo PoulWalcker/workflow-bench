@@ -5,7 +5,7 @@ import json
 import logging
 import secrets
 import shlex
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,10 +14,20 @@ from aiohttp import ClientError, ClientSession, ClientTimeout
 from harbor.environments.base import BaseEnvironment
 from harbor.environments.docker.docker import DockerEnvironment
 from harbor.models.task.config import EnvironmentConfig, NetworkMode, NetworkPolicy
+from harbor.models.task.task import Task
+from harbor.models.trial.config import TrialConfig
 from harbor.models.trial.paths import TrialPaths
+from harbor.trial.hooks import TrialEvent, TrialHookEvent
+from harbor.trial.trial import Trial
 
 from workflow_bench.contracts import E1Config, JsonValue
-from workflow_bench.data import MAX_EVIDENCE_BYTES, MAX_JSON_BYTES, decode_json
+from workflow_bench.data import (
+    MAX_EVIDENCE_BYTES,
+    MAX_JSON_BYTES,
+    decode_json,
+    read_json,
+    validate_contract,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +81,115 @@ async def assert_stopped(
                 raise RuntimeError("cleanup_incomplete")
 
 
+async def _check_private_access(
+    environment: BaseEnvironment, *, timeout_sec: float, service: str | None = None
+) -> None:
+    command = 'set -eu; test ! -e /tests; test ! -e /solution; test ! -e /bench/input; test ! -e /var/run/docker.sock; test ! -e /app/workflow_bench/experiment.py; test -z "${WB_CONTROL_KEY:-}"'
+    checked = (
+        await environment.exec(command, timeout_sec=int(timeout_sec))
+        if service is None
+        else await environment.service_exec(
+            command, service=service, timeout_sec=int(timeout_sec)
+        )
+    )
+    if checked.return_code:
+        raise RuntimeError(
+            "submission_isolation_failed" if service is None else "isolation_failed"
+        )
+
+
+@dataclass(frozen=True)
+class NativeVerification:
+    evaluation: dict[str, JsonValue]
+    exception_type: str | None
+    result_ref: str
+
+
+async def run_native_trial(
+    stage: Path,
+    attempt_id: str,
+    prepare_verification: Callable[[Path], Awaitable[None]],
+    *,
+    config: E1Config,
+) -> NativeVerification:
+    """Collect after confirmed stop; deliver prepared inputs via native tests upload.
+
+    The callback receives the checked submission path at VERIFICATION_START,
+    before the separate verifier is created. It writes protected inputs under
+    the staged Task tests; it never receives the Trial or a container handle.
+    """
+    native = Task(task_dir=stage).config.model_copy(deep=True)
+    native.environment.docker_image = config.app_image
+    native.environment.cpus = config.cpus
+    native.environment.memory_mb = config.memory_mb
+    native.environment.build_timeout_sec = config.setup_timeout_sec
+    native.agent.timeout_sec = config.submission_timeout_sec
+    native.verifier.timeout_sec = config.verifier_timeout_sec
+    (stage / "task.toml").write_text(native.model_dump_toml())
+    trial_name = "wb04-manual-" + attempt_id
+    trial_config = TrialConfig.model_validate(
+        {
+            "task": {"path": str(stage)},
+            "trial_name": trial_name,
+            "trials_dir": str(config.output_root / "harbor"),
+            "agent": {
+                "name": "oracle",
+                "override_timeout_sec": config.submission_timeout_sec,
+            },
+            "verifier": {"override_timeout_sec": config.verifier_timeout_sec},
+            "environment": {
+                "delete": True,
+                "override_cpus": config.cpus,
+                "override_memory_mb": config.memory_mb,
+            },
+        }
+    )
+    trial = await Trial.create(trial_config)
+
+    async def check_submission(event: TrialHookEvent) -> None:
+        await _check_private_access(
+            trial.agent_environment, timeout_sec=config.control_timeout_sec
+        )
+        LOGGER.info("phase=isolation submission=%s result=confirmed", event.trial_name)
+
+    async def collected(event: TrialHookEvent) -> None:
+        LOGGER.info("phase=submission result=collected")
+        await assert_stopped(event.trial_name + "__env", deleted=True)
+        manifest = read_json(trial.paths.artifacts_dir / "manifest.json", "collection")
+        if not any(
+            item["source"] == "/work/workflow.json"
+            and item["status"] == "ok"
+            and item["type"] == "file"
+            for item in manifest
+        ):
+            raise RuntimeError("artifact_collection_failed")
+        await prepare_verification(trial.paths.artifacts_dir / "work/workflow.json")
+
+    trial.add_hook(TrialEvent.AGENT_START, check_submission)
+    trial.add_hook(TrialEvent.VERIFICATION_START, collected)
+    LOGGER.info(
+        "phase=submission attempt_id=%s log=%s", attempt_id, trial.paths.trial_dir
+    )
+    native_result = await trial.run()
+    await assert_stopped(trial_name + "__env", deleted=True)
+    await assert_stopped(trial_name + "__verifier__trial", deleted=True)
+    path = trial.paths.verifier_dir / "evaluation.json"
+    evaluation = (
+        read_json(path, "evaluation")
+        if path.exists()
+        else {"schema_version": "1.0", "cases": []}
+    )
+    for result in evaluation["cases"]:
+        validate_contract("evaluation", result)
+    return NativeVerification(
+        evaluation,
+        native_result.exception_info.exception_type
+        if native_result.exception_info
+        else None,
+        str(trial.paths.result_path.relative_to(config.output_root)),
+    )
+
+
 @dataclass(frozen=True)
 class ReplayContext:
     environment: BaseEnvironment
@@ -84,6 +203,19 @@ class ReplayContext:
 
     async def check_isolation(self) -> None:
         """Check the actual replay surfaces before uploading untrusted JSON."""
+        for service in ("n8n", "runner"):
+            await _check_private_access(
+                self.environment,
+                timeout_sec=self.config.control_timeout_sec,
+                service=service,
+            )
+        fresh = await self.environment.service_exec(
+            "test ! -e /home/node/.n8n/database.sqlite",
+            service="n8n",
+            timeout_sec=int(self.config.control_timeout_sec),
+        )
+        if fresh.return_code:
+            raise RuntimeError("replay_database_not_fresh")
         main = await docker(
             "ps",
             "--filter",

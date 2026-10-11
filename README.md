@@ -99,6 +99,8 @@ uv run --locked ruff format --check src tests simapps environments tasks
 
 В WB-04 быстрый pytest — 206 passed (101 S1 + 76 S2 + 29 S3/S5); Ruff lint/format — exit 0,
 без lint-исключений.
+После [audit remediation](docs/reviews/REMEDIATION_PLAN.md) 12 октября 2026 года
+fast suite — 216 passed; default collection — 216 tests, без integration/model.
 Форматирование ограничено созданным Python-кодом: Ruff 0.17 также обрабатывает
 Markdown; первоначальный `ruff format --check .` завершился exit 1 на примерах
 в ARCHITECTURE и ещё не отформатированном новом коде. Новый код отформатирован,

@@ -9,6 +9,13 @@ from workflow_bench.contracts import JsonValue
 from workflow_bench.data import DataError, read_json, validate_contract, validate_json
 from workflow_bench.evaluation import assemble_evaluation, read_evidence
 
+EXPECTATION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["outcome"],
+    "properties": {"outcome": {"enum": ["sent", "refused"]}},
+}
+
 
 def criteria_for(
     case: dict[str, JsonValue], facts: dict[str, JsonValue], claim: JsonValue
@@ -100,6 +107,10 @@ def verify(inputs: Path, output: Path, state_schema_path: Path) -> None:
         root = inputs / case_id
         case = read_json(root / "case.json", "case")
         validate_contract("case", case)
+        try:
+            validate_json(case["expected"], EXPECTATION_SCHEMA, "case.expected")
+        except DataError:
+            raise DataError("invalid_expectation", "case.expected") from None
         execution = read_json(root / "execution.json", "execution")
         validate_contract("execution", execution)
         try:
@@ -145,4 +156,10 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--state-schema", type=Path, required=True)
     args = parser.parse_args()
-    verify(args.input_dir, args.output, args.state_schema)
+    try:
+        verify(args.input_dir, args.output, args.state_schema)
+    except DataError as error:
+        logging.getLogger(__name__).error(
+            "code=%s material=%s", error.code, error.relative_path
+        )
+        raise SystemExit(1) from None

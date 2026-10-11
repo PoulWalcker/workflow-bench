@@ -1199,6 +1199,18 @@ Harbor, владение ресурсами и безопасная достав
 базовых классов нет. Для fault-тестов подменяется внешний transport/Harbor exec,
 а не собственные Definition/Execution/Evaluation.
 
+Реализованная граница после AUD-S1 (12 октября 2026):
+`harbor.run_native_trial(stage, attempt_id, prepare_verification, *, config)`
+владеет native config/Trial, проверкой collection после stop, штатным запуском
+separate verifier и проверенными результатами/относительной ссылкой на native
+result (`NativeVerification`). Callback Experiment получает только путь
+собранного файла на VERIFICATION_START и готовит защищённые входы в staged tests
+до штатной загрузки verifier. Выбор кейсов, identity, replay policy и отчёт
+остаются в Experiment; Execution заимствует ReplayContext. Проверки отсутствия
+приватных файлов имеют одну реализацию в Harbor; ReplayContext проверяет также
+свежесть БД и фактическую изоляцию. Это перенос существующих механик WB-04;
+fault/cleanup semantics WB-05 этим решением не считаются реализованными.
+
 ### 10.5. Проверенные точки Harbor и проба штатного пути
 
 Первоисточники прочитаны 11 октября 2026 года. Исходники проверены на commit

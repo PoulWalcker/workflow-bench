@@ -8,6 +8,7 @@ from pathlib import Path
 
 from workflow_bench.contracts import E1Config
 from workflow_bench.data import DataError, read_json, resource_schema, validate_json
+from workflow_bench.execution import ArtifactError
 from workflow_bench.experiment import run_manual
 
 
@@ -32,11 +33,29 @@ def main() -> None:
         result = asyncio.run(
             run_manual(args.task.resolve(), tuple(args.case), config=config)
         )
+        if not result["evaluation"]["cases"]:
+            raise DataError("missing_evaluation", "evaluation")
     except Exception as error:
+        code = (
+            error.code
+            if isinstance(error, (DataError, ArtifactError))
+            else "unexpected_error"
+        )
+        material = error.relative_path if isinstance(error, DataError) else None
+        log_ref = next(
+            (
+                ref
+                for ref in ("harbor", "profile-export/harbor")
+                if (args.output / ref).is_dir()
+            ),
+            None,
+        )
         logging.getLogger(__name__).error(
-            "phase=manual result=failed error=%s output=%s",
+            "phase=manual result=failed error=%s code=%s material=%s log_ref=%s",
             type(error).__name__,
-            args.output,
+            code,
+            material,
+            log_ref,
         )
         raise SystemExit(1) from None
     print(
@@ -47,8 +66,6 @@ def main() -> None:
             }
         )
     )
-    if not result["evaluation"]["cases"]:
-        raise SystemExit(1)
 
 
 if __name__ == "__main__":
