@@ -11,9 +11,11 @@ pytest_plugins = ["pytester"]
 def gated_project(pytester: pytest.Pytester) -> pytest.Pytester:
     root = Path(__file__).resolve().parents[2]
     pytester.makefile(".toml", pyproject=(root / "pyproject.toml").read_text())
-    pytester.makeconftest((root / "conftest.py").read_text())
     integration = pytester.path / "tests" / "integration"
     integration.mkdir(parents=True)
+    (pytester.path / "tests" / "conftest.py").write_text(
+        (root / "tests" / "conftest.py").read_text()
+    )
     (integration / "test_probe.py").write_text(
         "from pathlib import Path\n"
         "import pytest\n"

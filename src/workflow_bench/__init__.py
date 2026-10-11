@@ -1,1 +1,1 @@
-"""Workflow Bench package; benchmark behavior is not implemented yet."""
+"""Workflow Bench: native Task materials and public Composer packages."""

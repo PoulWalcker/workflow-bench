@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workflow Bench common native workflow envelope 1.0",
+  "description": "Structural envelope only; native nodes and runtime validation are separate.",
+  "type": "object",
+  "required": ["name", "nodes", "connections"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1},
+    "nodes": {"type": "array", "items": {"type": "object"}},
+    "connections": {"type": "object"}
+  }
+}

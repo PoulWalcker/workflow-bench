@@ -1,6 +1,6 @@
 # Workflow Bench
 
-**Статус: WB-02 выполнен; реализована минимальная основа пакета и среды.**
+**Статус: WB-02 и WB-03 выполнены; загрузка native Task и публичный экспорт работают.**
 Продуктовая основа — SPEC v0.2 с согласованными уточнениями · 11 октября 2026 года.
 
 Workflow Bench — инструмент для проверки того, как AI исследует доступные
@@ -51,12 +51,16 @@ Task + инструменты
 
 Прочитать `AGENTS.md` и выполнять назначенную пользователем задачу. Минимальные
 технические проверки описаны в ARCHITECTURE §8, инженерные контракты первого
-среза — в §10, порядок работ — в ROADMAP. WB-03 и последующие задачи остаются TODO.
+среза — в §10, порядок работ — в ROADMAP. WB-04 и последующие задачи остаются TODO.
 Старый тикет `docs/implementation/01-project-structure.md` содержит
 прежние требования (в том числе compiler) и не является текущим поручением;
 актуальные границы задают SPEC и ARCHITECTURE.
 
-Устанавливается минимальный `src/workflow_bench`, без runtime dependencies.
+Устанавливается `src/workflow_bench` с native Harbor parser и jsonschema.
+Прямые runtime dependencies — Harbor 0.24.0, jsonschema и referencing
+(локальное разрешение JSON Schema refs); разрешённые версии и
+hashes всех транзитивных зависимостей находятся в `uv.lock`. Harbor устанавливает
+в том числе модельные SDK; загрузка Task не вызывает модели или Docker.
 Команды запуска benchmark пока нет. `workflow-bench` — имя distribution,
 `workflow_bench` — импортируемый пакет; CLI не создан.
 
@@ -71,6 +75,9 @@ Task + инструменты
 | uv_build | 0.12.4 / точная версия в `build-system.requires`, проверена изолированная PEP 517 сборка |
 | pytest | 9.1.1 / `uv.lock`, dev group |
 | Ruff | 0.17.0 / `uv.lock`, dev group |
+| Harbor | 0.24.0 / точная прямая зависимость; проверены native Task/config parser |
+| jsonschema | 4.26.0 / `uv.lock`; Draft 2020-12 |
+| referencing | 0.37.0 / прямая зависимость для проверки локальных refs |
 
 Prerequisites: доступный `uv` (проверена указанная версия) и доступ к PyPI и
 загрузке Python при первом восстановлении. Системный `python3` 3.10.11 не
@@ -86,12 +93,13 @@ uv sync --locked
 uv lock --check --offline
 uv run --locked pytest -q
 uv run --locked pytest --collect-only -q
-uv run --locked ruff check conftest.py src tests
-uv run --locked ruff format --check conftest.py src tests
+uv run --locked ruff check src tests
+uv run --locked ruff format --check src tests
 ```
 
-Результат: lock соответствует конфигурации; pytest — 23 passed, collect-only —
-23 tests collected; Ruff lint/format — exit 0, без lint-исключений.
+Результат WB-03: lock соответствует конфигурации; pytest — 99 passed
+(23 S1 + 76 S2), collect-only — 99 tests collected; Ruff lint/format — exit 0,
+без lint-исключений.
 Форматирование ограничено созданным Python-кодом: Ruff 0.17 также обрабатывает
 Markdown; первоначальный `ruff format --check .` завершился exit 1 на примерах
 в ARCHITECTURE и ещё не отформатированном новом коде. Новый код отформатирован,
@@ -106,7 +114,7 @@ Markdown; первоначальный `ruff format --check .` завершил�
 `tests/fast/test_gate.py` запускает настоящий pytest в временных проектах через
 штатный pytester. Probes создают только локальные файлы-сигналы import/setup;
 не обращаются к Docker, сети или моделям. Каждый дочерний запуск имеет timeout
-10 секунд. Поведение gate реализовано в корневом `conftest.py`:
+10 секунд. Поведение gate реализовано в `tests/conftest.py`:
 
 - Default и default collect-only не импортируют `tests/integration` и `tests/model`.
 - Явный integration-каталог, файл или node ID без opt-in отклоняются до setup,
@@ -118,8 +126,8 @@ Markdown; первоначальный `ruff format --check .` завершил�
 - Перед выполнением fixture из gated-каталога повторно проверяется gate;
   прямой запрос такой fixture из fast-теста отклоняется до файла-сигнала setup.
 
-В репозитории пока есть только fast-проверки gate. Настоящие resource fixtures,
-integration/model-каталоги и бизнес-тесты не созданы. Будущие ресурсы должны
+В репозитории есть fast-проверки gate и Definition S2. Настоящие resource fixtures,
+integration/model-каталоги и исполняемые benchmark-проверки не созданы. Будущие ресурсы должны
 создаваться внутри fixtures после проверки разрешения; import/collection,
 параметризация и root autouse setup не должны создавать ресурсы
 ([Principles §5](Principles.md)). Gate защищает от случайного запуска тестовых
@@ -130,69 +138,97 @@ exit 5, без import/setup. Это проверка gate, а не успешн�
 `pytest tests/integration --run-integration` сейчас не является рабочим контролем:
 каталога нет. Отсутствующие Docker/images/credentials не объявляются зелёным skip.
 
-## Проверка упаковки и восстановления
+## Публичный экспорт: S2
 
-После установки импорт проверен с изолированным `sys.path` из другого cwd:
+[definition.py](src/workflow_bench/definition.py) предоставляет Interface
+`load_task(task_path, *, tool_contract) → TaskMaterials` и
+`export_public(materials, destination) → PublicPackage`. Все пути абсолютные;
+относительные пользовательские пути обрабатывает caller. CLI ещё нет.
+`TaskMaterials` содержит настоящий Harbor `Task`, публичные JSON-деревья,
+постановку, проверенные приватные пути и hashes прочитанных материалов.
+`PublicPackage` возвращает законченный каталог и относительные имена/SHA-256.
+Имена файлов имеют одного владельца: `PUBLIC_PACKAGE_FILES` в
+[contracts.py](src/workflow_bench/contracts.py). Loader/exporter используют этот
+фиксированный набор; доверенные шаблоны Composer/workflow получают имена при
+экспорте. Постановка Task не проходит шаблонную подстановку. Коды ошибок принадлежат
+`DefinitionErrorCode`; `DefinitionError.code` сохраняет строковый контракт.
+Деревья JSON после загрузки не мутируются. Полные условия вызовов и безопасные
+коды `DefinitionError` описаны в docstrings этих функций.
+
+Новая Task той же формы подключается своим путём: `instruction.md`, native
+`task.toml`, публичный JSON по `metadata.wb_public`, приватные файлы по
+`wb_cases`/`wb_rubric` и native verifier script. Core не регистрирует Task и не
+интерпретирует имена её бизнес-операций. Публичный tool contract передаётся явно;
+получение из app image ещё относится к WB-04.
+
+Техническое решение WB-03: собственные схемы материалов/metadata/tools версии
+1.0 лежат в устанавливаемых [resources](src/workflow_bench/resources/).
+`task.json` сохраняет форму ARCHITECTURE §6: input_schema, example, feedback;
+лишние поля в публичных envelopes отклоняются. Tools envelope содержит
+`schema_version="1.0"`, `app_image`, `profile`, `tools`; app/profile совпадают
+с `wb_app_image`/`wb_tool_profile`. Поля операций определяет
+[tools.schema.json](src/workflow_bench/resources/tools.schema.json); core проверяет
+их форму, уникальность имён и вложенные schemas, не предметную семантику.
+Для input и tools поддержан Draft 2020-12 с fragment-ссылками на embedded `$defs`;
+набор внешних схем в WB-03 пуст. HTTP/file refs отклоняются, включая неиспользуемые;
+локальные refs должны разрешаться в schemas до приёма данных.
+Каждый прочитанный файл ограничен 4 MiB до декодирования; JSON — UTF-8 без duplicate
+keys и нечисловых/бесконечных значений.
+
+Composer получает только instruction.md, task.json (весь учебный example.state
+и публичные правила feedback), tools.json, workflow.md, workflow.schema.json,
+composer.md. Cases.state/expected, rubric, tests/solution, native config,
+служебные документы и личные файлы не экспортируются. Экспорт собирает allowlist
+из снимков в памяти и ресурсов пакета, не обходит исходное дерево. Caller задаёт
+новое имя destination с существующим parent и исключительно владеет этим именем
+на время вызова; exporter пишет во временный сосед и публикует через rename.
+При ошибке его временный каталог удаляется, существующий destination сохраняется.
+Task во время загрузки должна оставаться стабильной. Это правила доверенного
+host Interface, не sandbox-защита от конкурентной подмены filesystem.
+
+Проверенная команда S2 (обычные временные файлы, настоящий native parser и validator):
 
 ```sh
-.venv/bin/python -I -c 'import os, tempfile; os.chdir(tempfile.gettempdir()); import workflow_bench; from importlib.metadata import version; print(version("workflow-bench")); print(workflow_bench.__file__)'
-uv build
-uv build --force-pep517
+uv run --locked pytest -q tests/fast/test_definition.py
 ```
 
-Обе сборки завершились exit 0: созданы sdist и wheel версии 0.1.0.
-Предупреждение uv о кэше внутри checkout проверено просмотром обоих архивов:
-кэш, Python-среда и служебные документы в них отсутствуют. Wheel содержит только
-пакет и distribution metadata; sdist — пакет, README и project metadata.
+76 проверок покрывают разрешённый учебный state, исключение приватного marker из
+реальных input/state/expected, cases/rubric/tests/solution и личных файлов;
+неверные схемы/пример, повреждённый JSON, duplicate keys, NaN/Infinity,
+traversal/absolute metadata paths, symlink и его parent, FIFO/каталоги,
+отсутствующие материалы, совпадение приватного пути с instruction, безопасную
+ошибку глубоко вложенного native config, ссылки в tool schemas,
+несовпадение профиля, конфликт destination и cleanup
+при сбое записи. Последний контроль подменяет только файловую запись для ошибки
+ОС; loader/exporter не подменяются. Вторая синтетическая Task проходит по пути
+из другого cwd без регистрации. Импорты core просмотрены: предметных зависимостей
+от Telegram/Sapiens нет. S2 не доказывает настоящий Harbor Trial или исполнение n8n.
 
-Следующая команда также выполнена: она копирует только материалы установки в
-новый временный checkout, восстанавливает отдельную non-editable среду из lock,
-затем устанавливает собранный wheel в ещё одну среду. Оба импорта выполняются
-вне checkout и возвращают 0.1.0 из `site-packages`; временные файлы удаляются
-только внутри созданного этой командой каталога.
+Шаблон общего [workflow contract](src/workflow_bench/resources/workflow.md) и его schema
+сейчас описывают только сдачу и общий native envelope. Точные node types,
+typeVersion/options, bindings, BenchInput/BenchResult и runtime compatibility
+предстоит закрепить и проверить в WB-04; envelope не разрешает исполнение сам по себе.
+
+## Проверка упаковки
+
+В WB-03 выполнена изолированная PEP 517 сборка:
 
 ```sh
-.venv/bin/python - <<'PY'
-from pathlib import Path
-import os
-import shutil
-import subprocess
-import tempfile
-
-root = Path.cwd()
-environment = dict(os.environ, UV_CACHE_DIR=str(root / ".uv-cache"),
-                   UV_PYTHON_INSTALL_DIR=str(root / ".uv-python"))
-code = 'import workflow_bench; from importlib.metadata import version; print(version("workflow-bench")); print(workflow_bench.__file__)'
-with tempfile.TemporaryDirectory(prefix="wb02-verify-") as temporary:
-    scratch = Path(temporary)
-    project = scratch / "project"
-    project.mkdir()
-    for name in ("pyproject.toml", "uv.lock", ".python-version", "README.md"):
-        shutil.copy2(root / name, project / name)
-    shutil.copytree(root / "src", project / "src",
-                    ignore=shutil.ignore_patterns("__pycache__"))
-    subprocess.run(["uv", "sync", "--locked", "--offline", "--no-editable"],
-                   cwd=project, env=environment, check=True, timeout=60)
-    python = project / ".venv" / "bin" / "python"
-    subprocess.run([str(python), "-I", "-c", code], cwd=scratch,
-                   check=True, timeout=10)
-    wheel_env = scratch / "wheel-venv"
-    subprocess.run(["uv", "venv", "--offline", "--python", str(python), str(wheel_env)],
-                   env=environment, check=True, timeout=30)
-    wheel_python = wheel_env / "bin" / "python"
-    wheel = root / "dist" / "workflow_bench-0.1.0-py3-none-any.whl"
-    subprocess.run(["uv", "pip", "install", "--offline", "--no-deps",
-                    "--python", str(wheel_python), str(wheel)],
-                   env=environment, check=True, timeout=30)
-    subprocess.run([str(wheel_python), "-I", "-c", code], cwd=scratch,
-                   check=True, timeout=10)
-PY
+uv build --force-pep517 --offline
 ```
 
-Git-исключения проверены через `git check-ignore --no-index` на синтетических
-именах `.env.probe`, `credentials/probe.json`, `runs/probe/result.json`, среды,
-кэшей и wheel; настоящие секреты не создавались. `uv.lock`, `.python-version`,
-исходники, тесты и `.env.example` не игнорируются.
+Wheel и sdist содержат пакет с ресурсами; кэши, среды, tests, служебные документы
+и личные файлы исключены. Из собранного wheel установлен пакет в отдельный временный
+`--target` через `uv pip install --offline --no-deps`; Python `-I` из другого cwd
+импортировал именно этот установленный пакет и выполнил native load/public export
+на синтетической fixture. Dependencies брались из проверенной locked `.venv`.
+Это проверка поставки ресурсов wheel, не восстановление зависимостей с чистого кэша.
+
+Первый `uv build --force-pep517` без offline не прошёл из-за DNS в sandbox;
+повтор с offline использовал кэш и завершился exit 0. Попытка восстановить отдельную
+wheel-среду только из кэша через `uv pip install --offline` также не прошла:
+resolver не нашёл registry distributions части зависимостей. Для чистой установки
+по-прежнему нужна сеть. Default fast pytest сети не требует.
 
 ## Не делаем в MVP
 
@@ -202,9 +238,8 @@ workflow; не подключаем настоящий Telegram; не строи
 
 ## Статус разработки
 
-Реальные Harbor/n8n/Composer проверки ещё не выполнены. Документационные примеры
-не являются готовыми Task или доказательством изоляции. Docker и модели в WB-02
-не запускались; упаковка и gate не проверяют поведение benchmark. WB-03–WB-05
-не реализованы. Блокировок WB-02 нет; первоначальный запрет записи глобального
-кэша и недоступность сети в sandbox обойдены проектными каталогами и разрешённой
-загрузкой зависимостей без изменения глобальных инструментов.
+WB-03 выполнен; его критерии и передача следующему срезу — в
+[тикете](docs/implementation/WB-03-component-boundaries.md). WB-04–WB-05 не начаты.
+Реальные Harbor Trial/n8n/Composer и Docker sandbox isolation ещё не проверены.
+Docker и модели не запускались; рубрики/кейсы не валидируются и не исполняются
+Definition. S2 и упаковка не подтверждают готовность benchmark или E1.
