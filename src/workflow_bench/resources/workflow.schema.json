@@ -1,12 +1,434 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Workflow Bench common native workflow envelope 1.0",
-  "description": "Structural envelope only; native nodes and runtime validation are separate.",
   "type": "object",
-  "required": ["name", "nodes", "connections"],
+  "additionalProperties": false,
   "properties": {
-    "name": {"type": "string", "minLength": 1},
-    "nodes": {"type": "array", "items": {"type": "object"}},
-    "connections": {"type": "object"}
-  }
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{16}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 32,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "const": "n8n-nodes-base.manualTrigger"
+              },
+              "typeVersion": {
+                "const": 1
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              },
+              "position": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "retryOnFail": {
+                "const": false
+              },
+              "onError": {
+                "const": "stopWorkflow"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "type",
+              "typeVersion",
+              "parameters",
+              "position"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "const": "n8n-nodes-base.set"
+              },
+              "typeVersion": {
+                "const": 3.4
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "assignments": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "assignments": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "string",
+                                "number",
+                                "boolean",
+                                "object",
+                                "array"
+                              ]
+                            },
+                            "value": {}
+                          },
+                          "required": [
+                            "name",
+                            "type",
+                            "value"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "assignments"
+                    ]
+                  },
+                  "options": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": []
+                  }
+                },
+                "required": [
+                  "assignments",
+                  "options"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "retryOnFail": {
+                "const": false
+              },
+              "onError": {
+                "const": "stopWorkflow"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "type",
+              "typeVersion",
+              "parameters",
+              "position"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "const": "n8n-nodes-base.code"
+              },
+              "typeVersion": {
+                "const": 2
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "const": "runOnceForAllItems"
+                  },
+                  "language": {
+                    "const": "javaScript"
+                  },
+                  "jsCode": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "mode",
+                  "language",
+                  "jsCode"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "retryOnFail": {
+                "const": false
+              },
+              "onError": {
+                "const": "stopWorkflow"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "type",
+              "typeVersion",
+              "parameters",
+              "position"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "const": "n8n-nodes-base.httpRequest"
+              },
+              "typeVersion": {
+                "const": 4.2
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "method": {
+                    "const": "POST"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "sendHeaders": {
+                    "const": true
+                  },
+                  "headerParameters": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "parameters": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "parameters"
+                    ]
+                  },
+                  "sendBody": {
+                    "const": true
+                  },
+                  "specifyBody": {
+                    "const": "json"
+                  },
+                  "jsonBody": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "timeout": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10000
+                      },
+                      "response": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "response": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "responseFormat": {
+                                "const": "json"
+                              }
+                            },
+                            "required": [
+                              "responseFormat"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "response"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "timeout",
+                      "response"
+                    ]
+                  }
+                },
+                "required": [
+                  "method",
+                  "url",
+                  "sendHeaders",
+                  "headerParameters",
+                  "sendBody",
+                  "specifyBody",
+                  "jsonBody",
+                  "options"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "retryOnFail": {
+                "const": false
+              },
+              "onError": {
+                "const": "stopWorkflow"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "type",
+              "typeVersion",
+              "parameters",
+              "position"
+            ]
+          }
+        ]
+      }
+    },
+    "connections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "main": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "node": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "main"
+                  },
+                  "index": {
+                    "const": 0
+                  }
+                },
+                "required": [
+                  "node",
+                  "type",
+                  "index"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "main"
+        ]
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "executionOrder": {
+          "const": "v1"
+        }
+      },
+      "required": [
+        "executionOrder"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "nodes",
+    "connections",
+    "settings"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workflow Bench n8n 2.41.5 T1 profile 1.0",
+  "x-max-bytes": 65536,
+  "x-profile-version": "n8n-2.41.5-t1-1.0"
 }

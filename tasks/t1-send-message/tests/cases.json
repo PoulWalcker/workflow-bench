@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "purpose": "development",
+  "cases": [
+    {
+      "id": "fresh-a",
+      "input": {
+        "chat_id": "alpha",
+        "text": "Новый точный текст A"
+      },
+      "state": {
+        "chats": [
+          {
+            "id": "alpha",
+            "display_name": "Anna"
+          },
+          {
+            "id": "beta",
+            "display_name": "Anna"
+          }
+        ],
+        "messages": [
+          {
+            "id": "old-a",
+            "chat_id": "alpha",
+            "direction": "incoming",
+            "text": "Сохранить A"
+          },
+          {
+            "id": "old-b",
+            "chat_id": "beta",
+            "direction": "incoming",
+            "text": "Сохранить B"
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "sent"
+      }
+    },
+    {
+      "id": "fresh-b",
+      "input": {
+        "chat_id": "beta",
+        "text": "={{7 * 7}}\n\"Точный текст B\""
+      },
+      "state": {
+        "chats": [
+          {
+            "id": "alpha",
+            "display_name": "Anna"
+          },
+          {
+            "id": "beta",
+            "display_name": "Anna"
+          }
+        ],
+        "messages": [
+          {
+            "id": "old-a",
+            "chat_id": "alpha",
+            "direction": "incoming",
+            "text": "Сохранить A"
+          },
+          {
+            "id": "old-b",
+            "chat_id": "beta",
+            "direction": "incoming",
+            "text": "Сохранить B"
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "sent"
+      }
+    },
+    {
+      "id": "missing",
+      "input": {
+        "chat_id": "absent",
+        "text": "Не отправлять"
+      },
+      "state": {
+        "chats": [
+          {
+            "id": "alpha",
+            "display_name": "Anna"
+          },
+          {
+            "id": "beta",
+            "display_name": "Anna"
+          }
+        ],
+        "messages": [
+          {
+            "id": "old-a",
+            "chat_id": "alpha",
+            "direction": "incoming",
+            "text": "Сохранить A"
+          },
+          {
+            "id": "old-b",
+            "chat_id": "beta",
+            "direction": "incoming",
+            "text": "Сохранить B"
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "refused"
+      }
+    }
+  ]
+}

@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import math
 import stat
 import tempfile
 from enum import StrEnum
@@ -11,22 +10,60 @@ from pathlib import Path
 
 from harbor.models.task.config import TaskConfig
 from harbor.models.task.task import Task
-from jsonschema import Draft202012Validator
-from jsonschema.exceptions import SchemaError, ValidationError
-from referencing import Registry, Resource
-from referencing.exceptions import NoSuchResource, Unresolvable
-from referencing.jsonschema import DRAFT202012
 
 from workflow_bench.contracts import (
     PUBLIC_PACKAGE_FILES,
     WORKFLOW_ARTIFACT_FILE,
+    CaseData,
     JsonValue,
     PublicPackage,
     TaskMaterials,
 )
+from workflow_bench.data import (
+    MAX_JSON_BYTES,
+    read_bytes,
+)
+from workflow_bench.data import (
+    DataError as DefinitionError,
+)
+from workflow_bench.data import (
+    decode_json as _decode,
+)
+from workflow_bench.data import (
+    resource_schema as _schema,
+)
+from workflow_bench.data import (
+    schema_validator as _validator,
+)
+from workflow_bench.data import (
+    validate_json as _validate,
+)
 
-MAX_MATERIAL_BYTES = 4 * 1024 * 1024
-_DRAFT_URI = "https://json-schema.org/draft/2020-12/schema"
+MAX_MATERIAL_BYTES = MAX_JSON_BYTES
+
+
+def load_cases(
+    materials: TaskMaterials, case_ids: tuple[str, ...]
+) -> tuple[CaseData, ...]:
+    """Select fresh cases; state and expectations remain opaque to core."""
+    path = materials.private_paths[0]
+    document = _decode(_read(path, "cases"), "cases")
+    _validate(document, _schema("cases.schema.json"), "cases")
+    by_id = {case["id"]: case for case in document["cases"]}
+    if (
+        len(by_id) != len(document["cases"])
+        or not case_ids
+        or len(set(case_ids)) != len(case_ids)
+    ):
+        raise DefinitionError(DefinitionErrorCode.INVALID_SCHEMA, "cases")
+    if not set(case_ids) <= set(by_id):
+        raise DefinitionError(DefinitionErrorCode.MISSING_CASE, "cases")
+    result = []
+    for case_id in case_ids:
+        case = by_id[case_id]
+        _validate(case["input"], materials.public_data["input_schema"], "case.input")
+        result.append(CaseData(case_id, case["input"], case["state"], case["expected"]))
+    return tuple(result)
 
 
 class DefinitionErrorCode(StrEnum):
@@ -36,106 +73,7 @@ class DefinitionErrorCode(StrEnum):
     PROFILE_MISMATCH = "profile_mismatch"
     DESTINATION_EXISTS = "destination_exists"
     IO_ERROR = "io_error"
-
-
-class DefinitionError(ValueError):
-    """A safe error code and relative material reference, without source values."""
-
-    def __init__(self, code: str, relative_path: str) -> None:
-        self.code = str(code)
-        self.relative_path = relative_path
-        super().__init__(f"{code}: {relative_path}")
-
-
-def _unique_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate_key")
-        result[key] = value
-    return result
-
-
-def _finite_float(value: str) -> float:
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError("nonfinite_number")
-    return number
-
-
-def _reject_constant(value: str) -> JsonValue:
-    raise ValueError("nonfinite_number")
-
-
-def _decode(content: bytes, relative_path: str) -> JsonValue:
-    try:
-        return json.loads(
-            content.decode("utf-8"),
-            object_pairs_hook=_unique_object,
-            parse_constant=_reject_constant,
-            parse_float=_finite_float,
-        )
-    except (ValueError, RecursionError):
-        raise DefinitionError(
-            DefinitionErrorCode.INVALID_SCHEMA, relative_path
-        ) from None
-
-
-def _no_remote(uri: str) -> Resource:
-    raise NoSuchResource(ref=uri)
-
-
-def _validator(schema: JsonValue, relative_path: str) -> Draft202012Validator:
-    try:
-        Draft202012Validator.check_schema(schema)
-        root = Resource.from_contents(schema, default_specification=DRAFT202012)
-        registry = Registry(retrieve=_no_remote)
-        pending = [(root, registry.resolver_with_root(root))]
-        visited = set()
-        while pending:
-            resource, resolver = pending.pop()
-            contents = resource.contents
-            if id(contents) in visited:
-                continue
-            visited.add(id(contents))
-            if isinstance(contents, dict):
-                if contents.get("$schema", _DRAFT_URI) != _DRAFT_URI:
-                    raise ValueError("unsupported_draft")
-                for keyword in ("$ref", "$dynamicRef"):
-                    if keyword in contents:
-                        reference = contents[keyword]
-                        if not reference.startswith("#"):
-                            raise ValueError("nonlocal_ref")
-                        resolved = resolver.lookup(reference)
-                        Draft202012Validator.check_schema(resolved.contents)
-                        # A reference may target a schema under an extension keyword.
-                        pending.append(
-                            (
-                                Resource.from_contents(
-                                    resolved.contents, default_specification=DRAFT202012
-                                ),
-                                resolved.resolver,
-                            )
-                        )
-            pending.extend(
-                (child, resolver.in_subresource(child))
-                for child in resource.subresources()
-            )
-        return Draft202012Validator(schema, registry=registry)
-    except (SchemaError, ValidationError, Unresolvable, ValueError, RecursionError):
-        raise DefinitionError(
-            DefinitionErrorCode.INVALID_SCHEMA, relative_path
-        ) from None
-
-
-def _validate(data: JsonValue, schema: JsonValue, relative_path: str) -> None:
-    validator = _validator(schema, relative_path)
-    try:
-        validator.validate(data)
-    except (ValidationError, Unresolvable, RecursionError):
-        raise DefinitionError(
-            DefinitionErrorCode.INVALID_SCHEMA, relative_path
-        ) from None
+    MISSING_CASE = "missing_case"
 
 
 def _absolute_path(path: Path, label: str) -> None:
@@ -159,15 +97,18 @@ def _regular_file(path: Path, label: str) -> None:
 def _read(path: Path, label: str) -> bytes:
     _regular_file(path, label)
     try:
-        with path.open("rb") as stream:
-            content = stream.read(MAX_MATERIAL_BYTES + 1)
+        return read_bytes(path, label, limit=MAX_MATERIAL_BYTES)
+    except DefinitionError as error:
+        code = (
+            DefinitionErrorCode.INVALID_SCHEMA
+            if error.code == "too_large"
+            else DefinitionErrorCode.UNSAFE_PATH
+        )
+        raise DefinitionError(code, label) from None
     except FileNotFoundError:
         raise DefinitionError(DefinitionErrorCode.MISSING, label) from None
     except OSError:
         raise DefinitionError(DefinitionErrorCode.IO_ERROR, label) from None
-    if len(content) > MAX_MATERIAL_BYTES:
-        raise DefinitionError(DefinitionErrorCode.INVALID_SCHEMA, label)
-    return content
 
 
 def _text(content: bytes, label: str) -> str:
@@ -213,10 +154,6 @@ def _public_reference(
         path == private or path.is_relative_to(private) for private in private_paths
     ):
         raise DefinitionError(DefinitionErrorCode.UNSAFE_PATH, label)
-
-
-def _schema(name: str) -> JsonValue:
-    return json.loads(files("workflow_bench").joinpath("resources", name).read_bytes())
 
 
 def _load_public_data(content: bytes) -> dict[str, JsonValue]:

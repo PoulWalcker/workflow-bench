@@ -1,0 +1,30 @@
+{
+  "scoring_policy": null,
+  "success_policy": null,
+  "criteria": [
+    {
+      "id": "recipient",
+      "required": true
+    },
+    {
+      "id": "text",
+      "required": true
+    },
+    {
+      "id": "multiplicity",
+      "required": true
+    },
+    {
+      "id": "preservation",
+      "required": true
+    },
+    {
+      "id": "journal",
+      "required": true
+    },
+    {
+      "id": "refusal",
+      "required": true
+    }
+  ]
+}

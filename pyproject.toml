@@ -5,6 +5,7 @@ description = "Native Task loading and public Composer packages"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "aiohttp==3.14.5",
     "harbor==0.24.0",
     "jsonschema>=4.26.0",
     "referencing>=0.37.0",

@@ -1,0 +1,16 @@
+schema_version = "1.3"
+artifacts = ["/work/workflow.json"]
+[metadata]
+wb_public = "task.json"
+wb_cases = "tests/cases.json"
+wb_rubric = "tests/rubric.json"
+wb_app_image = "wb-telegram:wb04"
+wb_tool_profile = "t1-api-v1"
+[environment]
+docker_image = "wb-telegram:wb04"
+workdir = "/tmp"
+network_mode = "no-network"
+[verifier]
+environment_mode = "separate"
+network_mode = "no-network"
+user = "65534"

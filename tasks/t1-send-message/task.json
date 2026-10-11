@@ -1,0 +1,48 @@
+{
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "chat_id",
+      "text"
+    ],
+    "properties": {
+      "chat_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "text": {
+        "type": "string",
+        "maxLength": 4096
+      }
+    }
+  },
+  "example": {
+    "input": {
+      "chat_id": "training",
+      "text": "Учебное сообщение"
+    },
+    "state": {
+      "chats": [
+        {
+          "id": "training",
+          "display_name": "Учебный чат"
+        }
+      ],
+      "messages": []
+    }
+  },
+  "feedback": {
+    "criterion_ids": [
+      "recipient",
+      "text",
+      "multiplicity",
+      "preservation",
+      "journal",
+      "refusal"
+    ],
+    "private_values": false
+  }
+}

@@ -1,6 +1,6 @@
 # WB-04 — E1: первый реальный сквозной T1 без модели
 
-Статус: **TODO**. Этап 1 [ROADMAP](../../ROADMAP.md).
+Статус: **DONE** · 12 октября 2026 года. Этап 1 [ROADMAP](../../ROADMAP.md).
 
 ## Цель и наблюдаемый результат
 
@@ -111,7 +111,7 @@ execution/contracts, связь штатных операций Harbor, мини
 действие передачи либо точное ограничение. Лишь затем при доказанной необходимости
 проверить один BaseVerifier hook; приватные методы Trial не становятся нашим API.
 
-Техническое предложение T1 API для согласования автором/владельцем до контролей:
+Технический профиль T1 API согласован владельцем до предметных контролей:
 `get_chat(chat_id)`, `list_messages(chat_id)`, `send_message(chat_id, text)`;
 вход/выход JSON, точный ID, `not_found` без эффекта. Отправка без idempotency key:
 каждый принятый write создаёт новое сообщение. Публичное чтение сообщений даёт
@@ -186,3 +186,54 @@ state, лишних triggers/integrations, неправильных slots и с�
 WB-05 получает воспроизводимую команду, ручной native-контроль, реальные версии,
 путь и схему доверенных фактов, результат проверки lifecycle, правила T1 API,
 точки управляемых fault-инъекций и список ещё недоказанных отрицательных контролей.
+
+
+## Выполнено в WB-04
+
+Native T1 проходит штатный oracle → collection после stop → приём/validation →
+единственный n8n CLI import/execute → revoke/freeze/stop → защищённые native tests →
+штатный separate verifier. Lifecycle-проба подтвердила передачу через публичный
+VERIFICATION_START до upload tests; BaseVerifier hook не потребовался. Core не
+импортирует Telegram, не изменяет бизнес-логику и не запускает модели.
+
+Согласованный профиль реализован в app-owned tools contract: точный ID,
+not_found без записи, полный T1 list до 100 сообщений, выше limit_exceeded;
+каждая принятая отправка создаёт новое сообщение, idempotency key и автоматических
+повторов отправки нет. Verifier проверяет snapshots и журнал, получателя,
+точный текст, кратность и сохранность. Предел 100 не применяется к state целиком
+и не объявляется лимитом будущих T3/T4.
+
+Реальные результаты:
+
+| Проверка | Результат |
+|---|---|
+| `pytest -q` | 206 passed; 76 прежних S2 проверок сохранены |
+| Opt-in integration из README | 3 passed, 1 upstream Harbor deprecation warning; без mock/skip |
+| Один workflow на fresh-a/fresh-b/missing | Три completed исполнения; все применимые критерии pass, остальные not_applicable; одинаковый source hash |
+| JS/expression-like text | Native runData и регистрация external JS runner; строка input сохранена точно |
+| Реальный T1 API на 100/101 сообщении | Полные 100 / явный limit_exceeded; get_chat по ID; неизвестный send без изменения state |
+| Базовая изоляция | Проверена до исполнения: отдельные среды, отсутствие приватных файлов/socket/control-secret, internal networks/no bind mounts, control недоступен n8n/runner; readonly verifier inputs |
+| Финальная CLI-команда README | Exit 0, `runs/wb04/manual/report.json`; protected bundle и native logs вне Git |
+| Ruff lint/format, lock check, diff check | Exit 0; lint-исключения не добавлялись |
+
+Версии/digests, проверенные команды и технические лимиты принадлежат
+[README](../../README.md#реальный-технический-контроль-wb-04); config, manifest,
+source/bound hashes, bindings, evidence refs и результаты сохранены в игнорируемом
+`runs/wb04/`. Harbor 0.24.0 ожидает численный reward: при score=null штатный
+результат содержит RewardFileNotFoundError, независимый evaluation сохранён.
+CLI n8n 2.41.5 не выводит native execution ID; проверен установленный execute.js,
+не используется guessed ID из БД. Исполнение связано replay ID и native logs.
+Это известные ограничения технического контроля, не полноценный score/E1.
+
+Self-review: сохранены Interface WB-03; строгий JSON/schema validation вынесен
+в общий helper; конфигурация образов/портов/timeouts/resources имеет одного
+владельца; образ собирается по публичному allowlist и locked hashes. Новые модули
+владеют текущими приёмом/исполнением, Harbor lifecycle, frozen Evaluation и точкой
+сборки; отдельного framework/compiler/backend нет. Проверены весь tracked и
+untracked diff, зависимости, машинные пути, секреты, resource ownership и scope.
+Пользовательское AD состояние workflow-bench.zip не изменялось. Commit/push нет.
+
+WB-05 остаются расширенные file/network escapes, fault injection, commit с потерей
+ответа, missing/unknown/cancel, сбои freeze/stop/cleanup и остаточные ресурсы.
+Fault modes ещё не реализованы. Composer, Judge, repair loop, T2–T4, UI и scoring
+MVP не входят в этот результат. WB-05 автоматически не начат.

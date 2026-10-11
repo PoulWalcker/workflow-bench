@@ -1,18 +1,31 @@
 # Workflow submission contract — 1.0
 
-Submit one UTF-8 `{artifact}` containing a native n8n workflow, parameterized
-for the Task's input schema. Reuse the same business logic for fresh inputs.
-`{workflow_schema}` checks only the common JSON envelope. Accepted native node
-types, typeVersion/options, bindings and runtime compatibility must be established
-by the runtime profile before execution; this envelope does not authorize execution.
+Submit one UTF-8 `{artifact}` containing native n8n JSON. The current T1 profile
+is `n8n-2.41.5-t1-1.0`, checked by `{workflow_schema}` and the graph validator.
+The file is at most 65,536 bytes and contains a safe 16-character workflow ID,
+name, nodes, main connections and settings with executionOrder `v1`.
 
-Use ordinary nodes with roles `BenchInput` (input parameters and technical tool
-bindings) and terminal `BenchResult` (completed, refused or unknown claim).
-Learn application state through the permitted tools. Private expectations are
-never an input. The workflow must not call an LLM, use external integrations,
-credential references, pinned data or persistent state. HTTP calls target only
-the supplied tool endpoint. Do not retry writes blindly when the effect is unknown.
+The current allowlist is Manual Trigger 1, Edit Fields/Set 3.4, JavaScript Code 2
+(runOnceForAllItems), and HTTP Request 4.2 (POST, JSON body, supplied tool endpoint,
+JSON response and a finite request timeout). The schema specifies the exact
+permitted options. No credential references, pinned/static data, retries,
+additional triggers, community packages or LLM nodes are accepted. If and Loop
+Over Items are outside this first T1 profile. Profile acceptance alone does not
+prove behavior or expression safety; execution is isolated by the environment.
 
-The proposed node families are Manual Trigger, Edit Fields/Set, HTTP Request,
-JavaScript Code, If and Loop Over Items. Their precise versions and permitted
-options remain subject to the runtime profile; no compatibility is claimed here.
+Use one Manual Trigger connected to a Set node named `BenchInput`. Its single
+assignment has name `bench`, type `object`, and a literal JSON text value
+`{{"input":{{}},"tools":{{}}}}`. The binder replaces only that value with JSON text
+containing the fresh `input` and `tools.base_url`/`tools.capability`. Input strings
+remain data, including strings that resemble n8n expressions. All other nodes,
+expressions, connections and business decisions remain exactly as submitted.
+Learn application state through the permitted tools; private expectations and
+previous sends are never inputs.
+
+All nodes must be reachable and lead to the sole terminal Set node `BenchResult`.
+Its assignments are exactly `status`, `reason_code`, `result`; emit a claim with
+status `completed`, `refused` or `unknown`. Claims and CLI exit status are recorded
+separately from the independent checks of simulator state and action history.
+HTTP calls use only the supplied endpoint and bearer capability. Never retry a
+write automatically: after a lost response, observe the effect through permitted
+reading or report `unknown`. A server response marked sent does not prove receipt.
