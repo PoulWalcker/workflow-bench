@@ -197,30 +197,37 @@ still unconfirmed. No further model run or candidate repair was performed.
 uv run --locked --offline python -m workflow_bench.cli --sapiens --authorize-model --codex-auth "$HOME/.codex/auth.json" --config runs/wb08-prepared-live-600/config.json --task runs/wb07-live-t1-20261012-active/verifier-reassessment/task --output runs/wb08-live-t1-600-20261012
 ```
 
-## WB-17 SimsApp navigation controls
+## SimsApp V1 UI controls (WB-17/WB-18)
 
-SimsApp V1 exposes only `ui_observe` and `ui_action` navigation. It preserves drafts
-and messages; composer/Send and a complete T2 benchmark belong to later tickets.
+SimsApp V1 exposes only `ui_observe` and `ui_action`: navigation, focus, exact
+draft replacement and activation of the visible Send button. Drafts persist per
+conversation; Send atomically appends one outgoing and clears only the sent draft.
+It never exposes a business `send_message` tool. A complete T2 benchmark belongs
+to WB-19.
 [WB-17](docs/implementation/WB-17-simsapp-navigation-implementation.md) records model-free acceptance.
+[WB-18](docs/implementation/WB-18-simsapp-composer-send-implementation.md) records
+composer/send controls and T1 compatibility checks.
 The app builder now assigns unique tags and records the immutable image ID, so a
 new preparation does not retag a previous control's app image.
 
 The confirmed control used `max_calls=100` in the prepared runtime JSON; the
-builder's T1 default of 8 is insufficient for this navigation/control sequence.
+builder's T1 default of 8 is insufficient for this UI control sequence.
 Set that field in the single runtime config before running. All other runtime
 limits retain the builder defaults. Use fresh config/output directories each time:
 
 ```sh
-uv run --locked --offline python environments/build.py --simapp simapps/simsapp --output runs/wb17-final/simsapp-confirm/config.json
+uv run --locked --offline python environments/build.py --simapp simapps/simsapp --output runs/wb18-acceptance/simsapp/config.json
 # Set max_calls to 100 in the prepared config.json.
-uv run --locked --offline pytest -q tests/integration/test_simsapp_navigation.py --run-integration --e1-config runs/wb17-final/simsapp-confirm/config.json --basetemp runs/wb17-final/simsapp-controls --log-cli-level=INFO
+uv run --locked --offline pytest -q tests/integration/test_simsapp_navigation.py tests/integration/test_simsapp_send.py --run-integration --e1-config runs/wb18-acceptance/simsapp/config.json --basetemp runs/wb18-acceptance/simsapp-controls --log-cli-level=INFO
 ```
 
 These controls use existing Harbor isolation/transport/stop and protected Evidence
 with an honest `ui_control` identity. They do not submit a workflow or run a model.
-The independent checks read `FrozenEvidence`; timeout/cancel stop actual children,
-and pending facts remain incomplete. T1 real regression commands and results are
-recorded in WB-17. Native UI/n8n compatibility remains WB-22 work.
+The independent checks read `FrozenEvidence`; lost Send responses preserve exactly
+one commit, timeout/cancel stop actual children, and pending facts remain incomplete.
+MCP discovery is checked in a separate isolated model-free container. T1 real
+regression commands and results are recorded in WB-18. Native UI/n8n compatibility
+remains WB-22 work.
 
 ## Navigation
 

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "app_image": "wb-simsapp:wb17",
-  "profile": "simsapp-navigation-v1",
+  "app_image": "wb-simsapp:wb18",
+  "profile": "simsapp-ui-v1",
   "tools": [
     {
       "name": "ui_observe",
@@ -213,13 +213,13 @@
         "observation_incomplete",
         "transport_unknown"
       ],
-      "idempotency": "No automatic retries; repeat focus or identical replacement is a no-op.",
+      "idempotency": "No automatic retries. Repeated focus or identical replacement is a no-op. Send invalidates its locator and clears the draft; re-entering text and sending again creates another message. No text deduplication.",
       "effect_observation": "Fresh ui_observe and protected transition/observation evidence; acknowledgement alone does not prove receipt."
     },
     {
       "name": "ui_action",
       "schema_version": "1.0",
-      "description": "Act on a current scoped reference: activate, focus, or replace_text on the focused Search textbox. Literal case-sensitive substring search over display name or hint. Back returns to chat_list; open clears query/focus. No Send/composer/scroll.",
+      "description": "Act on a current scoped reference: activate, focus, or replace_text on the focused Search or Message textbox. Search uses literal case-sensitive substring matching (query limit 256 code points). Composer preserves exact text (limit 4096); newline is text. Visible Send atomically appends one outgoing to the opened conversation and clears only its draft, preserving focus. Empty draft disables Send; whitespace is nonempty. Back returns to chat_list; open clears query/focus. No scroll or business API.",
       "arguments_schema": {
         "oneOf": [
           {
@@ -302,7 +302,7 @@
               "text": {
                 "type": "string",
                 "minLength": 0,
-                "maxLength": 256,
+                "maxLength": 4096,
                 "pattern": "^[^\\ud800-\\udfff]*$"
               }
             },
@@ -348,7 +348,7 @@
         "observation_incomplete",
         "transport_unknown"
       ],
-      "idempotency": "No automatic retries; repeat focus or identical replacement is a no-op.",
+      "idempotency": "No automatic retries. Repeated focus or identical replacement is a no-op. Send invalidates its locator and clears the draft; re-entering text and sending again creates another message. No text deduplication.",
       "effect_observation": "Fresh ui_observe and protected transition/observation evidence; acknowledgement alone does not prove receipt."
     }
   ]

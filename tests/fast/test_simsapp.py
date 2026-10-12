@@ -14,7 +14,7 @@ IDENTITY = {
     "run_id": "run",
     "control_id": "navigation",
     "case_id": "synthetic",
-    "profile": "simsapp-navigation-v1",
+    "profile": "simsapp-ui-v1",
     "profile_hash": "b" * 64,
 }
 KEY = "host-only-key"
@@ -110,11 +110,12 @@ def nodes(node):
         yield from nodes(child)
 
 
-def locator(observation, label, *, hint=None):
+def locator(observation, label, *, hint=None, role=None):
     node = next(
         n
         for n in nodes(observation["tree"])
         if n["label"] == label
+        and (role is None or n["role"] == role)
         and (hint is None or n.get("identity", {}).get("identity_hint") == hint)
     )
     return {
@@ -128,13 +129,15 @@ async def observe(app, capability):
     return (await call(app, capability, "ui_observe"))["result"]
 
 
-async def act(app, capability, observation, label, action="activate", **extra):
+async def act(
+    app, capability, observation, label, action="activate", *, role=None, **extra
+):
     return await call(
         app,
         capability,
         "ui_action",
         action=action,
-        locator=locator(observation, label),
+        locator=locator(observation, label, role=role),
         **extra,
     )
 
@@ -173,7 +176,9 @@ def test_navigation_opens_selected_history_and_back_preserves_business_state(
         conversation = await observe(app, capability)
         assert conversation["screen"] == "conversation"
         assert [
-            n["value"] for n in nodes(conversation["tree"]) if n["label"] == "Message"
+            n["value"]
+            for n in nodes(conversation["tree"])
+            if n["label"] == "Message" and n["role"] == "text"
         ] == ["  История\n"]
         await act(app, capability, conversation, "Back")
         assert (await observe(app, capability))["screen"] == "chat_list"
@@ -484,7 +489,8 @@ def test_initial_screens_order_and_drafts_are_observed_without_hidden_data(
             if "identity" in n
         ] == ["Юг"]
         serialized = json.dumps(current, ensure_ascii=False)
-        assert "История" not in serialized and "Чужой draft" not in serialized
+        assert "История" not in serialized
+        assert ("Чужой draft" in serialized) == (screen == "conversation")
         await act(app, capability, current, "Back")
         facts = await frozen(app, tmp_path)
         assert facts["after"]["state"]["ui"]["screen"] == "chat_list"
@@ -563,7 +569,13 @@ def test_capacity_projection_validates_and_remains_complete_without_truncation(
         )
         validate_json(observation, contract["tools"][0]["result_schema"], "observation")
         assert (
-            len([n for n in nodes(observation["tree"]) if n["label"] == "Message"])
+            len(
+                [
+                    n
+                    for n in nodes(observation["tree"])
+                    if n["label"] == "Message" and n["role"] == "text"
+                ]
+            )
             == 100
         )
         assert observation["coverage"]["collection"]["complete"]
@@ -592,5 +604,338 @@ def test_ingress_rejects_unknown_response_marked_as_complete(delivered, tmp_path
         path.write_text(json.dumps(facts))
         with pytest.raises(DataError, match="incomplete_freeze"):
             read_evidence(path, expected_identity=IDENTITY)
+
+    asyncio.run(check())
+
+
+def test_composer_reads_replaces_and_preserves_drafts_per_conversation(
+    delivered, tmp_path
+):
+    async def check():
+        state = seed()
+        state["ui"].update(screen="conversation", active_conversation_id="private-b")
+        state["ui"]["drafts"]["private-b"] = "Старый draft"
+        app = simulator()
+        capability = await start(app, state)
+        initial = await observe(app, capability)
+        composer = next(n for n in nodes(initial["tree"]) if n["role"] == "textbox")
+        assert composer["label"] == "Message" and composer["value"] == "Старый draft"
+        assert not composer["focused"]
+        await act(app, capability, initial, "Message", "focus", role="textbox")
+        focused = await observe(app, capability)
+        text = "  Привет 👩🏽‍💻\ne\u0301 {{literal}}  "
+        await act(
+            app,
+            capability,
+            focused,
+            "Message",
+            "replace_text",
+            role="textbox",
+            text=text,
+        )
+        current = await observe(app, capability)
+        composer = next(n for n in nodes(current["tree"]) if n["role"] == "textbox")
+        assert composer["focused"] and composer["value"] == text
+        assert (
+            await act(
+                app,
+                capability,
+                current,
+                "Message",
+                "replace_text",
+                role="textbox",
+                text=text,
+            )
+        )["result"]["status"] == "no_effect"
+        await act(app, capability, current, "Back")
+        await act(app, capability, await observe(app, capability), "Лена")
+        other = await observe(app, capability)
+        assert (
+            next(n for n in nodes(other["tree"]) if n["role"] == "textbox")["value"]
+            == "Чужой draft"
+        )
+        facts = await frozen(app, tmp_path)
+        assert facts["after"]["state"]["ui"]["drafts"] == {
+            "private-a": "Чужой draft",
+            "private-b": text,
+        }
+        assert facts["after"]["state"]["messages"] == state["messages"]
+        assert facts["after"]["state"]["conversations"] == state["conversations"]
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["  Привет 👩🏽‍💻\ne\u0301 {{literal}}  ", " \t\n ", "я" * 4096],
+    ids=["unicode", "whitespace", "text-limit"],
+)
+def test_send_creates_one_exact_message_and_clears_only_active_draft(
+    delivered, tmp_path, text
+):
+    async def check():
+        state = seed()
+        state["ui"].update(screen="conversation", active_conversation_id="private-b")
+        state["ui"]["drafts"]["private-b"] = "Старый draft"
+        state["messages"].append(
+            {
+                "id": "old-equal",
+                "conversation_id": "private-b",
+                "direction": "outgoing",
+                "text": text,
+            }
+        )
+        app = simulator()
+        capability = await start(app, state)
+        await act(
+            app,
+            capability,
+            await observe(app, capability),
+            "Message",
+            "focus",
+            role="textbox",
+        )
+        replaced = await act(
+            app,
+            capability,
+            await observe(app, capability),
+            "Message",
+            "replace_text",
+            role="textbox",
+            text=text,
+        )
+        assert "error" not in replaced
+        before_send = await observe(app, capability)
+        sent = await act(app, capability, before_send, "Send")
+        assert sent["result"] == {
+            "status": "committed",
+            "revision": before_send["revision"] + 1,
+        }
+        current = await observe(app, capability)
+        assert [
+            n["value"]
+            for n in nodes(current["tree"])
+            if n["role"] == "text" and n["label"] == "Message"
+        ] == ["  История\n", text, text]
+        composer = next(n for n in nodes(current["tree"]) if n["role"] == "textbox")
+        assert composer["value"] == "" and composer["focused"]
+        assert not next(n for n in nodes(current["tree"]) if n["label"] == "Send")[
+            "enabled"
+        ]
+        facts = await frozen(app, tmp_path)
+        after = facts["after"]["state"]
+        assert after["messages"][:-1] == state["messages"]
+        message = after["messages"][-1]
+        assert message["id"] not in {m["id"] for m in state["messages"]}
+        assert {k: v for k, v in message.items() if k != "id"} == {
+            "conversation_id": "private-b",
+            "direction": "outgoing",
+            "text": text,
+        }
+        assert after["ui"]["drafts"] == {"private-a": "Чужой draft", "private-b": ""}
+        assert after["conversations"] == state["conversations"]
+        effect = next(
+            e
+            for e in facts["events"]
+            if e["call_id"] == sent["call_id"] and e["stage"] == "effect"
+        )
+        assert effect["details"]["message_id"] == message["id"]
+        assert {c["path"] for c in effect["details"]["transition"]["changes"]} == {
+            "/messages/2",
+            "/ui/drafts",
+        }
+        assert any(
+            e["details"].get("observation", {}).get("visible_message_ids")
+            == ["private-m", "old-equal", message["id"]]
+            for e in facts["events"]
+        )
+
+    asyncio.run(check())
+
+
+def test_full_message_capacity_rejects_send_atomically(delivered, tmp_path):
+    async def check():
+        state = seed()
+        state["messages"] = [
+            {
+                "id": f"m-{i}",
+                "conversation_id": "private-a",
+                "direction": "incoming",
+                "text": "old",
+            }
+            for i in range(100)
+        ]
+        state["ui"].update(
+            screen="conversation",
+            active_conversation_id="private-b",
+            drafts={"private-a": "Чужой draft", "private-b": "Сохранить"},
+        )
+        app = simulator()
+        capability = await start(app, state)
+        current = await observe(app, capability)
+        result = await act(app, capability, current, "Send")
+        assert result["error"] == {"code": "limit_exceeded", "retryable": False}
+        assert await observe(app, capability) == current
+        facts = await frozen(app, tmp_path)
+        assert facts["before"] == facts["after"]
+        assert all(e["details"]["status"] != "committed" for e in facts["events"])
+
+    asyncio.run(check())
+
+
+def test_repeated_send_is_explicit_and_never_hidden_by_dedup(delivered, tmp_path):
+    async def check():
+        state = seed()
+        state["ui"].update(
+            screen="conversation",
+            active_conversation_id="private-b",
+            drafts={"private-a": "Чужой draft", "private-b": "повтор"},
+        )
+        app = simulator()
+        capability = await start(app, state)
+        initial = await observe(app, capability)
+        first = await act(app, capability, initial, "Send")
+        assert first["result"]["revision"] == 1
+        assert (await act(app, capability, initial, "Send"))["error"][
+            "code"
+        ] == "stale_locator"
+        assert (await act(app, capability, await observe(app, capability), "Send"))[
+            "error"
+        ]["code"] == "disabled"
+        current = await observe(app, capability)
+        assert not next(n for n in nodes(current["tree"]) if n["role"] == "textbox")[
+            "focused"
+        ]
+        await act(app, capability, current, "Message", "focus", role="textbox")
+        await act(
+            app,
+            capability,
+            await observe(app, capability),
+            "Message",
+            "replace_text",
+            role="textbox",
+            text="повтор",
+        )
+        await act(app, capability, await observe(app, capability), "Send")
+        facts = await frozen(app, tmp_path)
+        outgoing = facts["after"]["state"]["messages"][1:]
+        assert len(outgoing) == 2 and outgoing[0]["id"] != outgoing[1]["id"]
+        assert [m["text"] for m in outgoing] == ["повтор", "повтор"]
+        assert all(m["conversation_id"] == "private-b" for m in outgoing)
+        assert facts["after"]["state"]["ui"]["drafts"]["private-a"] == "Чужой draft"
+
+    asyncio.run(check())
+
+
+def test_invalid_composer_actions_never_change_draft_or_messages(delivered, tmp_path):
+    async def check():
+        state = seed()
+        state["ui"].update(screen="conversation", active_conversation_id="private-b")
+        app = simulator()
+        capability = await start(app, state)
+        initial = await observe(app, capability)
+        message = locator(initial, "Message", role="textbox")
+        send = locator(initial, "Send")
+        for arguments, code in [
+            (
+                {"action": "replace_text", "locator": message, "text": "x"},
+                "not_focused",
+            ),
+            ({"action": "activate", "locator": message}, "unsupported_action"),
+            ({"action": "activate", "locator": send}, "disabled"),
+            (
+                {"action": "replace_text", "locator": message, "text": "x" * 4097},
+                "limit_exceeded",
+            ),
+            (
+                {"action": "replace_text", "locator": message, "text": "\ud800"},
+                "invalid_arguments",
+            ),
+            ({"action": "replace_text", "locator": message}, "invalid_arguments"),
+            (
+                {"action": "activate", "locator": send, "text": "bypass"},
+                "invalid_arguments",
+            ),
+            ({"action": "send", "locator": send}, "invalid_arguments"),
+            (
+                {"action": "activate", "locator": {**send, "ref": "hidden"}},
+                "target_unavailable",
+            ),
+        ]:
+            assert (await call(app, capability, "ui_action", **arguments))["error"] == {
+                "code": code,
+                "retryable": False,
+            }
+        assert await observe(app, capability) == initial
+        await act(app, capability, initial, "Message", "focus", role="textbox")
+        assert (
+            await act(
+                app,
+                capability,
+                initial,
+                "Message",
+                "replace_text",
+                role="textbox",
+                text="x",
+            )
+        )["error"]["code"] == "stale_locator"
+        focused = await observe(app, capability)
+        assert (
+            await act(
+                app,
+                capability,
+                focused,
+                "Message",
+                "replace_text",
+                role="textbox",
+                text="",
+            )
+        )["result"]["status"] == "no_effect"
+        await act(app, capability, focused, "Back")
+        unavailable = await observe(app, capability)
+        assert not any(
+            n["role"] == "textbox" or n["label"] == "Send"
+            for n in nodes(unavailable["tree"])
+        )
+        assert (
+            await call(
+                app,
+                capability,
+                "ui_action",
+                action="activate",
+                locator={**send, "revision": unavailable["revision"]},
+            )
+        )["error"]["code"] == "target_unavailable"
+        facts = await frozen(app, tmp_path)
+        assert facts["after"]["state"]["messages"] == state["messages"]
+        assert facts["after"]["state"]["conversations"] == state["conversations"]
+        assert facts["after"]["state"]["ui"]["drafts"] == state["ui"]["drafts"]
+
+    asyncio.run(check())
+
+
+def test_concurrent_send_with_same_locator_commits_once(delivered, tmp_path):
+    async def check():
+        state = seed()
+        state["ui"].update(screen="conversation", active_conversation_id="private-b")
+        state["ui"]["drafts"]["private-b"] = "один"
+        app = simulator()
+        capability = await start(app, state)
+        current = await observe(app, capability)
+        responses = await asyncio.gather(
+            *(act(app, capability, current, "Send") for _ in range(2))
+        )
+        assert sum("result" in r for r in responses) == 1
+        assert [r["error"]["code"] for r in responses if "error" in r] == [
+            "stale_locator"
+        ]
+        facts = await frozen(app, tmp_path)
+        assert facts["after"]["revision"] == 1
+        assert len(facts["after"]["state"]["messages"]) == 2
+        assert facts["after"]["state"]["messages"][-1]["text"] == "один"
+        assert facts["after"]["state"]["ui"]["drafts"] == {
+            "private-a": "Чужой draft",
+            "private-b": "",
+        }
 
     asyncio.run(check())

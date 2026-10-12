@@ -17,7 +17,7 @@ implementation evidence. Source signatures and packaged schemas define exact sha
 | [CLI](src/workflow_bench/cli.py) | Resolve user paths/config, construct dependencies, logging and cancellation; select submission source. |
 | [Composer integration](src/workflow_bench/composer.py), [MCP transport](src/workflow_bench/mcp.py) | Shared Harbor submission with stock Codex or Sapiens and native usage/lifecycle facts; stdio JSON-RPC over existing HTTP tools. Live ChatGPT integration is verified; API-billed mode remains closed. |
 | [Telegram](simapps/telegram/app.py) | One app-owned state, tool semantics/authorization and protected event history. Current API profile; future UI shares this state. |
-| [SimsApp](simapps/simsapp/app.py) | One application-owned state, bounded current UI projection and elementary navigation transitions. No Task target or business API. |
+| [SimsApp](simapps/simsapp/app.py) | One application-owned state, bounded current UI projection and elementary navigation, composer and Send transitions. No Task target or business API. |
 | [Simulator transport](src/workflow_bench/simulator.py) | Shared capability/reset/issue/revoke/drain/freeze/journal and separated HTTP listeners; Telegram and SimsApp supply their own state validation and tool semantics. |
 | `tasks/<task>/tests/` | Business checks/expected/rubric; executed by native separate verifier, not imported into host core. |
 | [contracts](src/workflow_bench/contracts.py), [data](src/workflow_bench/data.py), [resources](src/workflow_bench/resources/) | Checked exchange values, strict external JSON and installed schemas/public texts. |
@@ -286,7 +286,19 @@ revision-linked transition deltas. `read_evidence` independently validates stage
 ordering, references and the delta chain from before to after; unknown/pending
 facts cannot fabricate a complete freeze. App payload semantics stay in app/control
 checks, and no second state/journal or score calculation is stored. The current
-SimsApp profile preserves drafts but exposes no composer/Send, pagination or scroll.
+SimsApp V1 profile (`simsapp-ui-v1`) exposes the active conversation's composer and
+Send, with no pagination or scroll. `replace_text` replaces the focused editable
+value exactly; the wrapper admits message-sized text, while the resolved Search
+control enforces its smaller query bound from the state schema. Drafts are keyed
+by conversation in the same state. Send uses the active conversation and draft,
+appends one outgoing and clears that draft in one revision under the existing
+Simulator lock. Protected deltas capture owned values (including draft replacements),
+and the send effect's message ID links its call to the appended message and later
+observations. FrozenEvidence already validates list append and draft-map deltas;
+no wire version, shared ingress, transport or Harbor lifecycle change is needed.
+The app profile/image and its hash change from WB-17's navigation subset; tool
+wrapper v1 and Evidence v2 retain their existing versions. Lost response remains
+separate from commit; no write retry or deduplication is added.
 
 ## 6. Experiment/configuration interfaces
 

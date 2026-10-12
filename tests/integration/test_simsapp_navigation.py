@@ -25,17 +25,17 @@ def identity():
         "run_id": uuid4().hex,
         "control_id": uuid4().hex,
         "case_id": "navigation",
-        "profile": "simsapp-navigation-v1",
+        "profile": "simsapp-ui-v1",
         "profile_hash": hashlib.sha256(profile.read_bytes()).hexdigest(),
     }
 
 
-async def start(context):
+async def start(context, state=None):
     await context.control(
         "reset",
         {
             "identity": context.identity,
-            "state": seed(),
+            "state": seed() if state is None else state,
             "profile": context.identity["profile"],
             "limits": {"call_timeout_sec": context.config.tool_timeout_sec},
         },
@@ -67,12 +67,12 @@ async function call(name, args={}) {
 }
 function nodes(n) { return [n, ...n.children.flatMap(nodes)]; }
 async function observe() { return (await call('ui_observe')).result; }
-function locator(o, label, hint) {
- const n=nodes(o.tree).find(n=>n.label===label && (hint===undefined || n.identity?.identity_hint===hint));
+function locator(o, label, hint, role) {
+ const n=nodes(o.tree).find(n=>n.label===label && (hint===undefined || n.identity?.identity_hint===hint) && (role===undefined || n.role===role));
  return {scope:o.scope,revision:o.revision,ref:n.ref};
 }
-async function act(o,label,action='activate',text) {
- return call('ui_action',{action,locator:locator(o,label),...(text===undefined?{}:{text})});
+async function act(o,label,action='activate',text,role) {
+ return call('ui_action',{action,locator:locator(o,label,undefined,role),...(text===undefined?{}:{text})});
 }
 (async()=>{"""
         + body
@@ -242,14 +242,21 @@ def test_real_lost_response_keeps_navigation_commit_and_readback(e1_config):
 
 
 @pytest.mark.parametrize("cancelled", [False, True])
+@pytest.mark.parametrize("control", ["Search", "Send"])
 def test_real_timeout_cancel_stop_children_and_seal_pending_navigation(
-    e1_config, cancelled
+    e1_config, cancelled, control
 ):
     async def check():
         e1_config.output_root.mkdir()
         async with asyncio.timeout(e1_config.total_timeout_sec):
             async with replay_environment(e1_config, identity()) as context:
-                capability = await start(context)
+                state = seed()
+                if control == "Send":
+                    state["ui"].update(
+                        screen="conversation", active_conversation_id="private-b"
+                    )
+                    state["ui"]["drafts"]["private-b"] = "pending send"
+                capability = await start(context, state)
                 initial = await node(
                     context,
                     script(
@@ -272,7 +279,9 @@ def test_real_timeout_cancel_stop_children_and_seal_pending_navigation(
                     capability,
                     "require('child_process').spawn('sleep',['600']); await act("
                     + json.dumps(initial)
-                    + ",'Search'); await new Promise(()=>{});",
+                    + ","
+                    + json.dumps(control)
+                    + "); await new Promise(()=>{});",
                 )
 
                 async def stop_writer():

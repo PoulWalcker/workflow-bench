@@ -20,14 +20,21 @@ Open decisions below do not reopen accepted scope or imply completed implementat
 | input / state / expected | Request parameters available to workflow / simulator world observed through tools / private verifier expectations. A public training state does not expose private states. |
 | Unknown | Insufficient knowledge of value/outcome. Zero means a known zero, not missing measurement. |
 
-WB-17 authorizes a bounded standalone Simulated SimsApp V1 navigation environment
-and model-free controls under the [WB-17 navigation implementation](docs/implementation/WB-17-simsapp-navigation-implementation.md).
+WB-17 and WB-18 authorize a bounded standalone Simulated SimsApp V1 UI environment
+and model-free controls under the [WB-17 navigation implementation](docs/implementation/WB-17-simsapp-navigation-implementation.md)
+and [WB-18 composer/send implementation](docs/implementation/WB-18-simsapp-composer-send-implementation.md).
 This is a narrow exception to the single-Telegram scope and Sapiens progression
-wording below: T1 stays compatible, E3 remains blocked, and WB-17 does not complete
+wording below: T1 stays compatible, E3 remains blocked, and WB-17/18 do not complete
 T2 or revise release gates. SimsApp owns one business/UI state and offers only
-current UI observations and elementary navigation actions; tools never receive a
-Task target or private expected values. Composer/Send, Cases/scoring, NAV/model
-experiments, UI V2 and native compatibility remain separate WB-18–WB-22 work.
+current UI observations and elementary navigation, focus, replacement and Send
+actions; tools never receive a Task target or private expected values. Send appends
+one outgoing message with the active conversation's exact nonempty draft and clears
+only that draft atomically, preserving focus. Unicode, whitespace and newlines are
+preserved; no text deduplication or automatic write retry applies. Empty drafts
+disable Send. Drafts persist per conversation; navigation preserves business state.
+Task-specific draft permissions remain the verifier's responsibility.
+Cases/scoring, NAV/model experiments, UI V2 and native compatibility remain
+separate WB-19–WB-22 work.
 
 ## 1. Goal and limits of conclusions
 

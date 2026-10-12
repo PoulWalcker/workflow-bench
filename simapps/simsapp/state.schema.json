@@ -116,7 +116,8 @@
         "focus": {
           "enum": [
             null,
-            "search"
+            "search",
+            "composer"
           ]
         },
         "drafts": {

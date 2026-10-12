@@ -55,3 +55,12 @@ unavailable credentials/Docker or a successful reference in place of Composer.
 **DONE — bounded navigation V1**, with protected Evidence, 5 real model-free Harbor
 controls, 303 fast tests and 37 selected T1 regressions. Send, full T2, NAV/V2 and
 WB-18–WB-22 implementation remain outside this slice.
+
+## WB-18 implementation result
+
+[WB-18 composer/Send](docs/implementation/WB-18-simsapp-composer-send-implementation.md):
+**DONE — bounded SimsApp UI V1**, 311 fast tests, 10 real model-free controls,
+3 final Send confirmations and 37 selected T1 compatibility checks. Atomic exact
+message/draft transition, explicit errors/stale locators, lost response and pending
+Send stop/freeze verified. No shared lifecycle/wire/T1 change; no T2 Cases/verifier,
+NAV/Static App Model/V2, n8n extensions or model calls. Work stops after WB-18.

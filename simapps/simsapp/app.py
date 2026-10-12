@@ -5,7 +5,7 @@ import logging
 from collections.abc import Sequence
 from copy import deepcopy
 from pathlib import Path
-from uuid import NAMESPACE_OID, uuid5
+from uuid import NAMESPACE_OID, uuid4, uuid5
 
 from jsonschema.exceptions import ValidationError
 
@@ -47,12 +47,14 @@ class Navigation:
             valid = (
                 ui["active_conversation_id"] in conversations
                 and ui["query"] == ""
-                and ui["focus"] is None
+                and ui["focus"] in {None, "composer"}
             )
         else:
             valid = ui["active_conversation_id"] is None
             if ui["screen"] == "chat_list":
                 valid = valid and ui["query"] == "" and ui["focus"] is None
+            else:
+                valid = valid and ui["focus"] in {None, "search"}
         if not valid:
             raise ValueError()
 
@@ -179,6 +181,27 @@ class Navigation:
                         )
                     )
             children.append(node("group", "History", children=history))
+            children.append(
+                node(
+                    "textbox",
+                    "Message",
+                    value=ui["drafts"].get(conversation["id"], ""),
+                    actions=["focus", "replace_text"],
+                    focused=ui["focus"] == "composer",
+                    target="composer",
+                    conversation_id=conversation["id"],
+                )
+            )
+            children.append(
+                node(
+                    "button",
+                    "Send",
+                    actions=["activate"],
+                    enabled=bool(ui["drafts"].get(conversation["id"], "")),
+                    target="send",
+                    conversation_id=conversation["id"],
+                )
+            )
         else:
             buttons = []
             for conversation in self.state["conversations"]:
@@ -259,7 +282,14 @@ class Navigation:
             error = "target_unavailable"
         else:
             element, target, conversation_id = targets[locator["ref"]]
-            if not element["enabled"]:
+            if (
+                target == "query"
+                and arguments["action"] == "replace_text"
+                and len(arguments["text"])
+                > STATE_SCHEMA["properties"]["ui"]["properties"]["query"]["maxLength"]
+            ):
+                error = "limit_exceeded"
+            elif not element["enabled"]:
                 error = "disabled"
             elif arguments["action"] not in element["actions"]:
                 error = "unsupported_action"
@@ -268,11 +298,16 @@ class Navigation:
         if error:
             return None, error, effect
         ui = self.state["ui"]
-        previous = dict(ui)
+        previous = deepcopy(ui)
+        message = None
         if arguments["action"] == "focus":
-            ui["focus"] = "search"
+            ui["focus"] = "composer" if target == "composer" else "search"
         elif arguments["action"] == "replace_text":
-            ui["query"] = arguments["text"]
+            if target == "composer":
+                if ui["drafts"].get(conversation_id, "") != arguments["text"]:
+                    ui["drafts"][conversation_id] = arguments["text"]
+            else:
+                ui["query"] = arguments["text"]
         elif target == "clear":
             ui["query"] = ""
         elif target == "search":
@@ -288,11 +323,34 @@ class Navigation:
                 query="",
                 focus=None,
             )
+        elif target == "send":
+            if (
+                len(self.state["messages"])
+                >= STATE_SCHEMA["properties"]["messages"]["maxItems"]
+            ):
+                return None, "limit_exceeded", effect
+            message = {
+                "id": uuid4().hex,
+                "conversation_id": conversation_id,
+                "direction": "outgoing",
+                "text": ui["drafts"][conversation_id],
+            }
+            self.state["messages"].append(message)
+            ui["drafts"][conversation_id] = ""
+            effect["message_id"] = message["id"]
         changes = [
-            {"path": "/ui/" + key, "before": previous[key], "after": ui[key]}
+            {"path": "/ui/" + key, "before": previous[key], "after": deepcopy(ui[key])}
             for key in ui
             if previous[key] != ui[key]
         ]
+        if message is not None:
+            changes.append(
+                {
+                    "path": f"/messages/{len(self.state['messages']) - 1}",
+                    "before": None,
+                    "after": message,
+                }
+            )
         if changes:
             effect.update(
                 status="committed",
