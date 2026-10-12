@@ -160,6 +160,13 @@ The builder requires explicit `--simapp`; the selected app owns its image tag an
 contracts. Shared images expose regular protocol files at `/bench/tools.json` and
 `/bench/state.schema.json`, with application code at `/app/simapp`.
 
+The builder's optional Composer target currently inherits the app image, including
+`/app/simapp` and its fixtures. The existing private-access probe does not reject
+those paths. SimsApp's model-free Replay controls verify n8n/runner isolation only;
+they do not establish the required source/fixture isolation for Composer. Using
+that target for SimsApp candidate generation needs a separate image-packaging
+correction and real Composer isolation verification.
+
 Replay/runner use internal tools/broker networks, no exposed host ports/bind mounts,
 read-only roots, tmpfs, resource limits, dropped capabilities/no-new-privileges.
 Host control is an authenticated management-IP listener with a dynamic loopback host

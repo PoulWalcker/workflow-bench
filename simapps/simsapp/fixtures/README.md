@@ -150,7 +150,7 @@ uv run --locked --offline pytest -q tests/fast/test_simsapp_fixtures.py
 ```
 
 Optional source comparison requires a separately supplied private source directory;
-it is not a build/test prerequisite and must not be copied into the checkout:
+it is not a build/test prerequisite and must not be committed or included in images:
 
 ```sh
 uv run --locked --offline python simapps/simsapp/fixtures/check.py --source-root "${AX_SOURCE_ROOT:?Set AX_SOURCE_ROOT to the private capture directory}"
