@@ -251,6 +251,86 @@ def codex_preflight(
     raise DataError("provider_enforcement_unverified", "model_budget")
 
 
+def codex_agent_config(
+    composer: dict[str, JsonValue], config: E1Config, auth_path: Path | None = None
+) -> AgentConfig:
+    """Native Codex configuration, also used by harnesses with internal Codex."""
+    subscription = composer.get("authentication") == "chatgpt"
+    agent = AgentConfig(
+        import_path="workflow_bench.composer:SessionSafeCodex",
+        model_name="openai/" + composer["model"],
+        kwargs={
+            "version": composer["cli_version"],
+            "prompt_template_path": None,
+            "config": {
+                "web_search": "disabled",
+                "model_reasoning_effort": composer["reasoning_effort"],
+                "model_provider": "bench",
+                "model_providers": {
+                    "bench": {
+                        "name": "isolated provider stub",
+                        "base_url": STUB_BASE_URL,
+                        "env_key": "OPENAI_API_KEY",
+                        "wire_api": "responses",
+                        "request_max_retries": 0,
+                        "stream_max_retries": 0,
+                        "stream_idle_timeout_ms": math.ceil(
+                            config.submission_timeout_sec * 1000
+                        ),
+                    }
+                },
+                "features": {"multi_agent": False},
+            },
+        },
+        env={
+            "OPENAI_API_KEY": "wb-synthetic-no-provider-access",
+            "OPENAI_BASE_URL": STUB_BASE_URL,
+            "CODEX_AUTH_JSON_PATH": "",
+            # Harbor treats AUTH flags as secrets; lowercase false would corrupt raw JSON on scrubbing.
+            "CODEX_FORCE_AUTH_JSON": "False",
+        },
+        mcp_servers=[
+            MCPServerConfig(
+                name="tools",
+                transport="stdio",
+                command="python",
+                args=[
+                    "-m",
+                    "workflow_bench.mcp",
+                    "--contract",
+                    "/work/tools.json",
+                    "--connection",
+                    "/work/tools-connection.json",
+                    "--timeout",
+                    str(config.tool_timeout_sec),
+                ],
+            )
+        ],
+    )
+    if subscription:
+        native_config = agent.kwargs["config"]
+        native_config["model_provider"] = "chatgpt"
+        native_config["model_providers"] = {
+            "chatgpt": {
+                "name": "OpenAI ChatGPT",
+                "requires_openai_auth": True,
+                "wire_api": "responses",
+                "request_max_retries": 0,
+                "stream_max_retries": 0,
+                "stream_idle_timeout_ms": math.ceil(
+                    config.submission_timeout_sec * 1000
+                ),
+            }
+        }
+        agent.env = {
+            "CODEX_AUTH_JSON_PATH": str(auth_path),
+            "CODEX_FORCE_AUTH_JSON": "False",
+            "OPENAI_API_KEY": "",
+            "OPENAI_BASE_URL": "",
+        }
+    return agent
+
+
 async def submit_codex(
     *,
     public: PublicPackage,
@@ -265,7 +345,38 @@ async def submit_codex(
     authorized: bool = False,
     auth_path: Path | None = None,
 ) -> ControlledSubmission:
-    """A fresh exploration world and native Trial yield one stopped submission.
+    return await submit_installed(
+        public=public,
+        root=root,
+        run_id=run_id,
+        attempt_id=attempt_id,
+        previous=previous,
+        feedback=feedback,
+        config=config,
+        composer=composer,
+        budget=budget,
+        authorized=authorized,
+        auth_path=auth_path,
+        agent=codex_agent_config(composer, config, auth_path),
+    )
+
+
+async def submit_installed(
+    *,
+    public: PublicPackage,
+    root: Path,
+    run_id: str,
+    attempt_id: str,
+    previous: WorkflowArtifact | None,
+    feedback: list[JsonValue],
+    config: E1Config,
+    composer: dict[str, JsonValue],
+    agent: AgentConfig,
+    budget: dict[str, JsonValue] | None = None,
+    authorized: bool = False,
+    auth_path: Path | None = None,
+) -> ControlledSubmission:
+    """Run one supplied installed agent in a fresh exploration world/native Trial.
 
     Subscription mode uses native Harbor auth and network enforcement. Credentials
     exist only during composition; Replay and independent verification never get them.
@@ -334,6 +445,8 @@ async def submit_codex(
             "simulator",
         ]
         (stage / "task.toml").write_text(native_task.model_dump_toml())
+    agent = agent.model_copy(deep=True)
+    agent.kwargs["prompt_template_path"] = str(handoff)
     started = time.monotonic()
     exploration = None
     native = None
@@ -564,78 +677,6 @@ async def submit_codex(
             async def unused(path):
                 raise RuntimeError("composer_must_not_verify")
 
-            agent = AgentConfig(
-                import_path="workflow_bench.composer:SessionSafeCodex",
-                model_name="openai/" + composer["model"],
-                kwargs={
-                    "version": composer["cli_version"],
-                    "prompt_template_path": str(handoff),
-                    "config": {
-                        "web_search": "disabled",
-                        "model_reasoning_effort": composer["reasoning_effort"],
-                        "model_provider": "bench",
-                        "model_providers": {
-                            "bench": {
-                                "name": "isolated provider stub",
-                                "base_url": STUB_BASE_URL,
-                                "env_key": "OPENAI_API_KEY",
-                                "wire_api": "responses",
-                                "request_max_retries": 0,
-                                "stream_max_retries": 0,
-                                "stream_idle_timeout_ms": math.ceil(
-                                    config.submission_timeout_sec * 1000
-                                ),
-                            }
-                        },
-                        "features": {"multi_agent": False},
-                    },
-                },
-                env={
-                    "OPENAI_API_KEY": "wb-synthetic-no-provider-access",
-                    "OPENAI_BASE_URL": STUB_BASE_URL,
-                    "CODEX_AUTH_JSON_PATH": "",
-                    # Harbor treats AUTH flags as secrets; lowercase false would corrupt raw JSON on scrubbing.
-                    "CODEX_FORCE_AUTH_JSON": "False",
-                },
-                mcp_servers=[
-                    MCPServerConfig(
-                        name="tools",
-                        transport="stdio",
-                        command="python",
-                        args=[
-                            "-m",
-                            "workflow_bench.mcp",
-                            "--contract",
-                            "/work/tools.json",
-                            "--connection",
-                            "/work/tools-connection.json",
-                            "--timeout",
-                            str(config.tool_timeout_sec),
-                        ],
-                    )
-                ],
-            )
-            if subscription:
-                native_config = agent.kwargs["config"]
-                native_config["model_provider"] = "chatgpt"
-                native_config["model_providers"] = {
-                    "chatgpt": {
-                        "name": "OpenAI ChatGPT",
-                        "requires_openai_auth": True,
-                        "wire_api": "responses",
-                        "request_max_retries": 0,
-                        "stream_max_retries": 0,
-                        "stream_idle_timeout_ms": math.ceil(
-                            config.submission_timeout_sec * 1000
-                        ),
-                    }
-                }
-                agent.env = {
-                    "CODEX_AUTH_JSON_PATH": str(auth_path),
-                    "CODEX_FORCE_AUTH_JSON": "False",
-                    "OPENAI_API_KEY": "",
-                    "OPENAI_BASE_URL": "",
-                }
             native = await run_native_trial(
                 stage,
                 attempt_id,
@@ -675,9 +716,7 @@ async def submit_codex(
             except (DataError, OSError, ValueError):
                 LOGGER.warning("phase=creation code=subscription_remaining_unknown")
         metrics = {
-            "source": "native_codex_subscription"
-            if subscription
-            else "model_free_native_codex_adapter",
+            "source": agent.import_path,
             "budget_remaining_known": limits_after is not None
             if subscription
             else True,

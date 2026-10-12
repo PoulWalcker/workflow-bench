@@ -132,6 +132,71 @@ codex login status
 uv run --locked --offline python -m workflow_bench.cli --codex --authorize-model --codex-auth "$HOME/.codex/auth.json" --config runs/wb07-live-implementation/live-config.json --task runs/wb06-task-first-correction/task --output runs/wb07-live-t1-20261012-active
 ```
 
+## WB-08 Sapiens spike
+
+The model-free Sapiens host/CLI path reuses Harbor and the existing T1 evaluation.
+[WB-08](docs/implementation/WB-08-sapiens-spike.md) records the upstream pin,
+license, demonstrated capabilities and limits. Genuine generation remains a
+separate authorized model step. No desktop submodules or Sapiens modifications.
+
+The recorded image preparation used the fetched checkout at
+`/private/tmp/wb08-sapiens-source`, revision
+`71e93cb3de00183c263ec440919b313cf92ed8af`. Supply your own checkout of that exact
+revision with `--source`; only committed public runtime files enter the image.
+Use a fresh output directory. Each build retains a unique image tag and records
+its immutable image ID in the output config. The prepared Codex config supplies the immutable
+base image, Codex version and common runtime configuration.
+
+```sh
+uv run --locked --offline python environments/build_sapiens.py --source /private/tmp/wb08-sapiens-source --codex-config runs/wb07-completion-review/images/codex-config.json --output runs/wb08-unique-builder/config.json
+uv run --locked --offline pytest -q tests/integration/test_sapiens.py -k 'stops_host or stock_codex_failure' --run-integration --e1-config runs/wb07-completion-review/images/config.json --sapiens-config runs/wb08-unique-builder/config.json --basetemp runs/wb08-final-stop-controls --log-cli-level=INFO
+```
+
+The test control temporarily substitutes an inert external Codex process. A real
+Codex app-server checks actual MCP discovery without a model turn, and the real MCP
+transport calls the simulator. Its submitted workflow is synthetic: 5+5 control
+success proves wiring/Evaluation, not Sapiens generation. Separate controls cover
+timeout, external cancellation, native CLI cancellation, host disconnection and
+real Codex failure against the isolated local provider stub. Test images are removed;
+run evidence and the production image are retained.
+
+The full 5+5 repeat in `runs/wb08-final-controls` passed before a concurrent image
+retagging mistake broke the remaining setups. The builder now uses unique tags;
+all five affected checks passed with its retained image. Historical configs referencing
+the deleted image index require fresh image preparation before repetition. The ticket
+preserves the historical commands and the successful 5+5 report.
+
+The earlier production entry point was also exercised model-free. The local HTTP stub returns
+501 rather than a model response; expected results are a terminal failure, missing
+artifact, null score and confirmed stop/cleanup:
+
+```sh
+uv run --locked --offline python -m workflow_bench.cli --sapiens --config runs/wb08-sapiens-images/config.json --task runs/wb07-live-t1-20261012-active/verifier-reassessment/task --output runs/wb08-native-stock-model-free
+```
+
+For a live experiment, `--sapiens` uses the same `--authorize-model` and explicit
+`--codex-auth` requirements as stock Codex, with finite configuration and live
+subscription allowance checks. Do not reuse prior authorization. Prepared live
+configuration alone is not permission, verified authentication or a model result.
+
+The separately authorized WB-08 live run used the unchanged frozen T1 and
+`gpt-6.1-sol` / low. Its first Attempt made two actual MCP calls but hit the
+240-second submission timeout without a workflow. Harbor confirmed stop/cleanup;
+the unknown result blocked a second Attempt. E3 is not complete. See the ticket
+for the live report and native-session retention fix (five real Docker controls passed).
+
+The separately authorized 600-second repeat completed native CLI submission in
+455 seconds, collected a genuine valid workflow and retained three internal Codex
+sessions. It made four admitted MCP calls. All five development cases then failed
+with n8n `ExpressionExtensionError: invalid syntax` in `jsonBody`, before replay
+tool calls. The unavailable/partial evaluation blocked a second Attempt/private final;
+score remains null. Live artifact generation is demonstrated; successful T1 E3 is
+still unconfirmed. No further model run or candidate repair was performed.
+
+```sh
+uv run --locked --offline python -m workflow_bench.cli --sapiens --authorize-model --codex-auth "$HOME/.codex/auth.json" --config runs/wb08-prepared-live-600/config.json --task runs/wb07-live-t1-20261012-active/verifier-reassessment/task --output runs/wb08-live-t1-600-20261012
+```
+
 ## Navigation
 
 | Document | Owner |

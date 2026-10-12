@@ -15,7 +15,7 @@ implementation evidence. Source signatures and packaged schemas define exact sha
 | [Harbor binding](src/workflow_bench/harbor.py) | Native Trial/environment, stop/collection, tool/control transport, protected delivery to separate verifier and owned cleanup. One concrete Harbor integration. |
 | [Evaluation](src/workflow_bench/evaluation.py) | Validate Evidence/criteria identity/refs, apply Task-owned policy to the complete set and map numeric reward. Never execute/correct candidate. |
 | [CLI](src/workflow_bench/cli.py) | Resolve user paths/config, construct dependencies, logging and cancellation; select submission source. |
-| [Composer integration](src/workflow_bench/composer.py), [MCP transport](src/workflow_bench/mcp.py) | One stock Harbor Codex submission and native usage/lifecycle facts; stdio JSON-RPC over existing HTTP tools. Live ChatGPT integration is verified; API-billed mode remains closed. |
+| [Composer integration](src/workflow_bench/composer.py), [MCP transport](src/workflow_bench/mcp.py) | Shared Harbor submission with stock Codex or Sapiens and native usage/lifecycle facts; stdio JSON-RPC over existing HTTP tools. Live ChatGPT integration is verified; API-billed mode remains closed. |
 | [Telegram](simapps/telegram/app.py) | One app-owned state, tool semantics/authorization and protected event history. Current API profile; future UI shares this state. |
 | `tasks/<task>/tests/` | Business checks/expected/rubric; executed by native separate verifier, not imported into host core. |
 | [contracts](src/workflow_bench/contracts.py), [data](src/workflow_bench/data.py), [resources](src/workflow_bench/resources/) | Checked exchange values, strict external JSON and installed schemas/public texts. |
@@ -28,11 +28,14 @@ Contracts do not import app/Composer; core does not import Telegram/Sapiens or b
 on their business names. App/verifier may use common exchange helpers. Common prompts
 consume public materials without Task switches. No Task registry or alternate Task class.
 
-Future Sapiens integration belongs outside core in
-`src/workflow_bench_integrations/sapiens.py` (not yet present), using Harbor
-`BaseInstalledAgent` and common contracts. Only the entry point selects it; core
-must not know CORPORA commands, memory or internal planning. It manages a dedicated
-host+CLI/data-dir/home/config/provider sessions and whole-host/child stop. Both
+The [Sapiens integration](src/workflow_bench_integrations/sapiens.py) lives outside
+core at Harbor's `BaseInstalledAgent` seam, reusing native Codex config/MCP/auth
+helpers through its Codex subclass. Only the entry point selects it (`--sapiens`);
+core knows no CORPORA commands, memory or internal planning. Each native Trial
+starts a dedicated unmodified host+CLI/data-dir/home/config/provider session.
+The shared Composer submission path accepts `AgentConfig`; Harbor closes tools
+and stops the whole container before native artifact collection.
+[WB-08](docs/implementation/WB-08-sapiens-spike.md) owns pin, controls and limits. Both
 harnesses use identical Task/case/profile/rubric/runtime/Evaluation hashes; harness
 configuration and costs remain separately attributable.
 
@@ -285,7 +288,7 @@ snapshots and hashes. Report references native logs and closed run facts once.
 | Schema/artifact/protocol constants | Packaged resources/contracts, not independent CLI options. |
 | Control/candidate/broker capabilities | Host-generated per run/scope; only respective recipient gets secret. Topology allocates host ports. |
 | Model plan | Explicit budget/runtime config, [model-budget.schema.json](src/workflow_bench/resources/model-budget.schema.json); Composer config records mode/image/CLI/model/reasoning/exploration limits. |
-| Codex subscription auth and authorization | Explicit `--codex-auth` path resolved once at entry and `--authorize-model`; native host account facts supply remaining allowance. No API dollar budget is asserted for ChatGPT auth. |
+| Internal Codex subscription auth and authorization | Explicit `--codex-auth` path resolved once at entry and `--authorize-model`; native host account facts supply remaining allowance. No API dollar budget is asserted for ChatGPT auth. |
 
 Preflight validates method/profile/versions and finite approved per-Attempt/total
 budgets/remaining amounts before credential/resources. `model_preflight` validates

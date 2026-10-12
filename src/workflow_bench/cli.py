@@ -85,7 +85,9 @@ def main() -> None:
     parser.add_argument("--case", action="append")
     parser.add_argument("--controlled-submission", type=Path, action="append")
     parser.add_argument("--model-preflight", action="store_true")
-    parser.add_argument("--codex", action="store_true")
+    harness = parser.add_mutually_exclusive_group()
+    harness.add_argument("--codex", action="store_true")
+    harness.add_argument("--sapiens", action="store_true")
     parser.add_argument("--codex-auth", type=Path)
     parser.add_argument("--authorize-model", action="store_true")
     args = parser.parse_args()
@@ -100,10 +102,15 @@ def main() -> None:
             print(json.dumps(plan))
             return
         composer = None
-        if args.codex:
+        if args.codex or args.sapiens:
             from workflow_bench.composer import codex_preflight, submit_codex
 
-            document = read_json(args.config.resolve(), "codex_config")
+            submit = submit_codex
+            if args.sapiens:
+                from workflow_bench_integrations.sapiens import submit_sapiens
+
+                submit = submit_sapiens
+            document = read_json(args.config.resolve(), "composer_config")
             if not isinstance(document, dict) or set(document) not in (
                 {"runtime", "composer"},
                 {"runtime", "composer", "budget"},
@@ -123,7 +130,7 @@ def main() -> None:
                 or args.controlled_submission
             ):
                 parser.error(
-                    "--codex requires --task and --output, without controlled submissions or --case"
+                    "Composer requires --task and --output, without controlled submissions or --case"
                 )
             runtime = document["runtime"]
             validate_json(runtime, resource_schema("e1.schema.json"), "e1_config")
@@ -140,7 +147,7 @@ def main() -> None:
                 raise DataError("invalid_ports", "e1_config")
             config = E1Config(output_root=args.output.resolve(), **runtime)
             composer = partial(
-                submit_codex,
+                submit,
                 composer=document["composer"],
                 budget=document.get("budget"),
                 authorized=args.authorize_model,
@@ -160,7 +167,7 @@ def main() -> None:
             parser.error(
                 "controlled measurement accepts up to two submissions and selects full sets"
             )
-        if not args.codex:
+        if not (args.codex or args.sapiens):
             config = load_config(args.config.resolve(), output=args.output.resolve())
 
         async def execute():
@@ -195,7 +202,7 @@ def main() -> None:
 
         result = asyncio.run(execute())
         if (
-            not args.codex
+            not (args.codex or args.sapiens)
             and not args.controlled_submission
             and not result["evaluation"]["cases"]
         ):
