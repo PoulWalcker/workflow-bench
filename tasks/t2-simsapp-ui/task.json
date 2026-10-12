@@ -1,0 +1,90 @@
+{
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "display_name",
+      "reference",
+      "text"
+    ],
+    "properties": {
+      "display_name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[^\\ud800-\\udfff]*$"
+      },
+      "reference": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "pattern": "^[^\\ud800-\\udfff]*$"
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "pattern": "^[^\\ud800-\\udfff]*$"
+      }
+    }
+  },
+  "example": {
+    "input": {
+      "display_name": "Taylor Lee",
+      "reference": "#TRAIN-7",
+      "text": "Your ticket is ready."
+    },
+    "state": {
+      "conversations": [
+        {
+          "id": "example-contact",
+          "display_name": "Taylor Lee",
+          "identity_hint": null
+        }
+      ],
+      "messages": [
+        {
+          "id": "example-incoming",
+          "conversation_id": "example-contact",
+          "direction": "incoming",
+          "text": "Please check ticket #TRAIN-7."
+        }
+      ],
+      "ui": {
+        "screen": "chat_list",
+        "active_conversation_id": null,
+        "query": "",
+        "focus": null,
+        "drafts": {}
+      }
+    }
+  },
+  "feedback": {
+    "criterion_ids": [
+      "recipient",
+      "text",
+      "multiplicity",
+      "preservation",
+      "journal",
+      "refusal",
+      "ui_only",
+      "inspection"
+    ],
+    "private_values": false,
+    "reason_codes": [
+      "pass",
+      "fail",
+      "unknown",
+      "not_applicable",
+      "wrong_recipient",
+      "altered_text",
+      "duplicate_send",
+      "unauthorized_send",
+      "unrelated_mutation",
+      "inconsistent_journal",
+      "forbidden_api",
+      "insufficient_inspection"
+    ]
+  }
+}

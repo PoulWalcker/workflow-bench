@@ -1,0 +1,550 @@
+{
+  "purpose": "development",
+  "cases": [
+    {
+      "id": "unique",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "Your order will be delivered on Friday."
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "sent",
+        "conversation_id": "unique-target"
+      }
+    },
+    {
+      "id": "duplicate-names",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "duplicate-names reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "decoy",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          },
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "decoy-in",
+            "conversation_id": "decoy",
+            "text": "#A-1043",
+            "direction": "incoming"
+          },
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "sent",
+        "conversation_id": "unique-target"
+      }
+    },
+    {
+      "id": "wrong-contact-reference",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "wrong-contact-reference reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "wrong",
+            "display_name": "Blake",
+            "identity_hint": null
+          },
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "wrong-in",
+            "conversation_id": "wrong",
+            "text": "#A-1042",
+            "direction": "incoming"
+          },
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "sent",
+        "conversation_id": "unique-target"
+      }
+    },
+    {
+      "id": "outgoing-only",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "outgoing-only reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "outgoing",
+            "text": "Order #A-1042 received."
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "reason_code": "not_found"
+      }
+    },
+    {
+      "id": "missing-reference",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "missing-reference reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "No reference here"
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "reason_code": "not_found"
+      }
+    },
+    {
+      "id": "ambiguous",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "ambiguous reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          },
+          {
+            "id": "second",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          },
+          {
+            "id": "second-in",
+            "conversation_id": "second",
+            "text": "Also #A-1042",
+            "direction": "incoming"
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "reason_code": "ambiguous_recipient"
+      }
+    },
+    {
+      "id": "old-equal-text",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "old-equal-text reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          },
+          {
+            "id": "old-equal",
+            "conversation_id": "unique-target",
+            "text": "old-equal-text reply",
+            "direction": "outgoing"
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "sent",
+        "conversation_id": "unique-target"
+      }
+    },
+    {
+      "id": "unicode",
+      "input": {
+        "display_name": "Лена 👩🏽‍💻",
+        "reference": "é #Заказ",
+        "text": "  Доставка 👩🏽‍💻\né {{literal}}  "
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Лена 👩🏽‍💻",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Получено é #Заказ!"
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "sent",
+        "conversation_id": "unique-target"
+      }
+    },
+    {
+      "id": "unrelated-drafts",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "unrelated-drafts reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "other",
+            "display_name": "Other",
+            "identity_hint": null
+          },
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          }
+        ],
+        "ui": {
+          "screen": "conversation",
+          "active_conversation_id": "other",
+          "query": "",
+          "focus": "composer",
+          "drafts": {
+            "other": "Preserve\n draft ",
+            "unique-target": "Replace target draft"
+          }
+        }
+      },
+      "expected": {
+        "outcome": "sent",
+        "conversation_id": "unique-target"
+      }
+    },
+    {
+      "id": "case-sensitive-reference",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "case-sensitive-reference reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "#a-1042"
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "reason_code": "not_found"
+      }
+    },
+    {
+      "id": "exact-name",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "exact-name reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan ",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "reason_code": "not_found"
+      }
+    },
+    {
+      "id": "multiple-incoming-one-conversation",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "multiple-incoming-one-conversation reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "Order #A-1042 received."
+          },
+          {
+            "id": "another-in",
+            "conversation_id": "unique-target",
+            "text": "Again #A-1042",
+            "direction": "incoming"
+          }
+        ],
+        "ui": {
+          "screen": "search",
+          "active_conversation_id": null,
+          "query": "irrelevant",
+          "focus": "search",
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "sent",
+        "conversation_id": "unique-target"
+      }
+    },
+    {
+      "id": "empty-world",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "#A-1042",
+        "text": "empty-world reply"
+      },
+      "state": {
+        "conversations": [],
+        "messages": [],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "reason_code": "not_found"
+      }
+    },
+    {
+      "id": "unicode-no-normalization",
+      "input": {
+        "display_name": "Alex Morgan",
+        "reference": "é",
+        "text": "unicode-no-normalization reply"
+      },
+      "state": {
+        "conversations": [
+          {
+            "id": "unique-target",
+            "display_name": "Alex Morgan",
+            "identity_hint": null
+          }
+        ],
+        "messages": [
+          {
+            "id": "unique-incoming",
+            "conversation_id": "unique-target",
+            "direction": "incoming",
+            "text": "é"
+          }
+        ],
+        "ui": {
+          "screen": "chat_list",
+          "active_conversation_id": null,
+          "query": "",
+          "focus": null,
+          "drafts": {}
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "reason_code": "not_found"
+      }
+    }
+  ],
+  "schema_version": "1.0"
+}

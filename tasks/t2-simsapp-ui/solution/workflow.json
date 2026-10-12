@@ -1,0 +1,225 @@
+{
+  "id": "wb19Reference001",
+  "name": "T2 context-aware UI reference",
+  "nodes": [
+    {
+      "id": "Start",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "parameters": {},
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "BenchInput",
+      "name": "BenchInput",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bench",
+              "name": "bench",
+              "type": "object",
+              "value": "{\"input\":{},\"tools\":{}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "id": "Decide",
+      "name": "Decide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// One bounded, model-free UI decision step. All locators come from fresh trees.\nfunction step(state, response) {\n  const s = structuredClone(state);\n  function done(status, reason_code = null) {\n    return {...s, done: true, claim: {status, reason_code, result: null}};\n  }\n  function request(phase, operation, args = {}) {\n    return {...s, phase, operation, arguments: args, done: false};\n  }\n  if (response?.error) return done('unknown', response.error.code);\n  const o = response?.result;\n  function nodes(n) { return [n, ...(n.children || []).flatMap(nodes)]; }\n  function observe(phase) { return request(phase, 'ui_observe'); }\n  function action(node, phase, kind = 'activate', text) {\n    if (!node) return done('unknown', 'target_unavailable');\n    return request(phase, 'ui_action', {action: kind,\n      locator: {scope: o.scope, revision: o.revision, ref: node.ref},\n      ...(text === undefined ? {} : {text})});\n  }\n  function control(label, kind) {\n    return nodes(o.tree).find(n => n.simulation?.label === label && n.simulation.actions.includes(kind));\n  }\n  function contacts() {\n    return nodes(o.tree).filter(n => n.simulation?.identity?.display_name === s.input.display_name && n.simulation.actions.includes('activate'));\n  }\n  // Every action is followed by a new observation, including focus changes.\n  if (s.phase?.startsWith('after:')) return observe(s.phase.slice(6));\n  if (!s.phase) return observe('start');\n  if (!o?.tree || o.coverage.tree !== 'complete' || !o.coverage.collection.complete)\n    return done('unknown', 'observation_incomplete');\n  if (s.phase === 'start') {\n    s.index = 0; s.matches = [];\n    if (o.screen !== 'chat_list') return action(control('Back', 'activate'), 'after:list');\n    s.phase = 'list';\n  }\n  if (s.phase === 'list') {\n    const rows = contacts();\n    if (s.index < rows.length) return action(rows[s.index], 'after:history');\n    if (s.matches.length !== 1) return done('refused', s.matches.length ? 'ambiguous_recipient' : 'not_found');\n    return action(rows[s.matches[0]], 'after:target');\n  }\n  if (s.phase === 'history') {\n    const matches = nodes(o.tree).some(n => n.simulation?.direction === 'incoming' && n.simulation.value.includes(s.input.reference));\n    if (matches) s.matches.push(s.index);\n    s.index += 1;\n    return action(control('Back', 'activate'), 'after:list');\n  }\n  if (s.phase === 'target') return action(control('Message', 'focus'), 'after:focused', 'focus');\n  if (s.phase === 'focused') return action(control('Message', 'replace_text'), 'after:ready', 'replace_text', s.input.text);\n  if (s.phase === 'ready') {\n    s.oldEqual = nodes(o.tree).filter(n => n.simulation?.direction === 'outgoing' && n.simulation.value === s.input.text).length;\n    return action(control('Send', 'activate'), 'after:sent');\n  }\n  if (s.phase === 'sent') {\n    const equal = nodes(o.tree).filter(n => n.simulation?.direction === 'outgoing' && n.simulation.value === s.input.text).length;\n    return equal === s.oldEqual + 1 ? done('completed') : done('unknown', 'effect_unknown');\n  }\n  return done('unknown', 'invalid_phase');\n}\n\nconst incoming = $input.first().json;\nconst state = incoming.bench ? {input: incoming.bench.input} : $(\"Decide\").last().json;\nreturn [{json: step(state, incoming.bench ? null : incoming)}];"
+      },
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "id": "Finished",
+      "name": "Finished",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "done",
+              "leftValue": "={{$json.done}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "id": "UI request",
+      "name": "UI request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$('BenchInput').first().json.bench.tools.base_url + '/tools/' + $json.operation}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $('BenchInput').first().json.bench.tools.capability}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({schema_version:'1.0',arguments:$json.arguments})}}",
+        "options": {
+          "timeout": 5000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "id": "BenchResult",
+      "name": "BenchResult",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "type": "string",
+              "value": "={{$json.claim.status}}"
+            },
+            {
+              "id": "reason_code",
+              "name": "reason_code",
+              "type": "string",
+              "value": "={{$json.claim.reason_code}}"
+            },
+            {
+              "id": "result",
+              "name": "result",
+              "type": "object",
+              "value": "={{$json.claim.result}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "position": [
+        1000,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "BenchInput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BenchInput": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "Finished",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UI request": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finished": {
+      "main": [
+        [
+          {
+            "node": "BenchResult",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "UI request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
