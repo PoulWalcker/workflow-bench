@@ -12,19 +12,23 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128,
-      "pattern": "^[^\\ud800-\\udfff]*$"
+      "pattern": "^[^\\ud800-\\udfff]*$",
+      "description": "The conversation's exact display name. Compare Unicode code points and whitespace without case folding, trimming or normalization."
     },
     "reference": {
       "type": "string",
       "minLength": 1,
       "maxLength": 4096,
-      "pattern": "^[^\\ud800-\\udfff]*$"
+      "pattern": "^[^\\ud800-\\udfff]*$",
+      "description": "A literal, case-sensitive substring of at least one incoming message in the conversation. Compare Unicode code points without normalization; outgoing messages do not qualify. Multiple matching incoming messages in one conversation still count as one matching conversation."
     },
     "text": {
       "type": "string",
       "minLength": 1,
       "maxLength": 4096,
-      "pattern": "^[^\\ud800-\\udfff]*$"
+      "pattern": "^[^\\ud800-\\udfff]*$",
+      "description": "The exact new outgoing reply, sent exactly once to the unique match. Preserve Unicode code points, whitespace and newlines without normalization or expression evaluation. A previous identical outgoing message does not satisfy or suppress this new request."
     }
-  }
+  },
+  "description": "Establish the matching conversation from UI observations before sending. Visible identity hints are not matching predicates. Exactly one matching conversation requires one new outgoing message; zero or multiple matches require no send and an explicit refused claim with reason_code not_found or ambiguous_recipient respectively. Only the unique matching conversation's draft may be replaced and cleared by Send; otherwise every draft must be preserved. Do not change unrelated drafts even temporarily. UI search, navigation and focus may change. Existing conversations and messages must remain unchanged, and no other business state may change."
 }

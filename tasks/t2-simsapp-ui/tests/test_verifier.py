@@ -406,3 +406,140 @@ def test_two_observed_matches_are_sufficient_to_refuse_ambiguity(tmp_path):
     facts["after"]["state"]["conversations"].append(third)
     claim = {"status": "refused", "reason_code": "ambiguous_recipient", "result": None}
     assert assess(tmp_path, case, facts, claim)["inspection"]["status"] == "pass"
+
+
+@pytest.mark.parametrize("effect_status", ["pending", "unknown"])
+def test_untouched_target_draft_with_incomplete_freeze_is_unknown(
+    tmp_path, effect_status
+):
+    case = sample()
+    case["state"]["ui"]["drafts"]["unique-target"] = "Existing unsent draft"
+    facts = evidence(case)
+    event(facts, {"status": "unknown", "message_id": None})
+    if effect_status == "pending":
+        del facts["events"][-2:]
+    facts["freeze_status"] = "incomplete"
+    facts["pending_call_ids"] = [facts["events"][0]["call_id"]]
+    result = assess(tmp_path, case, facts)
+    assert result["preservation"]["status"] == "unknown"
+    assert result["preservation"]["reason_code"] == "unknown"
+    assert result["multiplicity"]["status"] == "unknown"
+
+
+def test_no_send_preserves_existing_target_draft(tmp_path):
+    case = sample()
+    case["state"]["ui"]["drafts"]["unique-target"] = "Existing unsent draft"
+    result = assess(tmp_path, case, evidence(case))
+    assert result["preservation"]["status"] == "pass"
+    assert result["multiplicity"]["status"] == "fail"
+
+
+@pytest.mark.parametrize(
+    "freeze_status,status", [("complete", "fail"), ("incomplete", "unknown")]
+)
+def test_uncleared_target_draft_is_a_send_postcondition(
+    tmp_path, freeze_status, status
+):
+    case = sample()
+    case["state"]["ui"]["drafts"]["unique-target"] = "Existing unsent draft"
+    facts = evidence(case)
+    append_message(facts)
+    facts["freeze_status"] = freeze_status
+    result = assess(tmp_path, case, facts)["preservation"]
+    assert result["status"] == status
+    assert result["reason_code"] == status
+
+
+def test_proven_unrelated_draft_mutation_fails_with_incomplete_freeze(tmp_path):
+    case = sample()
+    case["state"]["conversations"].append(
+        {"id": "other", "display_name": "Other", "identity_hint": None}
+    )
+    case["state"]["ui"]["drafts"]["other"] = "Keep me"
+    facts = evidence(case)
+    change_drafts(facts, {"other": "damaged"})
+    change_drafts(facts, {"other": "Keep me"})
+    facts["freeze_status"] = "incomplete"
+    result = assess(tmp_path, case, facts)["preservation"]
+    assert result["status"] == "fail"
+    assert result["reason_code"] == "unrelated_mutation"
+
+
+def test_failed_observation_responses_do_not_confirm_inspection(tmp_path):
+    case = next(
+        c
+        for c in json.loads((TASK / "tests/cases.json").read_text())["cases"]
+        if c["id"] == "duplicate-names"
+    )
+    facts = evidence(case)
+    inspect(facts, case)
+    for entry in facts["events"]:
+        if entry["stage"] == "response":
+            entry["details"]["status"] = "failed"
+    append_message(facts, case["expected"]["conversation_id"], case["input"]["text"])
+    result = assess(tmp_path, case, facts)
+    assert result["inspection"]["status"] == "unknown"
+    assert result["recipient"]["status"] == "pass"
+    assert result["multiplicity"]["status"] == "pass"
+
+
+@pytest.mark.parametrize("delivery", ["failed", "unknown", "missing", "late"])
+def test_other_successful_responses_cannot_confirm_a_history_call(tmp_path, delivery):
+    case = next(
+        c
+        for c in json.loads((TASK / "tests/cases.json").read_text())["cases"]
+        if c["id"] == "duplicate-names"
+    )
+    facts = evidence(case)
+    inspect(facts, case)
+    history = next(
+        e
+        for e in facts["events"]
+        if e["stage"] == "effect"
+        and e["details"]["observation"]["coverage"]["collection"]["kind"] == "history"
+    )
+    response = next(
+        e
+        for e in facts["events"]
+        if e["stage"] == "response" and e["call_id"] == history["call_id"]
+    )
+    if delivery in {"failed", "unknown"}:
+        response["details"]["status"] = delivery
+    else:
+        facts["events"].remove(response)
+    if delivery in {"unknown", "missing"}:
+        facts["freeze_status"] = "incomplete"
+        facts["pending_call_ids"] = [history["call_id"]]
+    append_message(facts, case["expected"]["conversation_id"], case["input"]["text"])
+    if delivery == "late":
+        facts["events"].append(response)
+    for seq, entry in enumerate(facts["events"], 1):
+        entry["seq"] = seq
+    result = assess(tmp_path, case, facts)["inspection"]
+    assert result["status"] == "unknown"
+    assert result["value"] is None
+
+
+def test_interleaved_observation_responses_are_matched_by_call_id(tmp_path):
+    case = sample()
+    facts = evidence(case)
+    inspect(facts, case)
+    responses = [e for e in facts["events"] if e["stage"] == "response"]
+    facts["events"] = [e for e in facts["events"] if e["stage"] != "response"]
+    facts["events"].extend(reversed(responses))
+    for seq, entry in enumerate(facts["events"], 1):
+        entry["seq"] = seq
+    append_message(facts)
+    assert assess(tmp_path, case, facts)["inspection"]["status"] == "pass"
+
+
+def test_a_confirmed_repeat_observation_resolves_delivery_uncertainty(tmp_path):
+    case = sample()
+    facts = evidence(case)
+    inspect(facts, case)
+    for entry in facts["events"]:
+        if entry["stage"] == "response":
+            entry["details"]["status"] = "failed"
+    inspect(facts, case)
+    append_message(facts)
+    assert assess(tmp_path, case, facts)["inspection"]["status"] == "pass"

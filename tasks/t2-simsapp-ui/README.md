@@ -18,8 +18,9 @@ Names, references and text retain Unicode code points, whitespace and newlines.
 One match requires one exact send; zero/multiple matches require an explicit refusal
 and no send. UI search/navigation/focus may change. Only the unique target's draft
 may be replaced and cleared; even temporary unrelated draft mutation is a failure.
-Visible identity hints are not matching predicates. Public instructions give the
-objective and permissions, never a route or hidden recipient ID.
+Visible identity hints are not matching predicates. The short public instruction
+gives the objective; `task.json` schema descriptions publish these matching, refusal
+and preservation rules without a route or hidden recipient ID.
 
 ## Package and interfaces
 
@@ -45,9 +46,15 @@ Eight required criteria: recipient, exact text, multiplicity, preservation, jour
 refusal, UI-only access and inspection. Sends are identified by committed message IDs
 and appended messages, never by counting committed navigation actions. New outgoing
 IDs distinguish existing equal-text messages. Journal inconsistency is unknown;
-trusted wrong effects remain failures even when freeze is incomplete. Inspection
-must precede the first send: unique/missing outcomes require complete candidate
-coverage and all candidate histories; two observed matches suffice for ambiguity.
+trusted wrong effects remain failures even when freeze is incomplete. Preservation
+separates proven unrelated mutations from the draft-clearing postcondition of an
+actual Send; an incomplete Send postcondition remains unknown. Inspection requires
+an observation response matched by `call_id` with status `sent` before the first
+send: unique/missing outcomes require complete candidate coverage and all candidate
+histories; two observed matches suffice for ambiguity. Generated observations with
+failed, unknown, missing or late responses cannot confirm inspection. If those
+observations could supply the missing coverage, inspection remains unknown. A
+`sent` response proves a transport write, not a client receipt acknowledgement.
 
 The current rubric uses `all-required-v1` with **no numeric scoring policy**. No T1
 weights/caps, aggregate, numeric reward or second scorer are introduced. Protected

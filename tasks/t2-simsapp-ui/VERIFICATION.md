@@ -95,3 +95,97 @@ No real private-final set or final measurement was created, exposed or evaluated
 The provisioning mechanism is tested using synthetic sentinel data only. Fixture
 publication/packaging remains WB-18B's responsibility. Online NAV/model execution
 and further work are outside this change.
+
+
+## Independent review fixes — 2026-10-12
+
+Only this Task directory changed. The short `instruction.md`, all Cases, rubric,
+reference solution and shared contracts remain unchanged. No new files, dependencies,
+model calls, commits, pushes or merges.
+
+- Public `task.json` input-schema descriptions now disclose the existing exact-name,
+  literal incoming-reference, Unicode, refusal-code, one-new-send and preservation
+  rules. The separate-verifier schema copy remains equal to that public schema.
+- Preservation distinguishes proven unrelated mutations from the draft-clearing
+  postcondition of an actual Send. Pending/unknown effects and incomplete
+  postconditions remain unknown; temporary unrelated draft corruption still fails.
+- Inspection pairs observation effects with response events by `call_id` and requires
+  status `sent` before the first Send. Failed/unknown/missing/late responses cannot
+  confirm inspection. Potentially sufficient observations with uncertain delivery
+  preserve unknown; unrelated successful responses cannot supply confirmation.
+  A transport write is not a client receipt acknowledgement.
+
+Observed red → green reproductions:
+
+- `test_public_export_discloses_matching_refusal_and_preservation_rules`
+- `test_untouched_target_draft_with_incomplete_freeze_is_unknown[pending]`
+- `test_untouched_target_draft_with_incomplete_freeze_is_unknown[unknown]`
+- `test_no_send_preserves_existing_target_draft`
+- `test_failed_observation_responses_do_not_confirm_inspection`
+
+Additional retained behavioral controls:
+
+- `test_uncleared_target_draft_is_a_send_postcondition` (complete/incomplete freeze)
+- `test_proven_unrelated_draft_mutation_fails_with_incomplete_freeze`
+- `test_other_successful_responses_cannot_confirm_a_history_call`
+  (failed/unknown/missing/late delivery)
+- `test_interleaved_observation_responses_are_matched_by_call_id`
+- `test_a_confirmed_repeat_observation_resolves_delivery_uncertainty`
+
+All synthetic verifier controls use the real `read_evidence` ingress and existing
+`criteria_for` Interface. They do not reuse reference matching logic or prove
+producer trust, receipt acknowledgement or native Replay.
+
+| Check | Result for these fixes |
+|---|---|
+| Task tests | **46 passed**, including all 14 unchanged development Cases |
+| Task + Definition/Execution/Evaluation/T1-verifier regressions | **177 passed**, 21.22 s |
+| Expanded run including SimsApp/AX/fixture regressions | **178 passed, 49 failed**, 25.12 s; this branch lacks the AX fixture trees and checker those tests require |
+| Real Harbor model-free UI controls, corrected separate verifier | **14/14** reference scenarios pass applicable criteria; **3/3** negative controls detect altered text, duplicate send and API bypass |
+| Owned control resources | Each episode confirmed stop/cleanup and asserted deletion; current separate-verifier containers absent after completion |
+| Ruff check/format, all source areas | Passed; 64 Python files formatted |
+| `git diff --check` | Passed |
+
+The missing fixture package is outside this Task's assigned scope. No files were
+copied, built or changed under `simapps/` to make those 49 failures green. This
+regression limitation remains visible. The already prepared immutable SimsApp
+image supplies runtime assets for the real controls; it was not rebuilt.
+
+Commands were run from this worktree using the original checkout's locked
+`.venv/bin/python` (`PY`) and `.venv/bin/ruff` (`RUFF`), as in the earlier validation.
+`CONFIG` and `OUTPUT` below were absolute paths to the original checkout's existing
+`runs/wb19-controls-config.json` and fresh `runs/wb19-review-fixes-controls` respectively.
+The existing config supplied finite 1200 s total / 100-call limits.
+
+```sh
+PYTHONPATH="$PWD/src" PYTHONDONTWRITEBYTECODE=1 "$PY" -m pytest -q \
+  -p no:cacheprovider tasks/t2-simsapp-ui/tests
+
+PYTHONPATH="$PWD/src" PYTHONDONTWRITEBYTECODE=1 "$PY" -m pytest -q \
+  -p no:cacheprovider tasks/t2-simsapp-ui/tests \
+  tests/fast/test_definition.py tests/fast/test_execution.py \
+  tests/fast/test_evaluation.py tests/integration/test_t1_evaluation.py \
+  --run-integration
+
+# Expanded run: 49 failures due to missing branch-local fixture resources.
+PYTHONPATH="$PWD/src" PYTHONDONTWRITEBYTECODE=1 "$PY" -m pytest -q \
+  -p no:cacheprovider tasks/t2-simsapp-ui/tests \
+  tests/fast/test_definition.py tests/fast/test_execution.py \
+  tests/fast/test_evaluation.py tests/fast/test_simsapp.py \
+  tests/fast/test_simsapp_ax.py tests/fast/test_simsapp_fixtures.py \
+  tests/integration/test_t1_evaluation.py --run-integration
+
+PYTHONPATH="$PWD/src" PYTHONDONTWRITEBYTECODE=1 "$PY" \
+  tasks/t2-simsapp-ui/tests/controls.py --config "$CONFIG" --output "$OUTPUT"
+
+"$RUFF" check --no-cache src tests simapps environments tasks
+"$RUFF" format --check --no-cache src tests simapps environments tasks
+git diff --check
+```
+
+Protected facts and the current summary remain under the ignored run directory,
+`wb19-review-fixes-controls/control-results.json`. It records `native_replay=false`
+and Harbor's expected `RewardFileNotFoundError`; no reward or score was fabricated.
+These fixes establish no native Replay success. The three existing native blockers
+(artifact iteration profile, simulator Replay identity/actor and common Evaluation
+identity), numeric methodology and private-final measurement remain unresolved.

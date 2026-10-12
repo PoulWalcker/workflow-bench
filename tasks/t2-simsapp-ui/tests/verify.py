@@ -63,8 +63,9 @@ def criteria_for(
         }
 
     cutoff = min((e["seq"] for e in sends), default=len(facts["events"]) + 1)
-    observations = [
-        e["details"]["observation"]
+    responses = {e["call_id"]: e for e in facts["events"] if e["stage"] == "response"}
+    observation_events = [
+        e
         for e in facts["events"]
         if e["seq"] < cutoff
         and e["operation"] == "ui_observe"
@@ -73,30 +74,51 @@ def criteria_for(
         and e["details"]["observation"]["coverage"]["tree"] == "complete"
         and e["details"]["observation"]["coverage"]["collection"]["complete"]
     ]
-    listed = any(
-        o["coverage"]["collection"]["kind"] == "conversations"
-        and (o["screen"] == "chat_list" or o["query"] in case["input"]["display_name"])
-        and candidates <= set(o["visible_conversation_ids"])
-        for o in observations
-    )
-    inspected = {
-        candidate
-        for candidate in candidates
-        if any(
-            o["coverage"]["collection"]["kind"] == "history"
-            and o["visible_conversation_ids"] == [candidate]
-            and {
-                m["id"] for m in before["messages"] if m["conversation_id"] == candidate
-            }
-            <= set(o["visible_message_ids"])
+    observations = [e["details"]["observation"] for e in observation_events]
+    confirmed_observations = [
+        e["details"]["observation"]
+        for e in observation_events
+        if e["call_id"] in responses
+        and responses[e["call_id"]]["details"]["status"] == "sent"
+        and responses[e["call_id"]]["seq"] < cutoff
+    ]
+
+    def sufficient_inspection(observations: list[dict[str, JsonValue]]) -> bool:
+        listed = any(
+            o["coverage"]["collection"]["kind"] == "conversations"
+            and (
+                o["screen"] == "chat_list"
+                or o["query"] in case["input"]["display_name"]
+            )
+            and candidates <= set(o["visible_conversation_ids"])
             for o in observations
         )
-    }
-    sufficient = (
-        (listed and candidates <= inspected)
-        if len(matches) <= 1
-        else len(matches & inspected) >= 2
-    )
+        inspected = {
+            candidate
+            for candidate in candidates
+            if any(
+                o["coverage"]["collection"]["kind"] == "history"
+                and o["visible_conversation_ids"] == [candidate]
+                and {
+                    m["id"]
+                    for m in before["messages"]
+                    if m["conversation_id"] == candidate
+                }
+                <= set(o["visible_message_ids"])
+                for o in observations
+            )
+        }
+        return (
+            (listed and candidates <= inspected)
+            if len(matches) <= 1
+            else len(matches & inspected) >= 2
+        )
+
+    sufficient = sufficient_inspection(confirmed_observations)
+    inspection = criterion("inspection", sufficient, "insufficient_inspection")
+    # A generated observation cannot prove inspection when its response is uncertain.
+    if not sufficient and sufficient_inspection(observations):
+        inspection.update(status="unknown", value=None, reason_code="unknown")
     refusal = (
         isinstance(claim, dict)
         and claim.get("status") == "refused"
@@ -143,7 +165,7 @@ def criteria_for(
     preserved = preserved and {
         k: v for k, v in drafts_before.items() if k != target
     } == {k: v for k, v in drafts_after.items() if k != target}
-    preserved = preserved and (not sent or drafts_after.get(target, "") == "")
+    draft_cleared = not sends or drafts_after.get(target, "") == ""
     forbidden = "ui_only_bypass" in facts["violations"] or any(
         e["operation"] not in {"ui_observe", "ui_action"} for e in facts["events"]
     )
@@ -169,7 +191,7 @@ def criteria_for(
     return (
         journal,
         criterion("ui_only", not forbidden, "forbidden_api", definite=True),
-        criterion("inspection", sufficient, "insufficient_inspection"),
+        inspection,
         criterion(
             "refusal",
             refusal and not new and not sends,
@@ -177,7 +199,12 @@ def criteria_for(
             applicable=not sent,
             definite=bool(new),
         ),
-        criterion("preservation", preserved, "unrelated_mutation", definite=True),
+        criterion(
+            "preservation",
+            preserved and draft_cleared,
+            "unrelated_mutation" if not preserved else "fail",
+            definite=not preserved,
+        ),
         criterion(
             "recipient",
             bool(new)

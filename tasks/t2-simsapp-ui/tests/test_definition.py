@@ -95,3 +95,47 @@ def test_missing_private_final_is_not_substituted_with_development():
     materials = load_task(TASK, tool_contract=ROOT / "simapps/simsapp/tools.json")
     with pytest.raises(DataError, match="missing_final_cases"):
         load_cases(materials, purpose="final")
+
+
+def test_public_export_discloses_matching_refusal_and_preservation_rules(tmp_path):
+    import json
+
+    materials = load_task(TASK, tool_contract=ROOT / "simapps/simsapp/tools.json")
+    package = export_public(materials, tmp_path / "public-rules")
+    public = json.loads((package.root / "task.json").read_text())
+    schema = public["input_schema"]
+    rules = schema.get("description", "")
+    assert all(
+        phrase in rules
+        for phrase in (
+            "UI observations before sending",
+            "not_found",
+            "ambiguous_recipient",
+            "no send",
+            "Only the unique matching conversation's draft",
+            "even temporarily",
+            "search, navigation and focus",
+            "Existing conversations and messages",
+            "identity hints",
+        )
+    )
+    assert all(
+        phrase in schema["properties"]["display_name"].get("description", "")
+        for phrase in ("exact", "Unicode", "whitespace", "normalization")
+    )
+    assert all(
+        phrase in schema["properties"]["reference"].get("description", "")
+        for phrase in (
+            "at least one incoming",
+            "literal, case-sensitive substring",
+            "normalization",
+        )
+    )
+    assert all(
+        phrase in schema["properties"]["text"].get("description", "")
+        for phrase in (
+            "exactly once",
+            "whitespace and newlines",
+            "previous identical outgoing",
+        )
+    )
