@@ -5,17 +5,18 @@ a benchmark Task, or Judge material.
 
 ## Start with the assigned task
 
-1. Read [SPEC](SPEC.md) for requirements and terms, then [ARCHITECTURE](ARCHITECTURE.md)
+1. Read [SPEC](docs/SPEC.md) for requirements and terms, then [ARCHITECTURE](docs/ARCHITECTURE.md)
    for the relevant interfaces and trust boundaries.
-2. Find the assigned milestone and dependencies in [ROADMAP](ROADMAP.md); read its
-   current implementation ticket. WB-01 is historical, not the current design.
+2. Check current capabilities, planned work and dependencies in [ROADMAP](docs/ROADMAP.md).
+   Use the user request to determine the assigned scope.
 3. Inspect the actual code and user changes. Implement only the assigned slice;
    bootstrap does not authorize future modules or empty scaffolding.
 
 The user request assigns work. SPEC owns product requirements and definitions;
 ARCHITECTURE owns responsibilities, interfaces and dependency rules; this file
 owns engineering rules; ROADMAP owns milestones/status; [README](README.md) owns
-setup and verified commands. Tickets preserve task-specific decisions and evidence.
+setup and reproducible commands. Public documentation must stand on its own, without
+links to private planning materials or development history.
 Update the owner of a changed fact and link to it elsewhere. Surface conflicting
 requirements explicitly; label new technical decisions as decisions of the current
 work rather than previously accepted user wishes.
@@ -111,12 +112,12 @@ credential access. The current model test mode remains closed.
 Requested integration without Docker/images is a preflight error, not a green skip.
 Gate probes must be harmless local files/processes. No tests means pytest exit 5,
 not a successful suite or an `assert True` placeholder. Test counts/coverage are
-not project goals. Use verified commands from README and the current configuration.
+not project goals. Use commands from README and the current configuration.
 
 ## Operation and completion
 
-Enforce [SPEC's lifecycle/security rules](SPEC.md#9-errors-and-lifecycle) and
-[trust invariants](SPEC.md#10-security-and-evidence) through the environment.
+Enforce [SPEC's lifecycle/security rules](docs/SPEC.md#9-errors-and-lifecycle) and
+[trust invariants](docs/SPEC.md#10-security-and-evidence) through the environment.
 Paid model calls require explicit permission and finite limits. Never contact real
 Telegram or a physical desktop in this MVP. Do not weaken benchmark checks or
 adjust expected outputs to a candidate; controls use the same independent path.
@@ -144,7 +145,5 @@ actually run/results, and unverified/blocked work. Mark DONE only when acceptanc
 criteria are met; unavailable Docker/credentials are not successful verification.
 Do not commit runs, user data, credentials or old evidence; delete others' resources;
 create/change remote repository visibility; or push without the user's instruction.
-Skill revision provenance for the original design is in the
-[WB-03 ticket](docs/implementation/WB-03-component-boundaries.md#design-skill-provenance).
 Project TDD permits local refactoring after green; Interface/Seam is not a synonym
 for the product's API/UI or trust boundary. A single runtime still requires its trust seam.

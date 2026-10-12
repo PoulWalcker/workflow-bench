@@ -2,25 +2,25 @@
 
 Current responsibilities, interfaces and trust boundaries. Product rules and terms
 belong to [SPEC](SPEC.md); milestone status and verification gates to
-[ROADMAP](ROADMAP.md); commands to [README](README.md). Tickets retain design and
-implementation evidence. Source signatures and packaged schemas define exact shapes.
+[ROADMAP](ROADMAP.md); commands to [README](../README.md). Source signatures and
+packaged schemas define exact shapes.
 
 ## 1. Responsibilities and dependencies
 
 | Owner / source | Responsibility |
 |---|---|
-| [Definition](src/workflow_bench/definition.py) | Load native Task/materials/cases; validate disclosure and paths; publish a public snapshot. No sandbox lifecycle. |
-| [Experiment](src/workflow_bench/experiment.py) | Attempt policy, Case selection, source/version identity, fresh Replay, permitted feedback, pre-final selection and report. No app business decisions. |
-| [Execution](src/workflow_bench/execution.py) | Accept/validate native artifact, bind input/tools, import/execute n8n using borrowed resources. No environment creation, score or cleanup ownership. |
-| [Harbor binding](src/workflow_bench/harbor.py) | Native Trial/environment, stop/collection, tool/control transport, protected delivery to separate verifier and owned cleanup. One concrete Harbor integration. |
-| [Evaluation](src/workflow_bench/evaluation.py) | Validate Evidence/criteria identity/refs, apply Task-owned policy to the complete set and map numeric reward. Never execute/correct candidate. |
-| [CLI](src/workflow_bench/cli.py) | Resolve user paths/config, construct dependencies, logging and cancellation; select submission source. |
-| [Composer integration](src/workflow_bench/composer.py), [MCP transport](src/workflow_bench/mcp.py) | Shared Harbor submission with stock Codex or Sapiens and native usage/lifecycle facts; stdio JSON-RPC over existing HTTP tools. Live ChatGPT integration is verified; API-billed mode remains closed. |
-| [Telegram](simapps/telegram/app.py) | One app-owned state, tool semantics/authorization and protected event history. Current API profile; future UI shares this state. |
-| [SimsApp](simapps/simsapp/app.py) | One application-owned state, bounded current UI projection and elementary navigation, composer and Send transitions. No Task target or business API. |
-| [Simulator transport](src/workflow_bench/simulator.py) | Shared capability/reset/issue/revoke/drain/freeze/journal and separated HTTP listeners; Telegram and SimsApp supply their own state validation and tool semantics. |
+| [Definition](../src/workflow_bench/definition.py) | Load native Task/materials/cases; validate disclosure and paths; publish a public snapshot. No sandbox lifecycle. |
+| [Experiment](../src/workflow_bench/experiment.py) | Attempt policy, Case selection, source/version identity, fresh Replay, permitted feedback, pre-final selection and report. No app business decisions. |
+| [Execution](../src/workflow_bench/execution.py) | Accept/validate native artifact, bind input/tools, import/execute n8n using borrowed resources. No environment creation, score or cleanup ownership. |
+| [Harbor binding](../src/workflow_bench/harbor.py) | Native Trial/environment, stop/collection, tool/control transport, protected delivery to separate verifier and owned cleanup. One concrete Harbor integration. |
+| [Evaluation](../src/workflow_bench/evaluation.py) | Validate Evidence/criteria identity/refs, apply Task-owned policy to the complete set and map numeric reward. Never execute/correct candidate. |
+| [CLI](../src/workflow_bench/cli.py) | Resolve user paths/config, construct dependencies, logging and cancellation; select submission source. |
+| [Composer integration](../src/workflow_bench/composer.py), [MCP transport](../src/workflow_bench/mcp.py) | Shared Harbor submission with stock Codex or Sapiens and native usage/lifecycle facts; stdio JSON-RPC over existing HTTP tools. Live ChatGPT integration is verified; API-billed mode remains closed. |
+| [Telegram](../simapps/telegram/app.py) | One app-owned state, tool semantics/authorization and protected event history. Current API profile; future UI shares this state. |
+| [SimsApp](../simapps/simsapp/app.py) | One application-owned state, bounded current UI projection and elementary navigation, composer and Send transitions. No Task target or business API. |
+| [Simulator transport](../src/workflow_bench/simulator.py) | Shared capability/reset/issue/revoke/drain/freeze/journal and separated HTTP listeners; Telegram and SimsApp supply their own state validation and tool semantics. |
 | `tasks/<task>/tests/` | Business checks/expected/rubric; executed by native separate verifier, not imported into host core. |
-| [contracts](src/workflow_bench/contracts.py), [data](src/workflow_bench/data.py), [resources](src/workflow_bench/resources/) | Checked exchange values, strict external JSON and installed schemas/public texts. |
+| [contracts](../src/workflow_bench/contracts.py), [data](../src/workflow_bench/data.py), [resources](../src/workflow_bench/resources/) | Checked exchange values, strict external JSON and installed schemas/public texts. |
 
 Import direction: CLI → concrete integration/config + Experiment;
 Experiment → Definition/Execution/Evaluation/contracts + Harbor binding;
@@ -30,20 +30,20 @@ Contracts do not import app/Composer; core does not import Telegram/Sapiens or b
 on their business names. App/verifier may use common exchange helpers. Common prompts
 consume public materials without Task switches. No Task registry or alternate Task class.
 
-The [Sapiens integration](src/workflow_bench_integrations/sapiens.py) lives outside
+The [Sapiens integration](../src/workflow_bench_integrations/sapiens.py) lives outside
 core at Harbor's `BaseInstalledAgent` seam, reusing native Codex config/MCP/auth
 helpers through its Codex subclass. Only the entry point selects it (`--sapiens`);
 core knows no CORPORA commands, memory or internal planning. Each native Trial
 starts a dedicated unmodified host+CLI/data-dir/home/config/provider session.
 The shared Composer submission path accepts `AgentConfig`; Harbor closes tools
 and stops the whole container before native artifact collection.
-[WB-08](docs/implementation/WB-08-sapiens-spike.md) owns pin, controls and limits. Both
-harnesses use identical Task/case/profile/rubric/runtime/Evaluation hashes; harness
-configuration and costs remain separately attributable.
+Build prerequisites and controls are in [README](../README.md). Both harnesses use
+identical Task/case/profile/rubric/runtime/Evaluation hashes; harness configuration
+and costs remain separately attributable.
 
 `simapps/` holds application code; `environments/` builds shared images;
 `tasks/` holds native benchmark packages; root `tests/` tests software;
-`docs/implementation/` holds developer tickets; ignored `runs/` holds private results.
+ignored `runs/` holds private results.
 Future directories appear with implementation, not as scaffolding.
 
 ## 2. Task materials and data boundaries
@@ -51,18 +51,18 @@ Future directories appear with implementation, not as scaffolding.
 Native layout: `instruction.md`, `task.toml`, `tests/test.sh`, `solution/solve.sh`;
 `environment/` is needed only without a ready image. Additional JSON is experiment
 data, not a second Task framework. The current example is
-[T1](tasks/t1-send-message/task.toml).
+[T1](../tasks/t1-send-message/task.toml).
 
 | Material | Reader / ownership |
 |---|---|
 | `instruction.md` | Human business intent; Composer reads it unchanged. |
 | `task.toml` | Host/Harbor native configuration; `wb_public`, `wb_cases`, `wb_rubric`, optional private `wb_final_cases`, app image and tool profile. Not public-exported. |
-| [task.json](tasks/t1-send-message/task.json) | Public input schema, training example including public state, feedback disclosure. |
+| [task.json](../tasks/t1-send-message/task.json) | Public input schema, training example including public state, feedback disclosure. |
 | `tests/cases.json`, optional private final file | Host selects input/state/expected; only simulator gets state and only verifier gets expected. Case sets have development/final purpose. |
 | `tests/test.sh` and supporting checks | Task-owned executable checks on frozen facts in separate verifier. |
 | `tests/rubric.json` | Editable Task-owned policy; manifest retains applied snapshot/hash. Public requirements must already be in public intent/contracts. |
 | `solution/solve.sh`, `solution/workflow.json` | Trusted manual control submission only; unavailable to candidate Composer. Same validator/runtime/verifier, no self-awarded reward. |
-| App [tools profile](simapps/telegram/tools.json) | App-owned operation semantics/schemas/errors/limits/idempotency/effect observations; supplied explicitly from selected image. |
+| App [tools profile](../simapps/telegram/tools.json) | App-owned operation semantics/schemas/errors/limits/idempotency/effect observations; supplied explicitly from selected image. |
 
 `load_task(task_path, *, tool_contract) → TaskMaterials` uses the native Harbor
 parser, validates metadata/public/tools and checked private paths without starting a
@@ -90,14 +90,14 @@ Own JSON uses Draft 2020-12 and installed resources via `importlib.resources`, n
 cwd/Git-root lookup or a parallel runtime type schema. Reject duplicate keys,
 NaN/Infinity, unresolved/nonfragment HTTP/file refs (including unused ones); check
 schema before data, size before decoding. General material limit is owned by
-[data.py](src/workflow_bench/data.py); evidence has its separate bounded limit.
+[data.py](../src/workflow_bench/data.py); evidence has its separate bounded limit.
 Frozen dataclasses do not freeze nested dicts. Semantic graph/identity/ref checks
 belong to their owner; verifier ingress is another trust boundary and validates again.
 
 ## 3. Artifact and Replay interfaces
 
-[workflow.md](src/workflow_bench/resources/workflow.md) and
-[workflow.schema.json](src/workflow_bench/resources/workflow.schema.json) own the
+[workflow.md](../src/workflow_bench/resources/workflow.md) and
+[workflow.schema.json](../src/workflow_bench/resources/workflow.schema.json) own the
 exact current native T1 profile, size/node versions/options and BenchInput/BenchResult
 shape. If/Loop Over Items and UI/collection extensions remain future E4 work;
 current T1 acceptance does not establish their expressiveness.
@@ -147,15 +147,15 @@ confirmation, error/log refs and timings.
 | Separate verifier | Private tests/expected and protected read-only facts, candidate JSON as data; no candidate execution, no network unless a necessary Judge endpoint is explicitly provided. |
 
 Composer credentials never reach replay/verifier; Judge auth belongs only to assessment.
-Native `auth.json` is readable by Composer's shell in its temporary home. The owner
-accepted this tradeoff for the WB-07 subscription run; the personal home is never
-mounted. Harbor deletes the Composer environment before accepting its artifact.
+Native `auth.json` is readable by Composer's shell in its temporary home under the
+accepted subscription-auth policy; the personal home is never mounted. Harbor deletes
+the Composer environment before accepting its artifact.
 No checkout, personal home, private tests/final/solution, Docker socket, control or
 Judge credential in candidate/replay/runner. Oracle solution access exists only for
 trusted manual submission. Images are prepared from allowlists before measurement,
 with pinned base/runtime/runner and locked dependency hashes; private Task/home are
-excluded from build context. [build.py](environments/build.py) owns image pins;
-[pyproject.toml](pyproject.toml)/[uv.lock](uv.lock) own dependency versions.
+excluded from build context. [build.py](../environments/build.py) owns image pins;
+[pyproject.toml](../pyproject.toml)/[uv.lock](../uv.lock) own dependency versions.
 The builder requires explicit `--simapp`; the selected app owns its image tag and
 contracts. Shared images expose regular protocol files at `/bench/tools.json` and
 `/bench/state.schema.json`, with application code at `/app/simapp`.
@@ -230,7 +230,7 @@ requests, reject excess traffic without growing events. Protected violation summ
 retain overflow and unauthorized-send facts. Overflow adds no scoring penalty; the
 existing unauthorized-send criterion also reads its protected summary.
 
-WB-17 model-free controls reuse the existing Harbor sandbox topology, stop and
+SimsApp model-free controls reuse the existing Harbor sandbox topology, stop and
 protected export responsibilities. `ui_control` identities use `run_id`,
 `control_id`, `case_id`, `profile`, `profile_hash`; resources use `wb-control-`
 scopes. They do not invent artifact/Attempt/Replay IDs or execute a native workflow.
@@ -240,7 +240,7 @@ or second lifecycle is introduced.
 
 ## 5. Evidence and Evaluation interfaces
 
-[wire.schema.json](src/workflow_bench/resources/wire.schema.json) owns identity,
+[wire.schema.json](../src/workflow_bench/resources/wire.schema.json) owns identity,
 claim, execution, evidence, criterion, rubric, evaluation and aggregate envelopes.
 Evidence binds run/Attempt/artifact/Replay/Case/profile hash/name to revisioned
 before/after snapshots, monotonic events, violations, freeze status and pending IDs.
@@ -287,7 +287,12 @@ ordering, references and the delta chain from before to after; unknown/pending
 facts cannot fabricate a complete freeze. App payload semantics stay in app/control
 checks, and no second state/journal or score calculation is stored. The current
 SimsApp V1 profile (`simsapp-ui-v1`) exposes the active conversation's composer and
-Send, with no pagination or scroll. `replace_text` replaces the focused editable
+Send, with no pagination or scroll. Its UI projection copies sanitized AX trees and
+fragments from the app fixture package. Native roles and fields retain their captured
+shape; `simulation` annotations explicitly mark reconstructed labels, supported actions,
+identity hints and draft values. Scoped `ref` locators belong to the simulator. Send
+uses an annotated AXMenuItem; its activation/effect is reconstructed, not observed
+native WhatsApp behavior. `replace_text` replaces the focused editable
 value exactly; the wrapper admits message-sized text, while the resolved Search
 control enforces its smaller query bound from the state schema. Drafts are keyed
 by conversation in the same state. Send uses the active conversation and draft,
@@ -296,9 +301,42 @@ Simulator lock. Protected deltas capture owned values (including draft replaceme
 and the send effect's message ID links its call to the appended message and later
 observations. FrozenEvidence already validates list append and draft-map deltas;
 no wire version, shared ingress, transport or Harbor lifecycle change is needed.
-The app profile/image and its hash change from WB-17's navigation subset; tool
-wrapper v1 and Evidence v2 retain their existing versions. Lost response remains
+The app profile/image hash identifies the supported UI capabilities; tool wrapper v1
+and Evidence v2 retain their existing versions. Lost response remains
 separate from commit; no write retry or deduplication is added.
+
+The AX projection selects chat-list, search-focused, results-zero, results-many or
+conversation captures according to current state. It retains AXApplication →
+AXWindow → nested AXGroup relationships, window chrome, menu bar/submenus, native
+role/subrole variants, geometry, numeric flags, empty strings and omitted fields.
+Search remains AXStaticText/AXSearchField; composer remains AXTextArea without a
+fabricated native AX value. Message bodies bind AX descriptions; direction and
+exact draft value belong to `simulation`. Contacts/results repeat observed row
+fragments; history repeats observed composites, including its wrapped first message
+and nested date headings. State supplies names/hints and messages; fixture examples
+never create an extra conversation or history. Search background rows remain present
+but cannot activate with a nonempty query; background history is empty without an
+active conversation and does not expose another conversation's messages/drafts.
+
+Observation `template` identifies the selected capture; `truncated` retains its
+serializer flag. Coverage is complete for the bounded SimsApp collection, not all
+native AX content. Refs are assigned by traversing the assembled tree and include
+scope, revision, template and current child path. Capture-local paths/identifiers
+are neither business identity nor stable action locators. Nonannotated nodes have
+no supported actions even when their captured enabled flag is true. The derived
+profile allows 640 nodes and depth 16; state bounds stay 32 conversations/100 messages.
+
+Reconstruction preserves the accepted simulator navigation/effects: result
+activation opens a conversation directly; Back and Send activate serialized menu
+nodes without a menu-opening sequence. Blindly result activation instead exposed
+a sheet. Full one-result screens, draft writes and Send effects were not captured.
+Sheets, message-result search, the unlabelled result category, Voice message,
+scrolling, other menu actions, delivery semantics and alternate AX relations are
+unsupported. Unused result categories retain headings but have no candidates;
+unknown relation targets are not invented. Copied coordinates and fictional date
+headings are reference layout, not measured geometry or message timestamps for new
+state. Sanitized assets remain private local runtime input; integration does not
+regenerate them or authorize publication.
 
 ## 6. Experiment/configuration interfaces
 
@@ -314,11 +352,11 @@ snapshots and hashes. Report references native logs and closed run facts once.
 |---|---|
 | Task/output/case/submission paths | Explicit CLI; resolve once relative to invocation cwd. Internal paths are absolute. |
 | Public/case/rubric references and app/profile | Native Task metadata, relative only to Task root. |
-| Runtime images/ports/phase and total deadlines/CPU/RAM/max_calls | One explicit runtime JSON validated by [e1.schema.json](src/workflow_bench/resources/e1.schema.json); E1Config derives native overrides, no competing env defaults. |
+| Runtime images/ports/phase and total deadlines/CPU/RAM/max_calls | One explicit runtime JSON validated by [e1.schema.json](../src/workflow_bench/resources/e1.schema.json); E1Config derives native overrides, no competing env defaults. |
 | Tools | Selected prepared image exports app profile; passed to loader explicitly and hashed. |
 | Schema/artifact/protocol constants | Packaged resources/contracts, not independent CLI options. |
 | Control/candidate/broker capabilities | Host-generated per run/scope; only respective recipient gets secret. Topology allocates host ports. |
-| Model plan | Explicit budget/runtime config, [model-budget.schema.json](src/workflow_bench/resources/model-budget.schema.json); Composer config records mode/image/CLI/model/reasoning/exploration limits. |
+| Model plan | Explicit budget/runtime config, [model-budget.schema.json](../src/workflow_bench/resources/model-budget.schema.json); Composer config records mode/image/CLI/model/reasoning/exploration limits. |
 | Internal Codex subscription auth and authorization | Explicit `--codex-auth` path resolved once at entry and `--authorize-model`; native host account facts supply remaining allowance. No API dollar budget is asserted for ChatGPT auth. |
 
 Preflight validates method/profile/versions and finite approved per-Attempt/total
@@ -347,4 +385,4 @@ failures are result values. Unexpected defects propagate at CLI after bounded
 cleanup. Cleanup/export/persistence failures preserve the primary exception or
 cancellation; stop errors are exchanged through the borrowed context and recorded
 when persistence is available. Original phase facts remain discoverable after interrupted runs. Technical
-E1 timeouts are not model budgets; readiness/evidence lives in ROADMAP and tickets.
+E1 timeouts are not model budgets; readiness is recorded in [ROADMAP](ROADMAP.md).

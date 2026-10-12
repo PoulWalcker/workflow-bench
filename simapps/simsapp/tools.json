@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0",
-  "app_image": "wb-simsapp:wb18",
+  "app_image": "wb-simsapp:wb18a",
   "profile": "simsapp-ui-v1",
   "tools": [
     {
       "name": "ui_observe",
       "schema_version": "1.0",
-      "description": "Read only the current complete bounded V1 UI. References expire on any state revision. No IDs of business objects are exposed.",
+      "description": "Read the bounded current SimsApp AX tree derived from sanitized Blindly templates. Native roles, hierarchy, missing fields and AX values remain native. ref is a scoped simulator locator; simulation contains explicitly RECONSTRUCTED supported actions, labels, identity hints, direction and draft value. Original attributes/actions not serialized by Blindly remain unknown. Nonannotated nodes have no supported actions. coverage describes the bounded SimsApp collection, not full WhatsApp coverage; truncated retains the capture serializer flag. No business object IDs are exposed.",
       "arguments_schema": {
         "type": "object",
         "additionalProperties": false,
@@ -27,101 +27,202 @@
               },
               "role": {
                 "enum": [
-                  "group",
-                  "button",
-                  "textbox",
-                  "heading",
-                  "text"
+                  "AXApplication",
+                  "AXButton",
+                  "AXGroup",
+                  "AXHeading",
+                  "AXLink",
+                  "AXMenu",
+                  "AXMenuBar",
+                  "AXMenuBarItem",
+                  "AXMenuItem",
+                  "AXSheet",
+                  "AXStaticText",
+                  "AXTextArea",
+                  "AXWindow"
                 ]
               },
-              "label": {
+              "subrole": {
                 "type": "string",
-                "minLength": 0,
-                "maxLength": 128,
+                "maxLength": 8192,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 8192,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 8192,
                 "pattern": "^[^\\ud800-\\udfff]*$"
               },
               "value": {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "minLength": 0,
-                    "maxLength": 4096,
-                    "pattern": "^[^\\ud800-\\udfff]*$"
+                "type": "string",
+                "maxLength": 8192,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              "identifier": {
+                "type": "string",
+                "maxLength": 8192,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              "pid": {
+                "const": 0
+              },
+              "position": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number"
                   },
-                  {
-                    "type": "null"
+                  "y": {
+                    "type": "number"
                   }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              },
+              "size": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "height": {
+                    "type": "number"
+                  },
+                  "width": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "height",
+                  "width"
                 ]
               },
               "enabled": {
-                "type": "boolean"
+                "oneOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  }
+                ]
+              },
+              "selected": {
+                "oneOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  }
+                ]
               },
               "focused": {
                 "type": "boolean"
               },
-              "actions": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "activate",
-                    "focus",
-                    "replace_text"
-                  ]
-                }
-              },
               "children": {
                 "type": "array",
-                "maxItems": 100,
+                "maxItems": 256,
                 "items": {
                   "$ref": "#/$defs/node"
                 }
               },
-              "identity": {
+              "simulation": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "display_name": {
+                  "label": {
                     "type": "string",
-                    "minLength": 1,
+                    "minLength": 0,
                     "maxLength": 128,
                     "pattern": "^[^\\ud800-\\udfff]*$"
                   },
-                  "identity_hint": {
-                    "oneOf": [
-                      {
+                  "actions": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                      "enum": [
+                        "activate",
+                        "focus",
+                        "replace_text"
+                      ]
+                    }
+                  },
+                  "identity": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "display_name": {
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 128,
+                        "pattern": "^[^\\ud800-\\udfff]*$"
+                      },
+                      "identity_hint": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[^\\ud800-\\udfff]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "display_name",
+                      "identity_hint"
+                    ]
+                  },
+                  "direction": {
+                    "enum": [
+                      "incoming",
+                      "outgoing"
+                    ]
+                  },
+                  "value": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 4096,
                         "pattern": "^[^\\ud800-\\udfff]*$"
                       },
                       {
                         "type": "null"
                       }
                     ]
+                  },
+                  "provenance": {
+                    "const": "RECONSTRUCTED"
                   }
                 },
                 "required": [
-                  "display_name",
-                  "identity_hint"
-                ]
-              },
-              "direction": {
-                "enum": [
-                  "incoming",
-                  "outgoing"
+                  "label",
+                  "actions",
+                  "provenance"
                 ]
               }
             },
             "required": [
               "ref",
-              "role",
-              "label",
-              "value",
-              "enabled",
-              "focused",
-              "actions",
-              "children"
+              "role"
             ]
           }
         },
@@ -185,6 +286,18 @@
           },
           "tree": {
             "$ref": "#/$defs/node"
+          },
+          "template": {
+            "enum": [
+              "chat-list",
+              "search-focused",
+              "results-zero",
+              "results-many",
+              "conversation"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -193,13 +306,15 @@
           "revision",
           "screen",
           "coverage",
-          "tree"
+          "tree",
+          "template",
+          "truncated"
         ]
       },
       "effect": "read",
       "limits": {
-        "max_nodes": 256,
-        "max_depth": 8
+        "max_nodes": 640,
+        "max_depth": 16
       },
       "errors": [
         "invalid_arguments",
@@ -219,7 +334,7 @@
     {
       "name": "ui_action",
       "schema_version": "1.0",
-      "description": "Act on a current scoped reference: activate, focus, or replace_text on the focused Search or Message textbox. Search uses literal case-sensitive substring matching (query limit 256 code points). Composer preserves exact text (limit 4096); newline is text. Visible Send atomically appends one outgoing to the opened conversation and clears only its draft, preserving focus. Empty draft disables Send; whitespace is nonempty. Back returns to chat_list; open clears query/focus. No scroll or business API.",
+      "description": "Act on a fresh scoped AX reference using simulation.actions: activate, focus or replace_text. Search is the observed AXStaticText/AXSearchField; composer is AXTextArea, with exact draft in simulation.value. Search matches literal case-sensitive contact/hint substrings (256 code points). Composer preserves exact text (4096); newline is text. RECONSTRUCTED activation of the observed Send AXMenuItem atomically appends one outgoing to the active conversation, clears only its draft and preserves focus; empty draft disables it. RECONSTRUCTED Back returns to chat_list and result activation opens the conversation directly. Actual Blindly result press showed a sheet; sheets, message search, scroll, Voice message and other menu actions are unsupported. No business API.",
       "arguments_schema": {
         "oneOf": [
           {

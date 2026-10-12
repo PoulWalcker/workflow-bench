@@ -228,3 +228,4 @@ credentials/
 !.env.example
 .DS_Store
 .codegraph/
+.codex

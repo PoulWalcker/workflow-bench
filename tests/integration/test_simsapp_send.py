@@ -50,17 +50,17 @@ await act(await observe(),'Search','focus');
 await act(await observe(),'Search','replace_text','Север');
 await act(await observe(),'Лена');
 const opened=await observe();
-const oldDraft=nodes(opened.tree).find(n=>n.role==='textbox').value;
-const wrongFocus=await act(opened,'Message','replace_text','wrong','textbox');
-await act(opened,'Message','focus',undefined,'textbox');
+const oldDraft=nodes(opened.tree).find(n=>n.role==='AXTextArea').value;
+const wrongFocus=await act(opened,'Message','replace_text','wrong','AXTextArea');
+await act(opened,'Message','focus',undefined,'AXTextArea');
 const stale=await act(opened,'Send');
 await act(await observe(),'Message','replace_text',"""
                         + json.dumps(TEXT)
-                        + """,'textbox');
+                        + """,'AXTextArea');
 const ready=await observe();
 const bypass=await call('send_message',{chat_id:'private-b',text:'bypass'});
 const admin=await fetch(base+'/control/export',{signal:AbortSignal.timeout(callTimeout)});
-console.log(JSON.stringify({ready,oldDraft,errors:[wrongFocus,stale,bypass].map(r=>r.error.code),admin:admin.status}));
+console.log(JSON.stringify({ready,sendLocator:locator(ready,'Send'),oldDraft,errors:[wrongFocus,stale,bypass].map(r=>r.error.code),admin:admin.status}));
 """,
                     ),
                 )
@@ -72,11 +72,12 @@ console.log(JSON.stringify({ready,oldDraft,errors:[wrongFocus,stale,bypass].map(
                 ]
                 assert prepared["admin"] == 404
                 ready = prepared["ready"]
+                send_locator = prepared["sendLocator"]
                 assert "private-" not in json.dumps(ready)
                 assert [
                     n["value"]
                     for n in nodes(ready["tree"])
-                    if n["role"] == "text" and n["label"] == "Message"
+                    if n["role"] == "AXStaticText" and n["label"] == "Message"
                 ] == ["  История\n", TEXT]
                 if lost_response:
                     await context.control(
@@ -93,15 +94,14 @@ console.log(JSON.stringify({ready,oldDraft,errors:[wrongFocus,stale,bypass].map(
                         context,
                         capability,
                         """
+const sendLocator="""
+                        + json.dumps(send_locator)
+                        + """;
 let unknown=false, acknowledgement=null;
-try { acknowledgement=await act("""
-                        + json.dumps(ready)
-                        + """,'Send'); }
+try { acknowledgement=await call('ui_action',{action:'activate',locator:sendLocator}); }
 catch { unknown=true; }
 const current=await observe();
-const repeated=await act("""
-                        + json.dumps(ready)
-                        + """,'Send');
+const repeated=await call('ui_action',{action:'activate',locator:sendLocator});
 const disabled=await act(current,'Send');
 console.log(JSON.stringify({unknown,acknowledgement,current,errors:[repeated,disabled].map(r=>r.error.code)}));
 """,
@@ -115,10 +115,10 @@ console.log(JSON.stringify({unknown,acknowledgement,current,errors:[repeated,dis
                 assert [
                     n["value"]
                     for n in nodes(current["tree"])
-                    if n["role"] == "text" and n["label"] == "Message"
+                    if n["role"] == "AXStaticText" and n["label"] == "Message"
                 ] == ["  История\n", TEXT, TEXT]
                 composer = next(
-                    n for n in nodes(current["tree"]) if n["role"] == "textbox"
+                    n for n in nodes(current["tree"]) if n["role"] == "AXTextArea"
                 )
                 assert composer["value"] == "" and composer["focused"]
                 await context.control("revoke", {"identity": context.identity})
@@ -135,9 +135,9 @@ console.log(JSON.stringify({unknown,acknowledgement,current,errors:[repeated,dis
                     script(
                         context,
                         capability,
-                        "console.log(JSON.stringify(await act("
-                        + json.dumps(ready)
-                        + ",'Send')));",
+                        "console.log(JSON.stringify(await call('ui_action',{action:'activate',locator:"
+                        + json.dumps(send_locator)
+                        + "})));",
                     ),
                 )
                 assert late["error"]["code"] == "forbidden"

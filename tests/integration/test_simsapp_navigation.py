@@ -65,7 +65,7 @@ def script(context, capability, body):
 async function call(name, args={}) {
   return await (await fetch(base+'/tools/'+name, {method:'POST',headers:{Authorization:authorization,'Content-Type':'application/json'},body:JSON.stringify({schema_version:'1.0',arguments:args}),signal:AbortSignal.timeout(callTimeout)})).json();
 }
-function nodes(n) { return [n, ...n.children.flatMap(nodes)]; }
+function nodes(n) { return [{label:'',actions:[],...n,...(n.simulation||{})}, ...(n.children||[]).flatMap(nodes)]; }
 async function observe() { return (await call('ui_observe')).result; }
 function locator(o, label, hint, role) {
  const n=nodes(o.tree).find(n=>n.label===label && (hint===undefined || n.identity?.identity_hint===hint) && (role===undefined || n.role===role));

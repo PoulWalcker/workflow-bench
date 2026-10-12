@@ -169,7 +169,7 @@ async def _cleanup(
 
 
 async def docker(*arguments: str) -> str:
-    """A bounded Docker metadata query, never a second lifecycle implementation."""
+    """A bounded Docker metadata query, never a second lifecycle tasks."""
     process = await asyncio.create_subprocess_exec(
         "docker",
         *arguments,

@@ -8,7 +8,7 @@ Open decisions below do not reopen accepted scope or imply completed implementat
 
 | Term | Meaning |
 |---|---|
-| Task | One business benchmark package: public intent/input contract, cases, checks, rubric and control. A WB implementation ticket is developer work, not a Task for Composer. |
+| Task | One business benchmark package: public intent/input contract, cases, checks, rubric and control. |
 | Case | Prepared input, initial simulator state and private expected behavior for one check. Different versions may use it only from freshly restored state. |
 | Attempt | One creation/correction ending in a submitted version or recorded submission failure. Manual control submission occupies the same position without being model generation. |
 | WorkflowArtifact | Immutable submitted native n8n JSON. Technical binding does not create another business version or Attempt. |
@@ -20,21 +20,26 @@ Open decisions below do not reopen accepted scope or imply completed implementat
 | input / state / expected | Request parameters available to workflow / simulator world observed through tools / private verifier expectations. A public training state does not expose private states. |
 | Unknown | Insufficient knowledge of value/outcome. Zero means a known zero, not missing measurement. |
 
-WB-17 and WB-18 authorize a bounded standalone Simulated SimsApp V1 UI environment
-and model-free controls under the [WB-17 navigation implementation](docs/implementation/WB-17-simsapp-navigation-implementation.md)
-and [WB-18 composer/send implementation](docs/implementation/WB-18-simsapp-composer-send-implementation.md).
+The current scope includes a bounded standalone Simulated SimsApp V1 UI environment
+and model-free controls, described in [ARCHITECTURE](ARCHITECTURE.md).
 This is a narrow exception to the single-Telegram scope and Sapiens progression
-wording below: T1 stays compatible, E3 remains blocked, and WB-17/18 do not complete
-T2 or revise release gates. SimsApp owns one business/UI state and offers only
-current UI observations and elementary navigation, focus, replacement and Send
+wording below: T1 stays compatible, E3 remains blocked, and the UI environment alone
+does not complete T2 or revise release gates. SimsApp owns one business/UI state and
+offers only current UI observations and elementary navigation, focus, replacement and Send
 actions; tools never receive a Task target or private expected values. Send appends
 one outgoing message with the active conversation's exact nonempty draft and clears
 only that draft atomically, preserving focus. Unicode, whitespace and newlines are
 preserved; no text deduplication or automatic write retry applies. Empty drafts
 disable Send. Drafts persist per conversation; navigation preserves business state.
 Task-specific draft permissions remain the verifier's responsibility.
+UI observations use sanitized Blindly-derived AX templates. Native AX structure
+and simulator-supported interactions are distinct: `simulation` explicitly labels
+reconstructed actions and draft values. The preserved menu Send and direct result
+navigation implement simulator behavior without claiming observed native draft/Send
+effects or full WhatsApp compatibility. Fixture publication is not authorized by
+runtime integration.
 Cases/scoring, NAV/model experiments, UI V2 and native compatibility remain
-separate WB-19–WB-22 work.
+planned work; current status and scope reconciliation are in [ROADMAP](ROADMAP.md).
 
 ## 1. Goal and limits of conclusions
 
@@ -189,8 +194,7 @@ incomplete evaluation remain decisions for the owner before implementation/measu
 
 ### Accepted T1 measurement
 
-The [Task rubric](tasks/t1-send-message/tests/rubric.json) is the editable source;
-[WB-06](docs/implementation/WB-06-t1-measurement.md) preserves approval/evidence.
+The [Task rubric](../tasks/t1-send-message/tests/rubric.json) is the editable source.
 Use 5 development + 5 private final Case, one per type in each set: ordinary new
 input, equal display names, exact Unicode/whitespace/expression-like text, populated
 state (including an old equal-text message), missing recipient. Four sends and one
@@ -266,10 +270,10 @@ agent loop. Finite time/tool/model/cost limits and confirmed local stop remain
 mandatory. Remote accepted computation/cost can remain unknown after local stop.
 Model runs require explicit authorization and finite limits before credential access.
 API-billed runs also require an independently verified external credential/project
-spending constraint. For the owner-authorized WB-07 ChatGPT subscription run, use
+spending constraint. For explicitly authorized ChatGPT subscription runs, use
 the live Codex account allowance instead: check available usage before each Attempt
 and block continuation when remaining usage is unavailable or exhausted. This is
-the current work's authentication decision, not an API spending-cap assertion.
+the accepted authentication policy, not an API spending-cap assertion.
 A config assertion or local timeout is not provider enforcement; disclose documented
 lag/possible overrun and agree practical limits/reserve, not a mathematical zero-overrun
 promise. Unknown remaining budget blocks another Attempt. Continuation/reassessment
@@ -302,7 +306,7 @@ n8n; Python/uv; Harbor's installed-agent seam with stock Codex first and separat
 Sapiens integration. No Composer HTTP bridge or parallel alternative implementations.
 Compatibility/isolation require real controls for the chosen host/profile/versions;
 [ARCHITECTURE](ARCHITECTURE.md) describes current contracts, [ROADMAP](ROADMAP.md)
-places E1–E5, and tickets retain results. External projects are ideas, not dependencies.
+records capability status and E1–E5 gates. External projects are ideas, not dependencies.
 
 ## 12. First-release acceptance
 
@@ -332,8 +336,8 @@ or mocks cannot replace required real checks. Savings are not a release gate.
 | Decision / owner | Deadline |
 |---|---|
 | Final model/harness/config, finite budgets, retry/usage limits and verified external cap / experiment owner + implementer | Before each paid Codex, Sapiens, Judge or acceptance run; T1 numerical budget proposals remain unapproved. |
-| UI identity/tree changes, stale observations, draft/search/effect rules; T3 latest/templates/no-input/processed and T4 keyword/provenance/bounds / Task author + owner | WB-09, before cases/implementation. Native T1 profile is already fixed. |
+| UI identity/tree changes, stale observations, draft/search/effect rules; T3 latest/templates/no-input/processed and T4 keyword/provenance/bounds / Task author + owner | Before the relevant cases/implementation. Native T1 profile is already fixed. |
 | Remaining Task sets/order/repetitions, rubric/aggregation/efficiency, selection/feedback/continuation / owner + Task author | Before their evaluated runs and policy implementation. Optional forced hybrid/H4 comparisons require an explicit decision if claimed. |
 | Native profile extensions and host/version isolation / architect + implementer | Before unsupported semantics or untrusted execution; no automatic second language/backend. |
-| Sapiens tools, state, submission and complete stop / implementer; blocker consequences / project owner | WB-08 immediately after successful E2, before progressing/release claims. |
+| Sapiens tools, state, submission and complete stop / implementer; blocker consequences / project owner | Before progression or release claims; E3 remains blocked. |
 | Necessary semantic criteria, labeled set/suitability/model/rubric / Task author + owner | Before E5 and any use of Judge scores. |

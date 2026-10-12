@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from collections.abc import Sequence
 from copy import deepcopy
 from pathlib import Path
 from uuid import NAMESPACE_OID, uuid4, uuid5
@@ -93,144 +92,236 @@ class Navigation:
         ui = self.state["ui"]
         targets: dict[str, tuple[dict[str, JsonValue], str | None, str | None]] = {}
 
-        def node(
-            role: str,
+        candidates = [
+            conversation
+            for conversation in self.state["conversations"]
+            if ui["query"] in conversation["display_name"]
+            or (
+                conversation["identity_hint"] is not None
+                and ui["query"] in conversation["identity_hint"]
+            )
+        ]
+        template = "chat-list"
+        if ui["screen"] == "conversation":
+            template = "conversation"
+        elif ui["screen"] == "search":
+            template = (
+                "search-focused"
+                if not ui["query"]
+                else "results-many"
+                if candidates
+                else "results-zero"
+            )
+        captured = read_json(
+            ROOT / "fixtures/trees" / f"{template}.json", "ax_template"
+        )
+        tree = captured["tree"]
+        visible_conversations, visible_messages = [], []
+
+        def at(*indices: int) -> dict[str, JsonValue]:
+            element = tree
+            for index in indices:
+                element = element["children"][index]
+            return element
+
+        def bind(
+            element: dict[str, JsonValue],
             label: str,
-            *,
-            value: str | None = None,
-            actions: Sequence[str] = (),
-            enabled: bool = True,
-            focused: bool = False,
-            children: Sequence[dict[str, JsonValue]] = (),
-            identity: dict[str, JsonValue] | None = None,
-            direction: str | None = None,
+            actions: list[str],
             target: str | None = None,
             conversation_id: str | None = None,
-        ) -> dict[str, JsonValue]:
-            ref = uuid5(NAMESPACE_OID, f"{scope}:{revision}:{len(targets)}").hex
-            result = {
-                "ref": ref,
-                "role": role,
+            **metadata: JsonValue,
+        ) -> None:
+            element["simulation"] = {
                 "label": label,
-                "value": value,
-                "enabled": enabled,
-                "focused": focused,
-                "actions": list(actions),
-                "children": list(children),
+                "actions": actions,
+                "provenance": "RECONSTRUCTED",
+                **metadata,
             }
-            if identity is not None:
-                result["identity"] = identity
-            if direction is not None:
-                result["direction"] = direction
-            targets[ref] = (result, target, conversation_id)
-            return result
+            bindings[id(element)] = (target, conversation_id)
 
-        children, visible_conversations, visible_messages = [], [], []
-        if ui["screen"] == "chat_list":
-            children.append(
-                node("button", "Search", actions=["activate"], target="search")
+        bindings: dict[int, tuple[str | None, str | None]] = {}
+        fragments: dict[str, dict[str, JsonValue]] = {}
+
+        def fragment(name: str) -> dict[str, JsonValue]:
+            if name not in fragments:
+                fragments[name] = read_json(
+                    ROOT / "fixtures/fragments" / f"{name}.json", "ax_fragment"
+                )
+            return deepcopy(fragments[name])
+
+        def contact_row(
+            conversation: dict[str, JsonValue], name: str, *, interactive: bool
+        ) -> dict[str, JsonValue]:
+            row = fragment(name)
+            display_name, hint = (
+                conversation["display_name"],
+                conversation["identity_hint"],
             )
-        else:
-            children.append(node("button", "Back", actions=["activate"], target="back"))
-        if ui["screen"] == "search":
-            children.extend(
-                [
-                    node(
-                        "textbox",
-                        "Search",
-                        value=ui["query"],
-                        actions=["focus", "replace_text"],
-                        focused=ui["focus"] == "search",
-                        target="query",
+            text = display_name + (f" [{hint}]" if hint is not None else "")
+            if interactive and name != "single-result":
+                latest = next(
+                    (
+                        message
+                        for message in reversed(self.state["messages"])
+                        if message["conversation_id"] == conversation["id"]
                     ),
-                    node(
-                        "button",
-                        "Clear text",
-                        actions=["activate"],
-                        enabled=bool(ui["query"]),
-                        target="clear",
-                    ),
-                ]
+                    None,
+                )
+                if latest is not None:
+                    text += ": " + latest["text"]
+            row["description"] = row["value"] = text
+            if interactive:
+                bind(
+                    row,
+                    display_name,
+                    ["activate"],
+                    "open",
+                    conversation["id"],
+                    identity={
+                        k: conversation[k] for k in ("display_name", "identity_hint")
+                    },
+                )
+            return row
+
+        if template == "chat-list":
+            bind(at(0, 0, 0, 1, 3), "Search", ["activate"], "search")
+            collection = at(0, 0, 0, 2)
+            original = collection["children"]
+            collection["children"] = (
+                original[:1]
+                + [contact_row(c, "chat-row", interactive=True) for c in candidates]
+                + original[11:]
             )
-        if ui["screen"] == "conversation":
+        elif template == "conversation":
             conversation = next(
                 c
                 for c in self.state["conversations"]
                 if c["id"] == ui["active_conversation_id"]
             )
             visible_conversations.append(conversation["id"])
-            children.append(
-                node(
-                    "heading",
-                    conversation["display_name"],
-                    identity={
-                        k: conversation[k] for k in ("display_name", "identity_hint")
-                    },
+            collection = at(0, 0, 0, 1, 0, 0, 0)
+            original = collection["children"]
+            collection["children"] = [
+                contact_row(
+                    c,
+                    "selected-chat-row"
+                    if c["id"] == conversation["id"]
+                    else "chat-row",
+                    interactive=False,
                 )
-            )
-            history = []
+                for c in self.state["conversations"]
+            ] + original[13:]
+            for index, header in enumerate(at(0, 0, 0, 1, 1, 0)["children"]):
+                header["description"] = conversation["display_name"]
+                if index == 0:
+                    bind(
+                        header,
+                        conversation["display_name"],
+                        [],
+                        identity={
+                            k: conversation[k]
+                            for k in ("display_name", "identity_hint")
+                        },
+                    )
+            history = at(0, 0, 0, 1, 1, 1, 0)
+            original = history["children"]
+            # Observed message composites include a wrapped first message and date headings.
+            patterns = [
+                original[:1],
+                original[1:2],
+                original[2:5],
+                original[5:7],
+                original[7:9],
+                original[9:11],
+            ]
+            history["children"] = []
             for message in self.state["messages"]:
-                if message["conversation_id"] == conversation["id"]:
-                    visible_messages.append(message["id"])
-                    history.append(
-                        node(
-                            "text",
-                            "Message",
-                            value=message["text"],
-                            direction=message["direction"],
-                        )
-                    )
-            children.append(node("group", "History", children=history))
-            children.append(
-                node(
-                    "textbox",
+                if message["conversation_id"] != conversation["id"]:
+                    continue
+                chunk = deepcopy(patterns[len(visible_messages) % len(patterns)])
+                leaf = chunk[-1]
+                if leaf["role"] == "AXGroup":
+                    leaf = leaf["children"][0]
+                leaf["description"] = message["text"]
+                bind(
+                    leaf,
                     "Message",
-                    value=ui["drafts"].get(conversation["id"], ""),
-                    actions=["focus", "replace_text"],
-                    focused=ui["focus"] == "composer",
-                    target="composer",
-                    conversation_id=conversation["id"],
+                    [],
+                    value=message["text"],
+                    direction=message["direction"],
                 )
+                history["children"].extend(chunk)
+                visible_messages.append(message["id"])
+            composer = at(0, 0, 0, 1, 1, 1, 2)
+            composer["focused"] = ui["focus"] == "composer"
+            draft = ui["drafts"].get(conversation["id"], "")
+            bind(
+                composer,
+                "Message",
+                ["focus", "replace_text"],
+                "composer",
+                conversation["id"],
+                value=draft,
             )
-            children.append(
-                node(
-                    "button",
-                    "Send",
-                    actions=["activate"],
-                    enabled=bool(ui["drafts"].get(conversation["id"], "")),
-                    target="send",
-                    conversation_id=conversation["id"],
-                )
-            )
+            send = at(1, 4, 0, 17)
+            send["enabled"] = bool(draft)
+            bind(send, "Send", ["activate"], "send", conversation["id"])
+            back = at(1, 6, 0, 6)
+            back["enabled"] = True
+            bind(back, "Back", ["activate"], "back")
         else:
-            buttons = []
-            for conversation in self.state["conversations"]:
-                if ui["query"] in conversation["display_name"] or (
-                    conversation["identity_hint"] is not None
-                    and ui["query"] in conversation["identity_hint"]
-                ):
-                    visible_conversations.append(conversation["id"])
-                    buttons.append(
-                        node(
-                            "button",
-                            conversation["display_name"],
-                            actions=["activate"],
-                            identity={
-                                k: conversation[k]
-                                for k in ("display_name", "identity_hint")
-                            },
-                            target="open",
-                            conversation_id=conversation["id"],
-                        )
-                    )
-            if not buttons:
-                buttons.append(
-                    node(
-                        "text", "No results" if ui["screen"] == "search" else "No chats"
-                    )
+            search = at(0, 0, 0, 1, 0, 1, 3)
+            search["focused"] = ui["focus"] == "search"
+            if ui["query"]:
+                search["value"] = ui["query"]
+            bind(search, "Search", ["focus", "replace_text"], "query")
+            clear = at(0, 0, 0, 1, 0, 1, 4)
+            clear["enabled"] = int(bool(ui["query"]))
+            bind(clear, "Clear text", ["activate"], "clear")
+            back = at(1, 6, 0, 6)
+            back["enabled"] = True
+            bind(back, "Back", ["activate"], "back")
+            background = at(0, 0, 0, 1, 0, 0, 1)
+            original = background["children"]
+            background["children"] = (
+                original[:2]
+                + [
+                    contact_row(c, "chat-row", interactive=not ui["query"])
+                    for c in self.state["conversations"]
+                ]
+                + original[11:]
+            )
+            if template == "results-many":
+                results = at(0, 0, 0, 1, 0, 0, 0)
+                original = results["children"]
+                # Retain the observed category headings; unmodelled categories are empty.
+                results["children"] = (
+                    original[:1]
+                    + [
+                        contact_row(c, "single-result", interactive=True)
+                        for c in candidates
+                    ]
+                    + [original[4], original[6]]
                 )
-            children.append(node("group", "Chats", children=buttons))
-        tree = node("group", "SimsApp", children=children)
+            # Captured underlying conversation is not an active SimsApp conversation.
+            for header in at(0, 0, 0, 1, 1, 0)["children"]:
+                header["description"] = ""
+                if "value" in header:
+                    header["value"] = ""
+            at(0, 0, 0, 1, 1, 1, 0)["children"] = []
+        if template != "conversation":
+            visible_conversations.extend(c["id"] for c in candidates)
+
+        def reference(element: dict[str, JsonValue], path: str) -> None:
+            ref = uuid5(NAMESPACE_OID, f"{scope}:{revision}:{template}:{path}").hex
+            element["ref"] = ref
+            target, conversation_id = bindings.get(id(element), (None, None))
+            targets[ref] = (element, target, conversation_id)
+            for index, child in enumerate(element.get("children", [])):
+                reference(child, f"{path}/{index}")
+
+        reference(tree, "")
         coverage = {
             "tree": "incomplete" if incomplete else "complete",
             "collection": {
@@ -247,6 +338,8 @@ class Navigation:
             "screen": ui["screen"],
             "coverage": coverage,
             "tree": tree,
+            "template": template,
+            "truncated": captured["truncated"],
         }
         protected = {
             "revision": revision,
@@ -289,11 +382,15 @@ class Navigation:
                 > STATE_SCHEMA["properties"]["ui"]["properties"]["query"]["maxLength"]
             ):
                 error = "limit_exceeded"
-            elif not element["enabled"]:
+            elif not element.get("enabled", True):
                 error = "disabled"
-            elif arguments["action"] not in element["actions"]:
+            elif arguments["action"] not in element.get("simulation", {}).get(
+                "actions", []
+            ):
                 error = "unsupported_action"
-            elif arguments["action"] == "replace_text" and not element["focused"]:
+            elif arguments["action"] == "replace_text" and not element.get(
+                "focused", False
+            ):
                 error = "not_focused"
         if error:
             return None, error, effect

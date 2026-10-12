@@ -105,8 +105,9 @@ async def call(app, capability, operation, **arguments):
 
 
 def nodes(node):
-    yield node
-    for child in node["children"]:
+    # Read app annotations while keeping native AX roles in every assertion.
+    yield {"label": "", "actions": [], **node, **node.get("simulation", {})}
+    for child in node.get("children", []):
         yield from nodes(child)
 
 
@@ -178,7 +179,7 @@ def test_navigation_opens_selected_history_and_back_preserves_business_state(
         assert [
             n["value"]
             for n in nodes(conversation["tree"])
-            if n["label"] == "Message" and n["role"] == "text"
+            if n["label"] == "Message" and n["role"] == "AXStaticText"
         ] == ["  История\n"]
         await act(app, capability, conversation, "Back")
         assert (await observe(app, capability))["screen"] == "chat_list"
@@ -573,7 +574,7 @@ def test_capacity_projection_validates_and_remains_complete_without_truncation(
                 [
                     n
                     for n in nodes(observation["tree"])
-                    if n["label"] == "Message" and n["role"] == "text"
+                    if n["label"] == "Message" and n["role"] == "AXStaticText"
                 ]
             )
             == 100
@@ -618,10 +619,10 @@ def test_composer_reads_replaces_and_preserves_drafts_per_conversation(
         app = simulator()
         capability = await start(app, state)
         initial = await observe(app, capability)
-        composer = next(n for n in nodes(initial["tree"]) if n["role"] == "textbox")
+        composer = next(n for n in nodes(initial["tree"]) if n["role"] == "AXTextArea")
         assert composer["label"] == "Message" and composer["value"] == "Старый draft"
         assert not composer["focused"]
-        await act(app, capability, initial, "Message", "focus", role="textbox")
+        await act(app, capability, initial, "Message", "focus", role="AXTextArea")
         focused = await observe(app, capability)
         text = "  Привет 👩🏽‍💻\ne\u0301 {{literal}}  "
         await act(
@@ -630,11 +631,11 @@ def test_composer_reads_replaces_and_preserves_drafts_per_conversation(
             focused,
             "Message",
             "replace_text",
-            role="textbox",
+            role="AXTextArea",
             text=text,
         )
         current = await observe(app, capability)
-        composer = next(n for n in nodes(current["tree"]) if n["role"] == "textbox")
+        composer = next(n for n in nodes(current["tree"]) if n["role"] == "AXTextArea")
         assert composer["focused"] and composer["value"] == text
         assert (
             await act(
@@ -643,7 +644,7 @@ def test_composer_reads_replaces_and_preserves_drafts_per_conversation(
                 current,
                 "Message",
                 "replace_text",
-                role="textbox",
+                role="AXTextArea",
                 text=text,
             )
         )["result"]["status"] == "no_effect"
@@ -651,7 +652,7 @@ def test_composer_reads_replaces_and_preserves_drafts_per_conversation(
         await act(app, capability, await observe(app, capability), "Лена")
         other = await observe(app, capability)
         assert (
-            next(n for n in nodes(other["tree"]) if n["role"] == "textbox")["value"]
+            next(n for n in nodes(other["tree"]) if n["role"] == "AXTextArea")["value"]
             == "Чужой draft"
         )
         facts = await frozen(app, tmp_path)
@@ -693,7 +694,7 @@ def test_send_creates_one_exact_message_and_clears_only_active_draft(
             await observe(app, capability),
             "Message",
             "focus",
-            role="textbox",
+            role="AXTextArea",
         )
         replaced = await act(
             app,
@@ -701,7 +702,7 @@ def test_send_creates_one_exact_message_and_clears_only_active_draft(
             await observe(app, capability),
             "Message",
             "replace_text",
-            role="textbox",
+            role="AXTextArea",
             text=text,
         )
         assert "error" not in replaced
@@ -715,9 +716,9 @@ def test_send_creates_one_exact_message_and_clears_only_active_draft(
         assert [
             n["value"]
             for n in nodes(current["tree"])
-            if n["role"] == "text" and n["label"] == "Message"
+            if n["role"] == "AXStaticText" and n["label"] == "Message"
         ] == ["  История\n", text, text]
-        composer = next(n for n in nodes(current["tree"]) if n["role"] == "textbox")
+        composer = next(n for n in nodes(current["tree"]) if n["role"] == "AXTextArea")
         assert composer["value"] == "" and composer["focused"]
         assert not next(n for n in nodes(current["tree"]) if n["label"] == "Send")[
             "enabled"
@@ -803,17 +804,17 @@ def test_repeated_send_is_explicit_and_never_hidden_by_dedup(delivered, tmp_path
             "error"
         ]["code"] == "disabled"
         current = await observe(app, capability)
-        assert not next(n for n in nodes(current["tree"]) if n["role"] == "textbox")[
+        assert not next(n for n in nodes(current["tree"]) if n["role"] == "AXTextArea")[
             "focused"
         ]
-        await act(app, capability, current, "Message", "focus", role="textbox")
+        await act(app, capability, current, "Message", "focus", role="AXTextArea")
         await act(
             app,
             capability,
             await observe(app, capability),
             "Message",
             "replace_text",
-            role="textbox",
+            role="AXTextArea",
             text="повтор",
         )
         await act(app, capability, await observe(app, capability), "Send")
@@ -834,7 +835,7 @@ def test_invalid_composer_actions_never_change_draft_or_messages(delivered, tmp_
         app = simulator()
         capability = await start(app, state)
         initial = await observe(app, capability)
-        message = locator(initial, "Message", role="textbox")
+        message = locator(initial, "Message", role="AXTextArea")
         send = locator(initial, "Send")
         for arguments, code in [
             (
@@ -867,7 +868,7 @@ def test_invalid_composer_actions_never_change_draft_or_messages(delivered, tmp_
                 "retryable": False,
             }
         assert await observe(app, capability) == initial
-        await act(app, capability, initial, "Message", "focus", role="textbox")
+        await act(app, capability, initial, "Message", "focus", role="AXTextArea")
         assert (
             await act(
                 app,
@@ -875,7 +876,7 @@ def test_invalid_composer_actions_never_change_draft_or_messages(delivered, tmp_
                 initial,
                 "Message",
                 "replace_text",
-                role="textbox",
+                role="AXTextArea",
                 text="x",
             )
         )["error"]["code"] == "stale_locator"
@@ -887,14 +888,14 @@ def test_invalid_composer_actions_never_change_draft_or_messages(delivered, tmp_
                 focused,
                 "Message",
                 "replace_text",
-                role="textbox",
+                role="AXTextArea",
                 text="",
             )
         )["result"]["status"] == "no_effect"
         await act(app, capability, focused, "Back")
         unavailable = await observe(app, capability)
         assert not any(
-            n["role"] == "textbox" or n["label"] == "Send"
+            n["role"] == "AXTextArea" or n["label"] == "Send"
             for n in nodes(unavailable["tree"])
         )
         assert (
