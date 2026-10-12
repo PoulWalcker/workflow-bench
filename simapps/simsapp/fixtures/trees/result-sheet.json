@@ -1,0 +1,4828 @@
+{
+  "tree": {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "enabled": 1,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 100
+                },
+                "role": "AXGroup",
+                "selected": 0,
+                "size": {
+                  "height": 800,
+                  "width": 1200
+                }
+              }
+            ],
+            "focused": false,
+            "pid": 0,
+            "position": {
+              "x": 100,
+              "y": 100
+            },
+            "role": "AXGroup",
+            "size": {
+              "height": 800,
+              "width": 1200
+            },
+            "subrole": "iOSContentGroup"
+          },
+          {
+            "enabled": false,
+            "focused": false,
+            "pid": 0,
+            "position": {
+              "x": 108,
+              "y": 108
+            },
+            "role": "AXButton",
+            "size": {
+              "height": 16,
+              "width": 16
+            },
+            "subrole": "AXCloseButton"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 155,
+                      "y": 109
+                    },
+                    "role": "AXGroup",
+                    "size": {
+                      "height": 14,
+                      "width": 14
+                    }
+                  }
+                ],
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 155,
+                  "y": 109
+                },
+                "role": "AXGroup",
+                "size": {
+                  "height": 14,
+                  "width": 14
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "pid": 0,
+            "position": {
+              "x": 154,
+              "y": 108
+            },
+            "role": "AXButton",
+            "size": {
+              "height": 16,
+              "width": 16
+            },
+            "subrole": "AXZoomButton"
+          },
+          {
+            "enabled": true,
+            "focused": false,
+            "pid": 0,
+            "position": {
+              "x": 131,
+              "y": 108
+            },
+            "role": "AXButton",
+            "size": {
+              "height": 16,
+              "width": 16
+            },
+            "subrole": "AXMinimizeButton"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "children": [
+                              {
+                                "enabled": 1,
+                                "focused": false,
+                                "pid": 0,
+                                "position": {
+                                  "x": 476,
+                                  "y": 333
+                                },
+                                "role": "AXGroup",
+                                "selected": 0,
+                                "size": {
+                                  "height": 90,
+                                  "width": 448
+                                }
+                              },
+                              {
+                                "description": "Unspecified heading",
+                                "enabled": 1,
+                                "focused": false,
+                                "pid": 0,
+                                "position": {
+                                  "x": 476,
+                                  "y": 455
+                                },
+                                "role": "AXHeading",
+                                "selected": 0,
+                                "size": {
+                                  "height": 26,
+                                  "width": 448
+                                }
+                              },
+                              {
+                                "children": [
+                                  {
+                                    "description": "Unspecified text",
+                                    "enabled": 1,
+                                    "focused": false,
+                                    "pid": 0,
+                                    "position": {
+                                      "x": 492,
+                                      "y": 499
+                                    },
+                                    "role": "AXStaticText",
+                                    "selected": 0,
+                                    "size": {
+                                      "height": 20,
+                                      "width": 416
+                                    }
+                                  },
+                                  {
+                                    "description": "Unspecified text",
+                                    "enabled": 1,
+                                    "focused": false,
+                                    "pid": 0,
+                                    "position": {
+                                      "x": 492,
+                                      "y": 537
+                                    },
+                                    "role": "AXStaticText",
+                                    "selected": 0,
+                                    "size": {
+                                      "height": 20,
+                                      "width": 416
+                                    }
+                                  },
+                                  {
+                                    "description": "Unspecified text",
+                                    "enabled": 1,
+                                    "focused": false,
+                                    "pid": 0,
+                                    "position": {
+                                      "x": 492,
+                                      "y": 575
+                                    },
+                                    "role": "AXStaticText",
+                                    "selected": 0,
+                                    "size": {
+                                      "height": 20,
+                                      "width": 416
+                                    }
+                                  }
+                                ],
+                                "enabled": 1,
+                                "focused": false,
+                                "pid": 0,
+                                "position": {
+                                  "x": 476,
+                                  "y": 493
+                                },
+                                "role": "AXGroup",
+                                "selected": 0,
+                                "size": {
+                                  "height": 108,
+                                  "width": 448
+                                }
+                              }
+                            ],
+                            "enabled": 1,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 460,
+                              "y": 315
+                            },
+                            "role": "AXGroup",
+                            "selected": 0,
+                            "size": {
+                              "height": 370,
+                              "width": 480
+                            }
+                          },
+                          {
+                            "children": [
+                              {
+                                "children": [
+                                  {
+                                    "description": "Unspecified control",
+                                    "enabled": 1,
+                                    "focused": false,
+                                    "pid": 0,
+                                    "position": {
+                                      "x": 847,
+                                      "y": 645
+                                    },
+                                    "role": "AXButton",
+                                    "selected": 0,
+                                    "size": {
+                                      "height": 28,
+                                      "width": 81
+                                    }
+                                  }
+                                ],
+                                "enabled": 1,
+                                "focused": false,
+                                "pid": 0,
+                                "position": {
+                                  "x": 460,
+                                  "y": 633
+                                },
+                                "role": "AXGroup",
+                                "selected": 0,
+                                "size": {
+                                  "height": 52,
+                                  "width": 480
+                                }
+                              }
+                            ],
+                            "enabled": 1,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 460,
+                              "y": 633
+                            },
+                            "role": "AXGroup",
+                            "selected": 0,
+                            "size": {
+                              "height": 52,
+                              "width": 480
+                            }
+                          }
+                        ],
+                        "enabled": 1,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 460,
+                          "y": 315
+                        },
+                        "role": "AXGroup",
+                        "selected": 0,
+                        "size": {
+                          "height": 370,
+                          "width": 480
+                        }
+                      },
+                      {
+                        "description": "\u200eCancel",
+                        "enabled": 1,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 902,
+                          "y": 327
+                        },
+                        "role": "AXButton",
+                        "selected": 0,
+                        "size": {
+                          "height": 26,
+                          "width": 26
+                        }
+                      }
+                    ],
+                    "enabled": 1,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 460,
+                      "y": 315
+                    },
+                    "role": "AXGroup",
+                    "selected": 0,
+                    "size": {
+                      "height": 370,
+                      "width": 480
+                    }
+                  }
+                ],
+                "focused": true,
+                "pid": 0,
+                "position": {
+                  "x": 460,
+                  "y": 315
+                },
+                "role": "AXGroup",
+                "size": {
+                  "height": 370,
+                  "width": 480
+                },
+                "subrole": "iOSContentGroup"
+              }
+            ],
+            "focused": false,
+            "pid": 0,
+            "position": {
+              "x": 460,
+              "y": 315
+            },
+            "role": "AXSheet",
+            "size": {
+              "height": 370,
+              "width": 480
+            }
+          }
+        ],
+        "focused": false,
+        "identifier": "fixture-redacted-id",
+        "pid": 0,
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "role": "AXWindow",
+        "size": {
+          "height": 800,
+          "width": 1200
+        },
+        "subrole": "AXStandardWindow",
+        "title": "\u200eWhatsApp"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "WhatsApp"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "pid": 0,
+            "position": {
+              "x": 110,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 34
+            },
+            "title": "Unspecified menu item"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eSettings"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 144,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 88
+            },
+            "title": "WhatsApp"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eNew Chat"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eSearch"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Close"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 232,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 42
+            },
+            "title": "File"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 274,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 44
+            },
+            "title": "Edit"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eSend"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 318,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 49
+            },
+            "title": "\u200eChat"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 367,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 43
+            },
+            "title": "Unspecified menu item"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eChats"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eUpdates"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eCommunities"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eCalls"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eBack"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200ePrevious Chat"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eNext Chat"
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 410,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 50
+            },
+            "title": "View"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Minimize"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Zoom"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "children": [
+                      {
+                        "children": [
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": true,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": ""
+                          },
+                          {
+                            "enabled": false,
+                            "focused": false,
+                            "identifier": "fixture-redacted-id",
+                            "pid": 0,
+                            "position": {
+                              "x": 100,
+                              "y": 1230
+                            },
+                            "role": "AXMenuItem",
+                            "selected": false,
+                            "size": {
+                              "height": 0,
+                              "width": 0
+                            },
+                            "title": "Unspecified menu item"
+                          }
+                        ],
+                        "enabled": true,
+                        "focused": false,
+                        "pid": 0,
+                        "position": {
+                          "x": 100,
+                          "y": 1230
+                        },
+                        "role": "AXMenu",
+                        "selected": false,
+                        "size": {
+                          "height": 0,
+                          "width": 0
+                        }
+                      }
+                    ],
+                    "enabled": true,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Bring All to Front"
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  },
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": ""
+                  },
+                  {
+                    "enabled": true,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "\u200eWhatsApp"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 460,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 69
+            },
+            "title": "Window"
+          },
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "enabled": false,
+                    "focused": false,
+                    "identifier": "fixture-redacted-id",
+                    "pid": 0,
+                    "position": {
+                      "x": 100,
+                      "y": 1230
+                    },
+                    "role": "AXMenuItem",
+                    "selected": false,
+                    "size": {
+                      "height": 0,
+                      "width": 0
+                    },
+                    "title": "Unspecified menu item"
+                  }
+                ],
+                "enabled": true,
+                "focused": false,
+                "pid": 0,
+                "position": {
+                  "x": 100,
+                  "y": 1230
+                },
+                "role": "AXMenu",
+                "selected": false,
+                "size": {
+                  "height": 0,
+                  "width": 0
+                }
+              }
+            ],
+            "enabled": true,
+            "focused": false,
+            "identifier": "fixture-redacted-id",
+            "pid": 0,
+            "position": {
+              "x": 529,
+              "y": 61
+            },
+            "role": "AXMenuBarItem",
+            "selected": false,
+            "size": {
+              "height": 39,
+              "width": 48
+            },
+            "title": "Help"
+          }
+        ],
+        "enabled": true,
+        "focused": false,
+        "pid": 0,
+        "position": {
+          "x": 100,
+          "y": 61
+        },
+        "role": "AXMenuBar",
+        "selected": false,
+        "size": {
+          "height": 39,
+          "width": 1800
+        }
+      }
+    ],
+    "pid": 0,
+    "role": "AXApplication",
+    "title": "WhatsApp"
+  },
+  "truncated": false
+}

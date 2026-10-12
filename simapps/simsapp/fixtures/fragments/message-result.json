@@ -1,0 +1,54 @@
+{
+  "children": [
+    {
+      "description": "Alice Morgan: See you tomorrow! 09:30",
+      "enabled": 1,
+      "focused": false,
+      "identifier": "fixture-redacted-id",
+      "pid": 0,
+      "position": {
+        "x": 100,
+        "y": 697
+      },
+      "role": "AXStaticText",
+      "selected": 0,
+      "size": {
+        "height": 99,
+        "width": 595
+      },
+      "value": ""
+    },
+    {
+      "description": "Unspecified control",
+      "enabled": 1,
+      "focused": false,
+      "identifier": "fixture-redacted-id",
+      "pid": 0,
+      "position": {
+        "x": 599,
+        "y": 710
+      },
+      "role": "AXButton",
+      "selected": 0,
+      "size": {
+        "height": 72,
+        "width": 72
+      }
+    }
+  ],
+  "enabled": 1,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 100,
+    "y": 697
+  },
+  "role": "AXGroup",
+  "selected": 0,
+  "size": {
+    "height": 99,
+    "width": 595
+  },
+  "value": ""
+}

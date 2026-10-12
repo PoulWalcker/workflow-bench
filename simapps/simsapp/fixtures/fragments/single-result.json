@@ -1,0 +1,18 @@
+{
+  "description": "Alice Morgan",
+  "enabled": 1,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 100,
+    "y": 247
+  },
+  "role": "AXButton",
+  "selected": 0,
+  "size": {
+    "height": 68,
+    "width": 595
+  },
+  "value": "Alice Morgan"
+}

@@ -335,8 +335,10 @@ scrolling, other menu actions, delivery semantics and alternate AX relations are
 unsupported. Unused result categories retain headings but have no candidates;
 unknown relation targets are not invented. Copied coordinates and fictional date
 headings are reference layout, not measured geometry or message timestamps for new
-state. Sanitized assets remain private local runtime input; integration does not
-regenerate them or authorize publication.
+state. Sanitized assets are committed application resources, covered by the
+[fixture package's publication scope](../simapps/simsapp/fixtures/README.md#provenance-and-publication).
+Private captures are unnecessary for runtime/builds and remain outside the package.
+Runtime integration neither regenerates fixtures nor authorizes additional captures.
 
 ## 6. Experiment/configuration interfaces
 

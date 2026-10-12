@@ -1,0 +1,18 @@
+{
+  "description": "Can we meet tomorrow? 09:30",
+  "enabled": 1,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 711.5,
+    "y": 303
+  },
+  "role": "AXStaticText",
+  "selected": 0,
+  "size": {
+    "height": 324,
+    "width": 228
+  },
+  "value": ""
+}

@@ -139,8 +139,9 @@ It never exposes a business `send_message` tool. The UI projection uses the
 explicit reconstruction and fidelity limits; this is a simulator, not native
 WhatsApp compatibility.
 
-The required sanitized AX assets remain private local input; provision the existing
-fixture package before building SimsApp. No synthetic fallback or fixture
+The required sanitized AX assets and offline checker are committed with SimsApp;
+a clean checkout needs no private captures. The fixture README records provenance,
+publication scope and fidelity limits. No synthetic fallback or fixture
 regeneration occurs. Observations expose native AX roles, scoped `ref` and
 `simulation` annotations for supported actions, identity hints and exact draft
 values. Search is AXStaticText/AXSearchField, composer is AXTextArea and Send is an

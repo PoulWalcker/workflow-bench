@@ -1,0 +1,17 @@
+{
+  "description": "\u200eVoice message",
+  "enabled": 1,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 1258.5,
+    "y": 852
+  },
+  "role": "AXButton",
+  "selected": 0,
+  "size": {
+    "height": 32,
+    "width": 32
+  }
+}

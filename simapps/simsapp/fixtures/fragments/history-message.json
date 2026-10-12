@@ -1,0 +1,18 @@
+{
+  "description": "Thank you, Alice! 09:30",
+  "enabled": 1,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 809.5,
+    "y": 209
+  },
+  "role": "AXStaticText",
+  "selected": 0,
+  "size": {
+    "height": 48,
+    "width": 377
+  },
+  "value": ""
+}

@@ -1,0 +1,17 @@
+{
+  "description": "Bob Carter: See you tomorrow! 09:30",
+  "enabled": 1,
+  "focused": false,
+  "pid": 0,
+  "position": {
+    "x": 100,
+    "y": 265.0000001192093
+  },
+  "role": "AXStaticText",
+  "selected": 1,
+  "size": {
+    "height": 69,
+    "width": 595
+  },
+  "value": "Bob Carter: See you tomorrow! 09:30"
+}

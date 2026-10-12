@@ -1,0 +1,407 @@
+{
+  "focused": {
+    "ax_error": 0,
+    "AXValue_settable": false,
+    "AXValue_settable_status": 0,
+    "relations": [
+      {
+        "array_count": 0,
+        "attribute": "AXChildren",
+        "ax_error": 0,
+        "roles": []
+      },
+      {
+        "array_count": null,
+        "attribute": "AXWindows",
+        "ax_error": -25212,
+        "roles": null
+      },
+      {
+        "array_count": 0,
+        "attribute": "AXChildrenInNavigationOrder",
+        "ax_error": 0,
+        "roles": []
+      },
+      {
+        "array_count": null,
+        "attribute": "AXVisibleChildren",
+        "ax_error": -25212,
+        "roles": null
+      }
+    ],
+    "role": "AXStaticText"
+  },
+  "kind": "auxiliary-direct-AX-read-only-not-Blindly4",
+  "root_relations": [
+    {
+      "array_count": 2,
+      "attribute": "AXChildren",
+      "ax_error": 0,
+      "roles": [
+        "AXWindow",
+        "AXMenuBar"
+      ]
+    },
+    {
+      "array_count": 1,
+      "attribute": "AXWindows",
+      "ax_error": 0,
+      "roles": [
+        "AXWindow"
+      ]
+    },
+    {
+      "array_count": 2,
+      "attribute": "AXChildrenInNavigationOrder",
+      "ax_error": 0,
+      "roles": [
+        "AXMenuBar",
+        "AXWindow"
+      ]
+    },
+    {
+      "array_count": null,
+      "attribute": "AXVisibleChildren",
+      "ax_error": -25205,
+      "roles": null
+    }
+  ],
+  "window_traversals": [
+    [
+      {
+        "bounded": false,
+        "nodes_without_text": [
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 4,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 4,
+            "path": "",
+            "role": "AXWindow"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 1,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 1,
+            "path": "0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "0.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "0.0.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 7,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 7,
+            "path": "0.0.0.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "0.0.0.1",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "0.0.1",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "0.0.1.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "0.0.1.1",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": -25205,
+            "alternate_count": 0,
+            "alternate_only_roles": [],
+            "ax_error": -25212,
+            "child_count": 0,
+            "path": "1",
+            "role": "AXButton"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 1,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 1,
+            "path": "2",
+            "role": "AXButton"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 1,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 1,
+            "path": "2.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 0,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 0,
+            "path": "2.0.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": -25205,
+            "alternate_count": 0,
+            "alternate_only_roles": [],
+            "ax_error": -25212,
+            "child_count": 0,
+            "path": "3",
+            "role": "AXButton"
+          }
+        ],
+        "read_status_counts": {
+          "-25212": 2,
+          "0": 68
+        },
+        "relation": "AXChildren",
+        "role_counts": {
+          "AXButton": 24,
+          "AXGroup": 20,
+          "AXHeading": 6,
+          "AXLink": 1,
+          "AXStaticText": 17,
+          "AXTextArea": 1,
+          "AXWindow": 1
+        },
+        "unique_nodes": 70
+      },
+      {
+        "bounded": false,
+        "nodes_without_text": [
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 4,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 4,
+            "path": "",
+            "role": "AXWindow"
+          },
+          {
+            "alternate_ax_error": -25212,
+            "alternate_count": 0,
+            "alternate_only_roles": [],
+            "ax_error": -25205,
+            "child_count": 0,
+            "path": "0",
+            "role": "AXButton"
+          },
+          {
+            "alternate_ax_error": -25212,
+            "alternate_count": 0,
+            "alternate_only_roles": [],
+            "ax_error": -25205,
+            "child_count": 0,
+            "path": "1",
+            "role": "AXButton"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 1,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 1,
+            "path": "2",
+            "role": "AXButton"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 1,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 1,
+            "path": "2.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 0,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 0,
+            "path": "2.0.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 1,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 1,
+            "path": "3",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "3.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "3.0.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 7,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 7,
+            "path": "3.0.0.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "3.0.0.1",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "3.0.1",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "3.0.1.0",
+            "role": "AXGroup"
+          },
+          {
+            "alternate_ax_error": 0,
+            "alternate_count": 2,
+            "alternate_only_roles": [],
+            "ax_error": 0,
+            "child_count": 2,
+            "path": "3.0.1.1",
+            "role": "AXGroup"
+          }
+        ],
+        "read_status_counts": {
+          "-25205": 2,
+          "0": 68
+        },
+        "relation": "AXChildrenInNavigationOrder",
+        "role_counts": {
+          "AXButton": 24,
+          "AXGroup": 20,
+          "AXHeading": 6,
+          "AXLink": 1,
+          "AXStaticText": 17,
+          "AXTextArea": 1,
+          "AXWindow": 1
+        },
+        "unique_nodes": 70
+      }
+    ]
+  ],
+  "windows": [
+    {
+      "ordinal": 0,
+      "relations": [
+        {
+          "array_count": 4,
+          "attribute": "AXChildren",
+          "ax_error": 0,
+          "roles": [
+            "AXGroup",
+            "AXButton",
+            "AXButton",
+            "AXButton"
+          ]
+        },
+        {
+          "array_count": null,
+          "attribute": "AXWindows",
+          "ax_error": -25205,
+          "roles": null
+        },
+        {
+          "array_count": 4,
+          "attribute": "AXChildrenInNavigationOrder",
+          "ax_error": 0,
+          "roles": [
+            "AXButton",
+            "AXButton",
+            "AXButton",
+            "AXGroup"
+          ]
+        },
+        {
+          "array_count": null,
+          "attribute": "AXVisibleChildren",
+          "ax_error": -25205,
+          "roles": null
+        }
+      ],
+      "role": "AXWindow"
+    }
+  ]
+}
