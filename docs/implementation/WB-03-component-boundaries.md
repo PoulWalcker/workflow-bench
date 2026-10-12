@@ -15,9 +15,9 @@
 - [SPEC §3, §6, §10–11](../../SPEC.md): Task-first, разные назначения данных,
   публичная сдача и изоляция.
 - [ARCHITECTURE §1](../../ARCHITECTURE.md): владельцы и направления импортов;
-  §2 «Task и условия эксперимента», §3 «Размещение и доступ» и §6: native Task,
+  §2 «Task materials and data boundaries», §4 «Harbor lifecycle and trust topology»: native Task,
   public export, расположение общих и предметных частей.
-- [Principles §1–5](../../Principles.md): реальные обязанности, один владелец,
+- [Engineering rules](../../AGENTS.md): реальные обязанности, один владелец,
   конфигурация и проверки поведения.
 
 ## Зависимости
@@ -64,7 +64,7 @@ Sapiens package и Judge. Не создавать их пустые классы
 ### Техническое уточнение и test seam S2 (согласован пользователем)
 
 Реализовать только `definition.py` и реально необходимые exchange-структуры
-из [ARCHITECTURE §10.1–10.2](../../ARCHITECTURE.md): `load_task` →
+из [ARCHITECTURE §2](../../ARCHITECTURE.md): `load_task` →
 `export_public`. Зависимости здесь — native Harbor parser и jsonschema;
 установка Harbor не запускает его lifecycle и не подтверждает E1.
 `TaskMaterials` не является новым Task framework. `tool_contract` передаётся
@@ -136,3 +136,66 @@ S2 (совпадение private path с instruction, native parser recursion и
 refs). Внешний Interface и набор public package сохранены; новые отрицательные
 контроли прошли red → green. Перенос gate в `tests/conftest.py` подтверждён всеми
 23 согласованными сценариями S1, содержимое hooks сохранено побайтно.
+
+## Design skill provenance
+
+11 октября 2026 года прочитаны и применены уже установленные локальные SKILL.md;
+установка/обновление не выполнялись. Upstream commit локальной установки не
+установлен; точная редакция зафиксирована SHA-256 содержимого, без заявления,
+что это текущий upstream. Источник набора — [mattpocock/skills](https://github.com/mattpocock/skills);
+описания: [codebase-design](https://www.aihero.dev/skills-codebase-design),
+[domain-modeling](https://www.aihero.dev/skills-domain-modeling),
+[tdd](https://www.aihero.dev/skills-tdd).
+
+| Локальный источник относительно каталога skills | SHA-256 |
+|---|---|
+| `codebase-design/SKILL.md` | `2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2` |
+| `domain-modeling/SKILL.md` | `7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3` |
+| `tdd/SKILL.md` | `5505d25bbaa8fc14a79e4d20163936958992a2995b7f1dd1d6197edc9ed722e0` |
+| `writing-for-agents/SKILL.md` | `551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a` |
+| `domain-modeling/GLOSSARY-FORMAT.md` | `21dcc40cdec8e151a829b98ab1517c1867bc444e3665134a98c6983411996801` |
+| `tdd/tests.md` | `859f9e592c188fda4fc7277dd180e4ce9c7a2e13f6efe1f6f29eccc9d28c106a` |
+| `tdd/mocking.md` | `3ceb807fdf4a47d6a93d4d9a891e5ba6d362a6247bd08adc451feebfc17361ef` |
+
+## Historical packaging and export verification
+
+Moved from the former README; the results below refer to the original WB-03 runs.
+
+Проверенная команда S2 (обычные временные файлы, настоящий native parser и validator):
+
+```sh
+uv run --locked pytest -q tests/fast/test_definition.py
+```
+
+76 проверок покрывают разрешённый учебный state, исключение приватного marker из
+реальных input/state/expected, cases/rubric/tests/solution и личных файлов;
+неверные схемы/пример, повреждённый JSON, duplicate keys, NaN/Infinity,
+traversal/absolute metadata paths, symlink и его parent, FIFO/каталоги,
+отсутствующие материалы, совпадение приватного пути с instruction, безопасную
+ошибку глубоко вложенного native config, ссылки в tool schemas,
+несовпадение профиля, конфликт destination и cleanup
+при сбое записи. Последний контроль подменяет только файловую запись для ошибки
+ОС; loader/exporter не подменяются. Вторая синтетическая Task проходит по пути
+из другого cwd без регистрации. Импорты core просмотрены: предметных зависимостей
+от Telegram/Sapiens нет. S2 не доказывает настоящий Harbor Trial или исполнение n8n.
+
+### Packaging
+
+В WB-03 выполнена изолированная PEP 517 сборка:
+
+```sh
+uv build --force-pep517 --offline
+```
+
+Wheel и sdist содержат пакет с ресурсами; кэши, среды, tests, служебные документы
+и личные файлы исключены. Из собранного wheel установлен пакет в отдельный временный
+`--target` через `uv pip install --offline --no-deps`; Python `-I` из другого cwd
+импортировал именно этот установленный пакет и выполнил native load/public export
+на синтетической fixture. Dependencies брались из проверенной locked `.venv`.
+Это проверка поставки ресурсов wheel, не восстановление зависимостей с чистого кэша.
+
+Первый `uv build --force-pep517` без offline не прошёл из-за DNS в sandbox;
+повтор с offline использовал кэш и завершился exit 0. Попытка восстановить отдельную
+wheel-среду только из кэша через `uv pip install --offline` также не прошла:
+resolver не нашёл registry distributions части зависимостей. Для чистой установки
+по-прежнему нужна сеть. Default fast pytest сети не требует.

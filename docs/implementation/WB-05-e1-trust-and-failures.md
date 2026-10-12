@@ -14,10 +14,9 @@ missing reward и неподтверждённый stop не превращаю�
 
 - [SPEC §8–10](../../SPEC.md): полнота, факты, ошибки/unknown, доверие;
   §12 п. 4–6 и 9: отрицательные контроли, реальные обходы, stop и cleanup.
-- [ARCHITECTURE §2](../../ARCHITECTURE.md): сдача, capability, evidence и
-  сопряжение reward; §3: сеть/файлы/stop; §5: ограничения native-профиля;
-  §7: потеря ответа, подмена evidence, timeout; §8: E1.
-- [Principles §5–7](../../Principles.md): реальные проверки, честная оценка,
+- [ARCHITECTURE §3–5](../../ARCHITECTURE.md): сдача/native-профиль, capability,
+  сеть/файлы/stop, Evidence и reward; E1 — в ROADMAP.
+- [Engineering rules](../../AGENTS.md): реальные проверки, честная оценка,
   конечность операций и отсутствие слепых повторов.
 
 ## Зависимости
@@ -60,7 +59,7 @@ stop/cleanup Harbor binding. Новые бизнес-правила core не п
 ### Техническое уточнение и согласованные test seams
 
 Используется единственный путь, полученный WB-04, и контракты
-[ARCHITECTURE §10.4–10.6](../../ARCHITECTURE.md). Не вводить второй verifier.
+[ARCHITECTURE §4–5](../../ARCHITECTURE.md). Не вводить второй verifier.
 S3–S5 из WB-04 расширяются отрицательными примерами ниже; их подтверждение
 не выводится из проверки JSON Schema. Дополнительные seams:
 
@@ -149,21 +148,21 @@ REMEDIATION_PLAN отсутствовал. Audit также отсутствов
 Существующее AD-состояние ZIP сохранено. Commit/push не выполнялись.
 
 S3–S8 явно согласованы пользователем в этой сессии. Установленные codebase-design,
-domain-modeling и tdd применены без установки/обновления. Термины GLOSSARY сохранены.
+domain-modeling и tdd применены без установки/обновления. Термины SPEC сохранены.
 Red → green зафиксирован для W1, W2, cleanup residuals, отказа revoke, lost response,
 pending drain, unknown exec, reward helper, повреждённых facts, явного cancel,
 подделки evaluation до verifier, конечного native stop/kill-reap и безопасных CLI
 logs. Реальная red-проба stale reward показала принятие кандидатского reward;
 после очистки фазового каталога regression прошёл.
 
-Технические решения и coupling к Harbor принадлежат [ARCHITECTURE §10.4](../../ARCHITECTURE.md#104-execution-control-и-evaluation-wb-0405).
+Технические решения и coupling к Harbor принадлежат [ARCHITECTURE §4](../../ARCHITECTURE.md#4-harbor-lifecycle-and-trust-topology).
 W1 закрыт обратной достижимостью BenchResult, W2 — ceil native limits при точном
 внешнем deadline, W3 — structured cleanup errors/residual resources. Числовая
 fixture `7.25` не задаёт веса, thresholds или агрегацию T1. У T1 score=null,
 verdict=unknown; известные критерии сохраняются, missing reward — отдельная
 неполнота assessment. Повтор оценки не повторяет действия.
 
-Команды и prerequisites — в [README](../../README.md#реальные-контроли-wb-05).
+Команды и prerequisites — в [README](../../README.md#verified-docker-controls).
 Группы ниже обозначают точные команды оттуда: **fast**, **native**, **lifecycle**.
 Сырые evidence/logs/config/manifest находятся только в игнорируемом `runs/`.
 
@@ -242,8 +241,7 @@ drain/verifier/cleanup/total = 90/20/45/5/10/10/30/25/360 s; 1 CPU, 1024 MiB,
 POSIX signal handling и asyncio cancellation допускают конечный cleanup;
 SIGKILL/падение Docker daemon не покрываются graceful контрактом. Adapter зависит
 от приватного buffered IO метода Harbor 0.24.0; upgrade требует regression и
-реальных controls. Native n8n execution ID по-прежнему недоступен (§10.5
-ARCHITECTURE); replay IDs/log refs связывают исполнение.
+реальных controls. Native n8n execution ID по-прежнему недоступен (ARCHITECTURE “Artifact and Replay interfaces”); replay IDs/log refs связывают исполнение.
 
 У T1 остаются score=null/verdict=unknown и reward_status=incomplete, поэтому
 aggregate report completeness=partial даже при полностью известных criteria.

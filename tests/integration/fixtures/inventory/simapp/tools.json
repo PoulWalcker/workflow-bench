@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "app_image": "wb-inventory:fixture",
+  "profile": "inventory-fixture",
+  "tools": [
+    {
+      "name": "inventory",
+      "schema_version": "1.0",
+      "description": "Observe an item in inventory.",
+      "arguments_schema": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false
+      },
+      "result_schema": {
+        "type": "object"
+      },
+      "effect": "read",
+      "limits": {
+        "max_items": 1
+      },
+      "errors": [
+        "not_found",
+        "invalid_arguments",
+        "forbidden",
+        "limit_exceeded",
+        "transport_unknown"
+      ],
+      "idempotency": "none",
+      "effect_observation": "Observe inventory and reservation state."
+    },
+    {
+      "name": "reserve",
+      "schema_version": "1.0",
+      "description": "Reserve the requested item once.",
+      "arguments_schema": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false
+      },
+      "result_schema": {
+        "type": "object"
+      },
+      "effect": "write",
+      "limits": {
+        "max_items": 1
+      },
+      "errors": [
+        "not_found",
+        "invalid_arguments",
+        "forbidden",
+        "limit_exceeded",
+        "transport_unknown"
+      ],
+      "idempotency": "none",
+      "effect_observation": "Observe inventory and reservation state."
+    }
+  ]
+}

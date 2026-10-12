@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import signal
+from functools import partial
 from pathlib import Path
 
 from workflow_bench.contracts import E1Config, JsonValue
@@ -84,6 +85,9 @@ def main() -> None:
     parser.add_argument("--case", action="append")
     parser.add_argument("--controlled-submission", type=Path, action="append")
     parser.add_argument("--model-preflight", action="store_true")
+    parser.add_argument("--codex", action="store_true")
+    parser.add_argument("--codex-auth", type=Path)
+    parser.add_argument("--authorize-model", action="store_true")
     args = parser.parse_args()
     try:
         if args.model_preflight:
@@ -95,7 +99,54 @@ def main() -> None:
             )
             print(json.dumps(plan))
             return
-        if (
+        composer = None
+        if args.codex:
+            from workflow_bench.composer import codex_preflight, submit_codex
+
+            document = read_json(args.config.resolve(), "codex_config")
+            if not isinstance(document, dict) or set(document) not in (
+                {"runtime", "composer"},
+                {"runtime", "composer", "budget"},
+            ):
+                raise DataError("invalid_schema", "codex_config")
+            codex_preflight(
+                document["composer"],
+                budget=document.get("budget"),
+                runtime=document["runtime"],
+                authorized=args.authorize_model,
+                auth_path=args.codex_auth.resolve() if args.codex_auth else None,
+            )
+            if (
+                args.task is None
+                or args.output is None
+                or args.case
+                or args.controlled_submission
+            ):
+                parser.error(
+                    "--codex requires --task and --output, without controlled submissions or --case"
+                )
+            runtime = document["runtime"]
+            validate_json(runtime, resource_schema("e1.schema.json"), "e1_config")
+            if (
+                len(
+                    {
+                        runtime["tools_port"],
+                        runtime["control_port"],
+                        runtime["broker_port"],
+                    }
+                )
+                != 3
+            ):
+                raise DataError("invalid_ports", "e1_config")
+            config = E1Config(output_root=args.output.resolve(), **runtime)
+            composer = partial(
+                submit_codex,
+                composer=document["composer"],
+                budget=document.get("budget"),
+                authorized=args.authorize_model,
+                auth_path=args.codex_auth.resolve() if args.codex_auth else None,
+            )
+        elif (
             args.task is None
             or args.output is None
             or (not args.case and not args.controlled_submission)
@@ -109,7 +160,8 @@ def main() -> None:
             parser.error(
                 "controlled measurement accepts up to two submissions and selects full sets"
             )
-        config = load_config(args.config.resolve(), output=args.output.resolve())
+        if not args.codex:
+            config = load_config(args.config.resolve(), output=args.output.resolve())
 
         async def execute():
             cancel = asyncio.Event()
@@ -117,6 +169,13 @@ def main() -> None:
             for signum in (signal.SIGINT, signal.SIGTERM):
                 loop.add_signal_handler(signum, cancel.set)
             try:
+                if composer is not None:
+                    return await run_measurement(
+                        args.task.resolve(),
+                        config=config,
+                        cancel=cancel,
+                        submit=composer,
+                    )
                 if args.controlled_submission:
                     return await run_measurement(
                         args.task.resolve(),
@@ -135,7 +194,11 @@ def main() -> None:
                     loop.remove_signal_handler(signum)
 
         result = asyncio.run(execute())
-        if not args.controlled_submission and not result["evaluation"]["cases"]:
+        if (
+            not args.codex
+            and not args.controlled_submission
+            and not result["evaluation"]["cases"]
+        ):
             raise DataError("missing_evaluation", "evaluation")
     except Exception as error:
         code = (

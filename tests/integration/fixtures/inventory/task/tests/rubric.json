@@ -1,0 +1,10 @@
+{
+  "scoring_policy": null,
+  "success_policy": null,
+  "criteria": [
+    {
+      "id": "reservation",
+      "required": true
+    }
+  ]
+}

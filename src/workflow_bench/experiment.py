@@ -6,12 +6,18 @@ import json
 import logging
 import shutil
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, replace
 from importlib.metadata import version
 from pathlib import Path
 from uuid import uuid4
 
-from workflow_bench.contracts import E1Config, JsonValue, WorkflowArtifact
+from workflow_bench.contracts import (
+    REPLAY_PROJECT_PREFIX,
+    E1Config,
+    JsonValue,
+    WorkflowArtifact,
+)
 from workflow_bench.data import DataError, read_json, validate_contract
 from workflow_bench.definition import export_public, load_cases, load_task
 from workflow_bench.execution import ArtifactError, accept_artifact, replay
@@ -84,7 +90,9 @@ async def run_manual(
                 ),
                 "execution_refs": [
                     str(p.relative_to(config.output_root))
-                    for p in config.output_root.glob("wb04-replay-*/execution.json")
+                    for p in config.output_root.glob(
+                        REPLAY_PROJECT_PREFIX + "*/execution.json"
+                    )
                 ],
                 "cleanup_errors": lifecycle.cleanup_errors,
                 "residual_resources": lifecycle.residual_resources,
@@ -235,13 +243,26 @@ async def _run_manual(
                 await context.check_isolation()
                 setup_ms = (time.monotonic() - setup_started) * 1000
                 replay_started = time.monotonic()
+                primary_error = None
                 try:
                     execution, bound = await replay(
                         artifact, case.input, context=context, config=config
                     )
+                except (Exception, asyncio.CancelledError) as error:
+                    primary_error = error
+                    raise
                 finally:
-                    evidence = await context.control("export")
-                    _write(case_root / "evidence.json", evidence)
+                    try:
+                        evidence = await context.control("export")
+                        _write(case_root / "evidence.json", evidence)
+                    except Exception:
+                        if primary_error is None:
+                            raise
+                        primary_error.add_note("evidence_export_failed")
+                        LOGGER.warning(
+                            "phase=freeze code=evidence_export_failed case_id=%s",
+                            case.id,
+                        )
                 _write(case_root / "execution.json", execution)
                 replays.append(
                     {
@@ -332,7 +353,7 @@ async def _run_manual(
 
 @dataclass(frozen=True)
 class Attempt:
-    """A controlled, stopped submission and its development result."""
+    """A submission outcome and its development result."""
 
     attempt_id: str
     artifact: WorkflowArtifact | None
@@ -427,6 +448,7 @@ class ControlledSubmission:
     path: Path | None
     process_status: str = "completed"
     stop_confirmed: bool = True
+    metrics: dict[str, JsonValue] | None = None
 
 
 async def _run_measurement(
@@ -434,8 +456,9 @@ async def _run_measurement(
     submissions: tuple[ControlledSubmission, ...],
     *,
     config: E1Config,
+    submit: Callable[..., Awaitable[ControlledSubmission]] | None = None,
 ) -> dict[str, JsonValue]:
-    """Exercise the two-attempt policy with controlled files, never a model."""
+    """Obtain one submission per Attempt and apply the existing measurement policy."""
     run_id = uuid4().hex
     attempts = []
     reports = []
@@ -461,10 +484,10 @@ async def _run_measurement(
         config.output_root / "manifest.json",
         {
             "run_id": run_id,
-            "source": "controlled",
+            "source": "composer" if submit else "controlled",
             "max_attempts": 2,
-            "model_calls": 0,
-            "model_calls_source": "controlled_submissions",
+            "model_calls": None if submit else 0,
+            "model_calls_source": "native_logs" if submit else "controlled_submissions",
             "sets": {
                 purpose: {
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -483,10 +506,28 @@ async def _run_measurement(
             },
         },
     )
-    for index, submission in enumerate(submissions, 1):
+    public = export_public(materials, config.output_root / "public") if submit else None
+    creation_metrics = []
+    feedback = []
+    for index in range(1, (2 if submit else len(submissions)) + 1):
         attempt_id = uuid4().hex
         root = config.output_root / f"attempt-{index}"
         root.mkdir(mode=0o700)
+        submission = (
+            await submit(
+                public=public,
+                root=root / "creation",
+                run_id=run_id,
+                attempt_id=attempt_id,
+                previous=attempts[-1].artifact if attempts else None,
+                feedback=feedback,
+                config=config,
+            )
+            if submit
+            else submissions[index - 1]
+        )
+        if submission.metrics is not None:
+            creation_metrics.append(submission.metrics)
         artifact = None
         artifact_status = "missing" if submission.path is None else "invalid"
         submission_code = (
@@ -554,6 +595,13 @@ async def _run_measurement(
         selection = select_attempts(
             tuple(attempts), feedback_rules=materials.public_data["feedback"]
         )
+        if (
+            selection["continue"]
+            and submit is not None
+            and (submission.metrics or {}).get("budget_remaining_known") is not True
+        ):
+            selection.update({"blocked": True, "continue": False})
+        feedback = selection["feedback"]
         _write(root / "feedback.json", selection["feedback"])
         if not selection["continue"]:
             break
@@ -577,6 +625,21 @@ async def _run_measurement(
             run_id=run_id,
             attempt_id=selected.attempt_id,
         )
+    creation = {
+        "source": "native_logs" if submit else "controlled_files",
+        "model_calls": 0 if not submit else None,
+        "input_tokens": None,
+        "output_tokens": None,
+        "usd": None,
+        "attempts": creation_metrics,
+    }
+    for key in ("model_calls", "input_tokens", "output_tokens", "usd"):
+        values = [metrics.get(key) for metrics in creation_metrics]
+        if values and all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in values
+        ):
+            creation[key] = sum(values)
     report = {
         "selection": selection,
         "attempts": reports,
@@ -585,16 +648,10 @@ async def _run_measurement(
         "score": final_report["score"] if final_report else None,
         "verdict": final_report["verdict"] if final_report else "unknown",
         "completeness": final_report["completeness"] if final_report else "unavailable",
-        "model_calls": 0,
+        "model_calls": creation["model_calls"],
         "judge_calls": 0,
         "efficiency": {
-            "creation": {
-                "source": "controlled_files",
-                "model_calls": 0,
-                "input_tokens": None,
-                "output_tokens": None,
-                "usd": None,
-            },
+            "creation": creation,
             "development_refs": [r["report_ref"] for r in reports if r["report_ref"]],
             "final_ref": "final/report.json" if final_report else None,
         },
@@ -605,13 +662,16 @@ async def _run_measurement(
 
 async def run_measurement(
     task_path: Path,
-    submissions: tuple[ControlledSubmission, ...],
+    submissions: tuple[ControlledSubmission, ...] = (),
     *,
     config: E1Config,
     cancel: asyncio.Event | None = None,
+    submit: Callable[..., Awaitable[ControlledSubmission]] | None = None,
 ) -> dict[str, JsonValue]:
-    """Bound the entire controlled run, preserving an interrupted measurement."""
-    if not 1 <= len(submissions) <= 2:
+    """Bound the whole measurement, preserving interrupted phases."""
+    if (submit is None and not 1 <= len(submissions) <= 2) or (
+        submit is not None and submissions
+    ):
         raise DataError("attempt_limit", "attempts")
     config.output_root.mkdir(mode=0o700)
     task = asyncio.current_task()
@@ -625,7 +685,9 @@ async def run_measurement(
         if cancel is not None and cancel.is_set():
             raise asyncio.CancelledError()
         async with asyncio.timeout(config.total_timeout_sec):
-            return await _run_measurement(task_path, submissions, config=config)
+            return await _run_measurement(
+                task_path, submissions, config=config, submit=submit
+            )
     except (Exception, asyncio.CancelledError) as error:
         if config.output_root.is_dir():
             selection_path = config.output_root / "selection.json"
@@ -643,6 +705,12 @@ async def run_measurement(
                     "selection_ref": "selection.json"
                     if selection_path.exists()
                     else None,
+                    "creation_refs": [
+                        str(p.relative_to(config.output_root))
+                        for p in config.output_root.glob(
+                            "attempt-*/creation/creation.json"
+                        )
+                    ],
                     "phase_report_refs": [
                         str(p.relative_to(config.output_root))
                         for p in config.output_root.glob("*/**/report.json")

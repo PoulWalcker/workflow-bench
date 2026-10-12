@@ -1,132 +1,150 @@
-# AGENTS.md
+# Engineering instructions
 
-Инструкции для **агентов, разрабатывающих репозиторий**. Это не prompt для
-Composer, не инструкция benchmark-задачи и не материал для LLM Judge.
+For agents developing this repository. This file is not a Composer prompt,
+a benchmark Task, or Judge material.
 
-## Начало работы
+## Start with the assigned task
 
-1. Прочитай этот файл, [Principles.md](Principles.md) и [GLOSSARY.md](GLOSSARY.md).
-2. Найди назначенную задачу в [ROADMAP.md](ROADMAP.md), проверь зависимости и
-   прочитай её актуальный тикет в `docs/implementation/`.
-3. Прочитай относящиеся к задаче разделы [SPEC.md](SPEC.md) и
-   [ARCHITECTURE.md](ARCHITECTURE.md); для WB-02–WB-05 обязательно §10.
-   Старый тикет WB-01 в `docs/implementation/`
-   содержит прежние требования и не задаёт текущую архитектуру или поручение.
+1. Read [SPEC](SPEC.md) for requirements and terms, then [ARCHITECTURE](ARCHITECTURE.md)
+   for the relevant interfaces and trust boundaries.
+2. Find the assigned milestone and dependencies in [ROADMAP](ROADMAP.md); read its
+   current implementation ticket. WB-01 is historical, not the current design.
+3. Inspect the actual code and user changes. Implement only the assigned slice;
+   bootstrap does not authorize future modules or empty scaffolding.
 
-Если назначен только bootstrap, выполняй только bootstrap. Не реализуй все
-будущие модули и не создавай заглушки для ещё не начатых этапов.
+The user request assigns work. SPEC owns product requirements and definitions;
+ARCHITECTURE owns responsibilities, interfaces and dependency rules; this file
+owns engineering rules; ROADMAP owns milestones/status; [README](README.md) owns
+setup and verified commands. Tickets preserve task-specific decisions and evidence.
+Update the owner of a changed fact and link to it elsewhere. Surface conflicting
+requirements explicitly; label new technical decisions as decisions of the current
+work rather than previously accepted user wishes.
 
-## Где находится истина
+When a `.codegraph/` index exists, use CodeGraph before searching or reading code:
+`codegraph_explore` (pass projectPath) or `codegraph explore "<question or symbol>"`.
+Do not index an unindexed repository on your own.
 
-| Вопрос | Владелец |
-|---|---|
-| Что должен делать продукт, какие ограничения действуют | `SPEC.md` |
-| Где находится код, кто кому может звонить, где границы доверия | `ARCHITECTURE.md` |
-| Как писать и тестировать код | `Principles.md` |
-| Какая работа назначена сейчас | Запрос пользователя; `ROADMAP.md` задаёт зависимости и критерии перехода |
-| Что означают термины | `GLOSSARY.md`; структуры и Interface — в `ARCHITECTURE.md` |
-| Как установить и запустить существующую реализацию | `README.md` |
+## Task-first and rTernarity
 
-Условия одной задачи не могут молча расширять MVP. При противоречии покажи
-конкретные расходящиеся требования; не маскируй его новой абстракцией.
-Новые технические решения помечай как решения текущей задачи, а не как
-согласованные ранее пожелания пользователя.
+Organize responsibilities as **Definition → Experiment → Evaluation**, each with
+clear input, work and output. Decompose only when independent responsibilities
+appear; three is not a required count of files, classes, services or collection items.
 
-## Работа над одной задачей
+Keep business rules in Task/application code. A new Task using supported contracts
+and existing app capabilities changes only its own directory. Core, common prompts,
+binder and evaluator must not branch on Task/app names or supply the solution.
+Keep one app state, one native workflow format, one execution path and one score
+calculation. Harbor owns sandbox lifecycle; Experiment owns research policy.
+Select Composer integrations at the entry point through Harbor's agent seam;
+core must not implement harness planning.
 
-При изменении терминов прочитай установленный `domain-modeling/SKILL.md`;
-при выборе формы Interface — `codebase-design/SKILL.md`; перед поведенческой
-реализацией — `tdd/SKILL.md`, согласуй ещё не согласованные seams из тикета.
-Используй их для назначенного среза, без отдельного перепроектирования MVP.
-При правке этого файла применяй `writing-for-agents/SKILL.md`. Пути разрешай
-по каталогу skills текущей среды, не по машинному пути автора.
-Редакции и проектные расхождения записаны в конце этого файла.
+Use helpers for repeated meaning, not similar syntax. Avoid plugin registries,
+universal backends, factory chains, DI frameworks, base classes for a single
+implementation, empty wrappers and speculative dependencies. Do not add a DSL,
+compiler, fallback runtime, global ledger/scheduler, daemon or hidden repair loop.
+AutoWFBench and old benchmarking are references, not required dependencies. Before
+transferring specific external code, check its license and retain attribution;
+unclear terms mean no import. Do not copy large subsystems.
 
-Кратко сформулируй ожидаемый наблюдаемый результат. Добавь проверку поведения,
-если она уместна, внеси минимальное изменение, затем выполни релевантные проверки.
-Исправления архитектуры делай только в пределах необходимого для этой задачи.
+## Code quality and portability
 
-Перед завершением проверь diff: новые зависимости, побочные изменения,
-дублирование, машинные пути, случайные секреты и расширение scope. Обнови документ,
-которому принадлежит изменившийся факт. Не копируй описание решения в несколько мест.
+Use Python, explicit names, small functions with one responsibility, and typed
+public interfaces/exchange values. Validate external arguments/JSON once at each
+trust boundary; avoid repeated checks of guaranteed internal values. Comments
+explain reasons or constraints; operational instructions belong in documentation.
+Catch exceptions where recovery or honest classification is possible. Broad catches
+belong only at process/server/cleanup boundaries, never to hide defects as success.
 
-Финальный отчёт: что изменилось; какие команды действительно запущены и с каким
-результатом; что не проверено или заблокировано. Статус DONE ставь только при
-выполнении критериев готовности. Отсутствие Docker или credentials не является
-успешной интеграционной проверкой.
+Ruff owns lint/format configuration in `pyproject.toml`. Fix violations first;
+no `ALL`, routine `# noqa`, blanket src/tests exclusions, or global rule suppression
+for one location. Necessary `lint.ignore`/`lint.per-file-ignores` must have a reason,
+the smallest practical scope, and an explicit explanation when widened. Do not add
+a second formatter/type checker without a concrete need.
 
-## Проверки
+User paths, addresses, ports, model names, credentials, outputs and budgets have
+one explicit CLI/env/config source per parameter. Follow the actual parameter map
+in ARCHITECTURE; do not add competing overrides. Resolve user paths once at entry,
+use `pathlib`, packaged resources and configured container network names. No machine
+paths, required absolute executable paths, hidden cwd dependency, assumed free host
+port, or implicit container-localhost-as-host. Protocol paths, schema versions,
+fixtures and meaningful limits are legitimate constants. Pin environments for
+reproducibility; do not turn every literal into configuration.
 
-Пока существует только документация, команды не считаются установленными.
-После появления реализации используй проверенные команды из `README.md`
-и существующей конфигурации `pyproject.toml`.
-Локальные тесты и линтинг не должны автоматически запускать модели или Docker.
-Интеграционные и model-backed проверки запускаются отдельно.
+## Behavioral TDD
 
-Не меняй смысл benchmark-проверки только потому, что кандидат её не проходит.
-Не подгоняй expected output под сгенерированный результат. Эталон тоже проходит
-те же проверки; он не выдаёт себе reward.
+When changing terms, use the installed domain-modeling skill; when choosing an
+Interface, use codebase-design; before behavioral implementation, use tdd. When
+editing these instructions, use writing-for-agents. Resolve skills through the
+current environment's catalog, not the author's machine paths. Apply them to the
+assigned slice without an extra MVP redesign or new documentation layer.
 
-## Ограничения исполнения
+Before coding, agree any unapproved test seams with the user: Interface, observable
+behavior, failure detected and limits of proof. A proposal table is not approval.
+Design-only work produces no tests. For a business rule/regression, use pytest:
+one small test that fails for the expected reason → minimal implementation →
+optional local refactoring while green → next scenario. Do not prewrite a suite
+against an imagined API. Derive expectations independently from requirements,
+not the implementation's algorithm. Docker configuration/spikes may start with a
+minimal reproducible experiment, then retain a check for the confirmed behavior.
 
-Composer получает только публичную постановку, контракт артефакта, разрешённые
-инструменты и учебные данные. Приватные проверки, итоговые сценарии, эталоны и
-служебные документы репозитория не попадают в его workspace.
+Test agreed interfaces, not private helpers/getters/imports for coverage, file
+counts, arbitrary IDs, giant UI snapshots or exact timings. Frozen Evidence is the
+independent verifier's public Interface: checking state/history through it is
+required, not a side-channel violation. Run real loaders, validators/binder and
+evaluators; substitute only external process/transport, time or fault sources.
+Mocks can cover model responses/errors but cannot prove Harbor/n8n/isolation/stop
+or Judge quality. Require a real end-to-end control. Keep orchestration tests about
+behavior rather than the exact sequence of internal calls.
 
-Недоверенный workflow выполняется отдельно от проверяющего. Нельзя запускать его
-в окружении с приватными тестами, ключом Judge, Docker socket или монтированием
-всего репозитория. Ограничения должны обеспечиваться средой, а не просьбой в prompt.
+### Executable test gates
 
-Не делай оплачиваемые модельные вызовы без явного разрешения и конечных лимитов.
-Не повторяй автоматически вызов с неизвестным исходом. Не обращайся к настоящему
-Telegram или рабочему столу в рамках этого MVP.
+Default pytest runs fast tests without network, Docker or credentials. Gate
+integration/model directories before collection; reject explicit gated paths,
+node IDs and marked items without opt-in. Path classification cannot be weakened
+by markers or `-m`. Check resource fixtures before setup and cached-value access,
+including indirect requests from fast tests. Resources belong inside authorized
+fixtures, never import/collection, parametrization or root autouse setup.
+`--collect-only` is always side-effect free. Integration opt-in does not authorize
+models; model execution needs separate permission and finite limits before
+credential access. The current model test mode remains closed.
 
-## Работа с внешним кодом
+Requested integration without Docker/images is a preflight error, not a green skip.
+Gate probes must be harmless local files/processes. No tests means pytest exit 5,
+not a successful suite or an `assert True` placeholder. Test counts/coverage are
+not project goals. Use verified commands from README and the current configuration.
 
-AutoWFBench и старый `benchmarking` — источники идей, не обязательные зависимости.
-Не копируй большие подсистемы. Перед переносом конкретного кода проверь условия
-использования и сохрани требуемую атрибуцию; при неясности не импортируй его.
+## Operation and completion
 
-Не коммить `runs/`, пользовательские данные, credentials или старые evidence.
-Не удаляй чужие контейнеры и файлы при cleanup. Не создавай удалённый репозиторий,
-не меняй его видимость и не пушь без соответствующего поручения пользователя.
+Enforce [SPEC's lifecycle/security rules](SPEC.md#9-errors-and-lifecycle) and
+[trust invariants](SPEC.md#10-security-and-evidence) through the environment.
+Paid model calls require explicit permission and finite limits. Never contact real
+Telegram or a physical desktop in this MVP. Do not weaken benchmark checks or
+adjust expected outputs to a candidate; controls use the same independent path.
 
-## Редакции skills для дизайна WB-02–WB-05
+Every operation has a finite timeout and owned resources. Clean only the current
+run's resources. Preserve source facts once, reference native Harbor artifacts,
+and avoid a second log tree or hashing all documentation into execution identity.
+Use stdlib logging, configured once at each process entry point; modules use
+`getLogger(__name__)` and add no import-time handlers. Include available run,
+attempt, case/replay and phase context; missing IDs remain absent. INFO records
+phase start/end, monotonic duration/status and log refs; long waits report their
+phase about every 30 seconds without invented progress percentages. WARNING marks
+unknown metrics/effects/cleanup; ERROR marks infrastructure failures with safe
+codes; a known benchmark fail need not be an infrastructure ERROR.
 
-11 октября 2026 года прочитаны и применены уже установленные локальные SKILL.md;
-установка/обновление не выполнялись. Upstream commit локальной установки не
-установлен; точная редакция зафиксирована SHA-256 содержимого, без заявления,
-что это текущий upstream. Источник набора — [mattpocock/skills](https://github.com/mattpocock/skills);
-описания: [codebase-design](https://www.aihero.dev/skills-codebase-design),
-[domain-modeling](https://www.aihero.dev/skills-domain-modeling),
-[tdd](https://www.aihero.dev/skills-tdd).
+Diagnostics go to stderr; machine-readable stdout contains only command results.
+Keep credentials, capabilities, full prompts, private input/state/expected and raw
+exceptions out of ordinary logs/feedback. Use safe codes and relative refs; private
+source logs stay under the closed run root. Logs do not replace protected effects,
+Evaluation or confirmed stop.
 
-| Локальный источник относительно каталога skills | SHA-256 |
-|---|---|
-| `codebase-design/SKILL.md` | `2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2` |
-| `domain-modeling/SKILL.md` | `7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3` |
-| `tdd/SKILL.md` | `5505d25bbaa8fc14a79e4d20163936958992a2995b7f1dd1d6197edc9ed722e0` |
-| `writing-for-agents/SKILL.md` | `551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a` |
-| `domain-modeling/GLOSSARY-FORMAT.md` | `21dcc40cdec8e151a829b98ab1517c1867bc444e3665134a98c6983411996801` |
-| `tdd/tests.md` | `859f9e592c188fda4fc7277dd180e4ce9c7a2e13f6efe1f6f29eccc9d28c106a` |
-| `tdd/mocking.md` | `3ceb807fdf4a47d6a93d4d9a891e5ba6d362a6247bd08adc451feebfc17361ef` |
-
-Проектные решения при расхождениях:
-
-- TDD skill: «Refactoring is not part of the loop». Principles §5 допускает
-  локальный рефакторинг после green; сохраняем правило проекта. Масштабный
-  рефакторинг не становится частью каждого цикла.
-- TDD skill: «Test only at pre-agreed seams». Таблицы тикетов — предложения;
-  до написания тестов требуется согласование пользователя. Design-сессия
-  заканчивается этими таблицами, без red → green.
-- Совет tests.md против side-channel чтения БД не отменяет проверки frozen
-  evidence: это специально выбранный публичный Interface независимого verifier.
-- Codebase-design предлагает internal seams и запрещает взаимозаменять
-  Interface/Seam с API/boundary. Тестируем согласованные внешние Interface;
-  сохраняем предметные термины API/UI и «граница доверия» из SPEC. Они не
-  обозначают синонимы программного Interface. Единственный runtime не требует
-  абстрактного backend; его trust seam всё равно обязателен по SPEC.
-
-Skills и этот журнал предназначены разработчику. Public export не включает их,
-пользовательские skills/home или служебную документацию; отдельные ADR и
-контекстные карты для этого среза не создаются.
+Before finishing, inspect the entire scoped diff for dependencies, unrelated edits,
+duplication, machine paths, secrets and scope growth. Report changes, commands
+actually run/results, and unverified/blocked work. Mark DONE only when acceptance
+criteria are met; unavailable Docker/credentials are not successful verification.
+Do not commit runs, user data, credentials or old evidence; delete others' resources;
+create/change remote repository visibility; or push without the user's instruction.
+Skill revision provenance for the original design is in the
+[WB-03 ticket](docs/implementation/WB-03-component-boundaries.md#design-skill-provenance).
+Project TDD permits local refactoring after green; Interface/Seam is not a synonym
+for the product's API/UI or trust boundary. A single runtime still requires its trust seam.

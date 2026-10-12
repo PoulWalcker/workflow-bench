@@ -45,7 +45,8 @@
       "const": "case-pass-v1"
     },
     "profile": {
-      "const": "t1-api-v1"
+      "type": "string",
+      "minLength": 1
     },
     "finalized": {
       "type": "boolean"

@@ -17,7 +17,7 @@ runtime и Evaluation добавлялись последовательно бе
 
 ## Прочитать
 
-[AGENTS.md](../../AGENTS.md), [Principles.md](../../Principles.md),
+[Engineering rules](../../AGENTS.md),
 [ARCHITECTURE.md](../../ARCHITECTURE.md) и разделы 2–3, 6–9
 [SPEC.md](../../SPEC.md). Не исследовать старый репозиторий целиком и не переносить
 его схемы как условие старта.

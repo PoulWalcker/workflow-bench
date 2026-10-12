@@ -28,6 +28,12 @@ ROOT = Path(__file__).resolve().parent
 TOOLS = json.loads((ROOT / "tools.json").read_bytes())
 STATE_SCHEMA = json.loads((ROOT / "state.schema.json").read_bytes())
 LIMITS = resource_schema("e1.schema.json")["properties"]
+MAX_JOURNALED_REQUESTS = (
+    resource_schema("wire.schema.json")["$defs"]["evidence"]["properties"]["events"][
+        "maxItems"
+    ]
+    // 3
+)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -44,12 +50,14 @@ class Telegram:
         self.expiry = 0.0
         self.max_calls = 0
         self.calls = 0
+        self.requests = 0
+        self.violations: list[str] = []
         self.call_timeout = 0.0
         self.admission = False
         self.frozen: dict[str, JsonValue] | None = None
         self.fault_mode: str | None = None
         self.fault_delay = 0.0
-        self.pending: dict[str, tuple[str, JsonValue]] = {}
+        self.pending: dict[str, tuple[str, JsonValue, str]] = {}
         self.drained = asyncio.Event()
         self.drained.set()
 
@@ -59,13 +67,19 @@ class Telegram:
         ):
             raise web.HTTPForbidden()
         operation = request.match_info["operation"]
+        content = None
+        if not (operation == "export" and request.method == "GET"):
+            async with asyncio.timeout(
+                self.call_timeout or LIMITS["control_timeout_sec"]["maximum"]
+            ):
+                content = await request.read()
         async with self.lock:
             if operation == "export" and request.method == "GET":
                 if self.frozen is None:
                     raise web.HTTPConflict()
                 return web.json_response(self.frozen)
             try:
-                data = decode_json(await request.read(), "control")
+                data = decode_json(content, "control")
                 if not isinstance(data, dict):
                     raise ValueError()
                 fields = {
@@ -157,14 +171,15 @@ class Telegram:
         async with self.lock:
             if self.frozen is None:
                 pending_ids = list(self.pending)
-                for call_id, (name, arguments) in self.pending.items():
-                    self._event(
-                        call_id,
-                        name,
-                        arguments,
-                        "effect",
-                        {"status": "unknown", "message_id": None},
-                    )
+                for call_id, (name, arguments, stage) in self.pending.items():
+                    if stage == "accepted":
+                        self._event(
+                            call_id,
+                            name,
+                            arguments,
+                            "effect",
+                            {"status": "unknown", "message_id": None},
+                        )
                     self._event(
                         call_id,
                         name,
@@ -178,7 +193,7 @@ class Telegram:
                     "before": self.before,
                     "after": {"revision": self.revision, "state": deepcopy(self.state)},
                     "events": deepcopy(self.events),
-                    "violations": [],
+                    "violations": list(self.violations),
                     "freeze_status": "incomplete" if pending_ids else "complete",
                     "pending_call_ids": pending_ids,
                 }
@@ -230,37 +245,79 @@ class Telegram:
             authorized = self.capability is not None and secrets.compare_digest(
                 request.headers.get("Authorization", ""), "Bearer " + self.capability
             )
+            if self.frozen is not None:
+                return web.json_response(
+                    {
+                        "call_id": call_id,
+                        "error": {"code": "forbidden", "retryable": False},
+                    }
+                )
+            if self.requests >= MAX_JOURNALED_REQUESTS:
+                code = (
+                    "forbidden"
+                    if not authorized
+                    or not self.admission
+                    or time.monotonic() >= self.expiry
+                    else "limit_exceeded"
+                )
+                for violation in (
+                    "request_limit_exceeded",
+                    *(
+                        ["unauthorized_send"]
+                        if operation == "send_message" and code == "forbidden"
+                        else []
+                    ),
+                ):
+                    if violation not in self.violations:
+                        self.violations.append(violation)
+                return web.json_response(
+                    {"call_id": call_id, "error": {"code": code, "retryable": False}}
+                )
+            self.requests += 1
+            if operation not in {tool["name"] for tool in TOOLS["tools"]}:
+                operation = "unsupported"
             if not authorized or not self.admission or time.monotonic() >= self.expiry:
                 error = "forbidden"
             elif self.calls >= self.max_calls:
                 error = "limit_exceeded"
             else:
                 self.calls += 1
-                try:
-                    async with asyncio.timeout(self.call_timeout):
-                        content = await request.read()
-                    data = decode_json(content, "tool")
-                    if (
-                        set(data) != {"schema_version", "arguments"}
-                        or data["schema_version"] != "1.0"
-                    ):
-                        raise ValueError()
-                    spec = next(
-                        tool for tool in TOOLS["tools"] if tool["name"] == operation
-                    )
-                    validate_json(
-                        data["arguments"], spec["arguments_schema"], "arguments"
-                    )
-                    arguments = data["arguments"]
-                except (
-                    DataError,
-                    ValueError,
-                    TypeError,
-                    KeyError,
-                    StopIteration,
-                    TimeoutError,
+        if error is None:
+            try:
+                async with asyncio.timeout(self.call_timeout):
+                    content = await request.read()
+                data = decode_json(content, "tool")
+                if (
+                    set(data) != {"schema_version", "arguments"}
+                    or data["schema_version"] != "1.0"
                 ):
-                    error = "invalid_arguments"
+                    raise ValueError()
+                spec = next(
+                    tool for tool in TOOLS["tools"] if tool["name"] == operation
+                )
+                validate_json(data["arguments"], spec["arguments_schema"], "arguments")
+                arguments = data["arguments"]
+            except (
+                DataError,
+                ValueError,
+                TypeError,
+                KeyError,
+                StopIteration,
+                TimeoutError,
+            ):
+                error = "invalid_arguments"
+        async with self.lock:
+            if self.frozen is not None:
+                return web.json_response(
+                    {
+                        "call_id": call_id,
+                        "error": {"code": "forbidden", "retryable": False},
+                    }
+                )
+            if error is None and (
+                not self.admission or time.monotonic() >= self.expiry
+            ):
+                error = "forbidden"
             self._event(
                 call_id,
                 operation,
@@ -273,9 +330,8 @@ class Telegram:
             delay = self.fault_delay
             if mode:
                 self.fault_mode = None
-            if admitted:
-                self.pending[call_id] = (operation, arguments)
-                self.drained.clear()
+            self.pending[call_id] = (operation, arguments, "accepted")
+            self.drained.clear()
         if mode == "stall_before_commit":
             await asyncio.sleep(delay)
         async with self.lock:
@@ -329,35 +385,39 @@ class Telegram:
                         "evidence_ref": f"/after/state/messages/{len(self.state['messages']) - 1}",
                     }
             self._event(call_id, operation, arguments, "effect", effect)
+            self.pending[call_id] = (operation, arguments, "effect")
             body = (
                 {"call_id": call_id, "error": {"code": error, "retryable": False}}
                 if error
                 else {"call_id": call_id, "result": result}
             )
-            response = web.json_response(body)
-            status = "unknown"
-            try:
-                if mode == "drop_response" and effect["status"] == "committed":
-                    if request.transport is not None:
-                        request.transport.abort()
-                    raise ConnectionResetError()
-                async with asyncio.timeout(self.call_timeout):
-                    await response.prepare(request)
-                    await response.write_eof()
-                status = "sent"
-            except (ConnectionError, TimeoutError):
-                status = "failed"
-            self._event(
-                call_id,
-                operation,
-                arguments,
-                "response",
-                {"status": status, "error": error},
-            )
-            self.pending.pop(call_id, None)
-            if not self.pending:
-                self.drained.set()
-            return response
+        response = web.json_response(body)
+        status = "unknown"
+        try:
+            if mode == "drop_response" and effect["status"] == "committed":
+                if request.transport is not None:
+                    request.transport.abort()
+                raise ConnectionResetError()
+            async with asyncio.timeout(self.call_timeout):
+                await response.prepare(request)
+                await response.write_eof()
+            status = "sent"
+        except (ConnectionError, TimeoutError):
+            status = "failed"
+        finally:
+            async with self.lock:
+                if self.frozen is None:
+                    self._event(
+                        call_id,
+                        operation,
+                        arguments,
+                        "response",
+                        {"status": status, "error": error},
+                    )
+                self.pending.pop(call_id, None)
+                if not self.pending:
+                    self.drained.set()
+        return response
 
 
 async def serve() -> None:

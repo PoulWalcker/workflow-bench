@@ -18,7 +18,11 @@ workflow interpreter, business scorer or scheduler was found.
 
 ## Scope and method
 
-Read AGENTS, Principles, GLOSSARY, SPEC, ARCHITECTURE, ROADMAP, README and the
+Historical review of its recorded snapshot. Root-document line numbers below refer
+to the pre-consolidation versions in Git; links now lead to current owners. Findings
+and recorded verification remain historical, not fresh assessments.
+
+Read the then-current root documentation (engineering rules and terms now consolidated in AGENTS/SPEC), and the
 WB-02–WB-06 implementation tickets. Applied the installed `code-review`,
 `codebase-design` and `domain-modeling` skills. The code-review skill's usual diff
 scope was adapted to the requested complete HEAD snapshot; Standards and Spec
@@ -93,7 +97,7 @@ absolute symlink from that file to another file inside the original Task survive
 the copy, and the replacement follows it into the source Task. The later native
 validation occurs at [harbor.py](../../src/workflow_bench/harbor.py):207, after the
 write. This violates the own-run resource discipline in
-[Principles.md](../../Principles.md):174–176.
+[Engineering rules](../../AGENTS.md#operation-and-completion) (former rules lines 174–176).
 
 Supporting installed Harbor behavior: input containment allows links resolving
 inside a Task (`.venv/lib/python3.12/site-packages/harbor/utils/path_safety.py`:5–24),
@@ -110,7 +114,7 @@ Do not add a filesystem framework or change artifact acceptance semantics.
 ### S2 — Documented progress logging is absent during long awaits
 
 **P3; proven standards omission.**
-[Principles.md](../../Principles.md):191–194 requires a phase INFO approximately
+[Engineering rules](../../AGENTS.md#operation-and-completion) (former rules lines 191–194) requires a phase INFO approximately
 every 30 seconds. [harbor.py](../../src/workflow_bench/harbor.py):273–277 awaits
 the whole Trial, including the replay preparation callback, without a periodic
 Workflow Bench progress message. [execution.py](../../src/workflow_bench/execution.py):
@@ -127,7 +131,7 @@ the current-task watcher, pre-cancel check, total timeout and watcher cleanup.
 Error reporting and cancellation return semantics differ. Consolidate only the
 shared watcher/deadline mechanics if WB-07 would otherwise add a third copy;
 retain those differences. This is real repeated meaning under
-[Principles.md](../../Principles.md):36–38, not a file-length complaint.
+[Engineering rules](../../AGENTS.md#task-first-and-rternarity) (former rules lines 36–38), not a file-length complaint.
 
 ### S4 — Possible duplicated facts: execution serialization
 
@@ -136,7 +140,7 @@ retain those differences. This is real repeated meaning under
 [experiment.py](../../src/workflow_bench/experiment.py):242 writes the same result
 to staged verifier inputs and :258 embeds it in the report. The verifier reads
 the staged copy ([verify.py](../../tasks/t1-send-message/tests/verify.py):173).
-[Principles.md](../../Principles.md):178–180 prefers source facts once and reports
+[Engineering rules](../../AGENTS.md#operation-and-completion) (former rules lines 178–180) prefers source facts once and reports
 with refs. Keep the emergency persistence on interrupted execution and the
 required cross-process verifier transfer; consider replacing the full report
 embedding with a reference. Blindly deleting the first write would lose failure
@@ -298,9 +302,9 @@ Two smaller clarity opportunities should accompany future report work:
 | WB-06 ticket | 469 | Combines agreed methodology, old proposals, implementation evidence and corrections. Keep the methodology/evidence identifiable; label superseded proposal wording explicitly rather than repeat it as current contract. |
 | README | 399 | Current commands coexist with several historical test counts (101–108,385). Link older counts/results to tickets; retain the current reproducible commands and prerequisites. |
 | WB-05 / WB-04 tickets | 265 / 239 | Negative results, subsequent fixes and verification limits are useful research provenance, not disposable narrative. Avoid copying their evidence tables into architecture/README. |
-| ROADMAP / Principles | 218 / 216 | Legitimate distinct owners: transition criteria versus engineering rules. Duplication is reduced with links, not by merging them. |
+| ROADMAP / engineering rules | 218 / 216 | Legitimate distinct owners: transition criteria versus engineering rules. Duplication is reduced with links, not by merging them. |
 
-Historical WB-01 and PRODUCT_REVIEW are explicitly non-authoritative
+Historical WB-01 and the former product review were explicitly non-authoritative
 ([AGENTS.md](../../AGENTS.md):13–14;
 [ARCHITECTURE.md](../../ARCHITECTURE.md):906–912). They are not runtime
 dependencies. Their detailed obsolete implementation instructions can eventually

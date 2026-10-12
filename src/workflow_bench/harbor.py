@@ -14,16 +14,22 @@ from pathlib import Path
 from typing import Any, override
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
-from harbor.environments.base import BaseEnvironment, ExecResult
+from harbor.environments.base import BaseEnvironment, ExecResult, OutputCallback
 from harbor.environments.docker.docker import DockerEnvironment
 from harbor.models.task.config import EnvironmentConfig, NetworkMode, NetworkPolicy
 from harbor.models.task.task import Task
-from harbor.models.trial.config import TrialConfig
+from harbor.models.trial.config import AgentConfig, TrialConfig
 from harbor.models.trial.paths import TrialPaths
 from harbor.trial.hooks import TrialEvent, TrialHookEvent
 from harbor.trial.trial import Trial
 
-from workflow_bench.contracts import E1Config, JsonValue
+from workflow_bench.contracts import (
+    PROFILE_PROJECT_PREFIX,
+    REPLAY_PROJECT_PREFIX,
+    SUBMISSION_TRIAL_PREFIX,
+    E1Config,
+    JsonValue,
+)
 from workflow_bench.data import (
     MAX_EVIDENCE_BYTES,
     MAX_JSON_BYTES,
@@ -43,6 +49,8 @@ class DeadlineDockerEnvironment(DockerEnvironment):
     def __init__(self, *, cleanup_timeout_sec: float, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.cleanup_timeout_sec = cleanup_timeout_sec
+        self.cancel_writer: Callable[[], Awaitable[None]] | None = None
+        self._stopping_writer = False
 
     @override
     async def stop(self, delete: bool) -> None:
@@ -57,17 +65,61 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         timeout_sec: int | None,
         stdin_data: bytes | None = None,
     ) -> ExecResult:
-        try:
-            return await super()._collect_buffered_output(
+        return await self._collect_with_stop(
+            super()._collect_buffered_output(
                 process, timeout_sec=timeout_sec, stdin_data=stdin_data
-            )
+            ),
+            process,
+        )
+
+    @override
+    async def _collect_streamed_output(
+        self,
+        process: asyncio.subprocess.Process,
+        *,
+        timeout_sec: int | None,
+        stdin_data: bytes | None = None,
+        on_output: OutputCallback,
+    ) -> ExecResult:
+        return await self._collect_with_stop(
+            super()._collect_streamed_output(
+                process,
+                timeout_sec=timeout_sec,
+                stdin_data=stdin_data,
+                on_output=on_output,
+            ),
+            process,
+        )
+
+    async def _collect_with_stop(
+        self,
+        collection: Awaitable[ExecResult],
+        process: asyncio.subprocess.Process,
+    ) -> ExecResult:
+        pending = asyncio.create_task(collection)
+        try:
+            # Stop the container before Harbor's collector cancellation and the
+            # installed agent's finally blocks. Both can otherwise leave children.
+            return await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            if self.cancel_writer is not None and not self._stopping_writer:
+                self._stopping_writer = True
+                try:
+                    async with asyncio.timeout(self.cleanup_timeout_sec):
+                        await self.cancel_writer()
+                finally:
+                    self._stopping_writer = False
+            raise
         finally:
             if process.returncode is None:
                 try:
                     process.kill()
                 except ProcessLookupError:
                     pass
-                async with asyncio.timeout(self.cleanup_timeout_sec):
+            pending.cancel()
+            async with asyncio.timeout(self.cleanup_timeout_sec):
+                await asyncio.gather(pending, return_exceptions=True)
+                if process.returncode is None:
                     await process.communicate()
 
 
@@ -187,6 +239,8 @@ class NativeVerification:
     exception_type: str | None
     result_ref: str
     reward_status: str = "incomplete"
+    artifact_path: Path | None = None
+    stop_confirmed: bool = False
 
 
 async def run_native_trial(
@@ -196,6 +250,10 @@ async def run_native_trial(
     *,
     config: E1Config,
     lifecycle: LifecycleFacts | None = None,
+    agent: AgentConfig | None = None,
+    setup: Callable[[BaseEnvironment], Awaitable[None]] | None = None,
+    close_tools: Callable[[], Awaitable[None]] | None = None,
+    verify: bool = True,
 ) -> NativeVerification:
     """Collect after confirmed stop; deliver prepared inputs via native tests upload.
 
@@ -212,17 +270,22 @@ async def run_native_trial(
     native.agent.timeout_sec = config.submission_timeout_sec
     native.verifier.timeout_sec = config.verifier_timeout_sec
     (stage / "task.toml").write_text(native.model_dump_toml())
-    trial_name = "wb04-manual-" + attempt_id
+    trial_name = SUBMISSION_TRIAL_PREFIX + attempt_id
     trial_config = TrialConfig.model_validate(
         {
             "task": {"path": str(stage)},
             "trial_name": trial_name,
             "trials_dir": str(config.output_root / "harbor"),
-            "agent": {
-                "name": "oracle",
-                "override_timeout_sec": config.submission_timeout_sec,
+            "agent": (agent or AgentConfig(name="oracle")).model_copy(
+                update={
+                    "override_timeout_sec": config.submission_timeout_sec,
+                    "override_setup_timeout_sec": config.setup_timeout_sec,
+                }
+            ),
+            "verifier": {
+                "override_timeout_sec": config.verifier_timeout_sec,
+                "disable": not verify,
             },
-            "verifier": {"override_timeout_sec": config.verifier_timeout_sec},
             "environment": {
                 "import_path": "workflow_bench.harbor:DeadlineDockerEnvironment",
                 "kwargs": {"cleanup_timeout_sec": config.cleanup_timeout_sec},
@@ -239,12 +302,25 @@ async def run_native_trial(
         await _check_private_access(
             trial.agent_environment, timeout_sec=config.control_timeout_sec
         )
+        if setup is not None:
+            async with asyncio.timeout(config.setup_timeout_sec):
+                await setup(trial.agent_environment)
         LOGGER.info("phase=isolation submission=%s result=confirmed", event.trial_name)
 
-    async def stop_writer(event: TrialHookEvent) -> None:
-        async with asyncio.timeout(config.cleanup_timeout_sec):
-            await trial.agent_environment.stop_service("main")
-        await assert_stopped(event.trial_name + "__env", services={"main"})
+    async def stop_writer() -> None:
+        try:
+            if close_tools is not None:
+                await close_tools()
+        finally:
+            async with asyncio.timeout(config.cleanup_timeout_sec):
+                await trial.agent_environment.stop_service("main")
+            await assert_stopped(trial_name + "__env", services={"main"})
+
+    async def writer_ended(event: TrialHookEvent) -> None:
+        await stop_writer()
+
+    if agent is not None:
+        trial.agent_environment.cancel_writer = stop_writer
 
     async def collected(event: TrialHookEvent) -> None:
         nonlocal verification_prepared
@@ -268,7 +344,7 @@ async def run_native_trial(
         verification_prepared = True
 
     trial.add_hook(TrialEvent.AGENT_START, check_submission)
-    trial.add_hook(TrialEvent.AGENT_END, stop_writer)
+    trial.add_hook(TrialEvent.AGENT_END, writer_ended)
     trial.add_hook(TrialEvent.VERIFICATION_START, collected)
     LOGGER.info(
         "phase=submission attempt_id=%s log=%s", attempt_id, trial.paths.trial_dir
@@ -276,9 +352,47 @@ async def run_native_trial(
     try:
         native_result = await trial.run()
     finally:
-        await _cleanup(None, trial_name + "__env", config=config, lifecycle=lifecycle)
-        await _cleanup(
+        writer_deleted = await _cleanup(
+            None, trial_name + "__env", config=config, lifecycle=lifecycle
+        )
+        verifier_deleted = await _cleanup(
             None, trial_name + "__verifier__trial", config=config, lifecycle=lifecycle
+        )
+        if not verify:
+            try:
+                (config.output_root / "submission-stop.json").write_text(
+                    json.dumps(
+                        {
+                            "stop_confirmed": writer_deleted and verifier_deleted,
+                            "cleanup_errors": lifecycle.cleanup_errors,
+                            "residual_resources": lifecycle.residual_resources,
+                        }
+                    )
+                )
+            except OSError:
+                lifecycle.cleanup_errors.append("submission_stop_log_failed")
+                LOGGER.warning("phase=cleanup code=submission_stop_log_failed")
+    if not verify:
+        stopped = not lifecycle.cleanup_errors and not lifecycle.residual_resources
+        collected_path = trial.paths.artifacts_dir / "work/workflow.json"
+        manifest_path = trial.paths.artifacts_dir / "manifest.json"
+        manifest = (
+            read_json(manifest_path, "collection") if manifest_path.exists() else []
+        )
+        valid_file = any(
+            item["source"] == "/work/workflow.json"
+            and item["status"] == "ok"
+            and item["type"] == "file"
+            for item in manifest
+        )
+        return NativeVerification(
+            {"schema_version": "1.0", "cases": []},
+            native_result.exception_info.exception_type
+            if native_result.exception_info
+            else None,
+            str(trial.paths.result_path.relative_to(config.output_root)),
+            artifact_path=collected_path if valid_file and stopped else None,
+            stop_confirmed=stopped,
         )
     path = trial.paths.verifier_dir / "evaluation.json"
     evaluation = (
@@ -351,6 +465,8 @@ class ReplayContext:
     project: str
     config: E1Config
     lifecycle: LifecycleFacts = field(default_factory=LifecycleFacts)
+    stop_errors: list[str] = field(default_factory=list)
+    protected_control_url: str | None = None
 
     async def check_isolation(self) -> None:
         """Check the actual replay surfaces before uploading untrusted JSON."""
@@ -367,23 +483,10 @@ class ReplayContext:
         )
         if fresh.return_code:
             raise RuntimeError("replay_database_not_fresh")
-        main = await docker(
-            "ps",
-            "--filter",
-            f"label=com.docker.compose.project={self.project}",
-            "--filter",
-            "label=com.docker.compose.service=main",
-            "--format",
-            "{{.ID}}",
-        )
-        networks = json.loads(
-            await docker(
-                "inspect", main, "--format", "{{json .NetworkSettings.Networks}}"
-            )
-        )
-        control_ip = networks[self.project + "_management"]["IPAddress"]
+        if self.protected_control_url is None:
+            raise RuntimeError("control_address_missing")
         targets = [
-            f"http://{control_ip}:{self.config.control_port}/control/export",
+            self.protected_control_url + "/control/export",
             f"http://simulator:{self.config.control_port}/control/export",
         ]
         probe = (
@@ -450,7 +553,8 @@ class ReplayContext:
 
     async def finish(self) -> bool:
         """Seal facts and request both stops even when the control channel fails."""
-        errors = []
+        self.stop_errors.clear()
+        errors = self.stop_errors
         for operation, data in (
             ("revoke", {"identity": self.identity}),
             (
@@ -477,9 +581,13 @@ class ReplayContext:
             stopped = True
         except Exception as error:
             errors.append(f"stop_unconfirmed:{type(error).__name__}")
-        (self.root / "stop.json").write_text(
-            json.dumps({"stop_confirmed": stopped, "errors": errors})
-        )
+        try:
+            (self.root / "stop.json").write_text(
+                json.dumps({"stop_confirmed": stopped, "errors": errors})
+            )
+        except OSError:
+            errors.append("stop_log_failed")
+            LOGGER.warning("phase=cleanup code=stop_log_failed")
         return stopped
 
 
@@ -491,7 +599,7 @@ async def tool_contract(
     root.mkdir()
     paths = TrialPaths(trial_dir=root / "harbor")
     paths.trial_dir.mkdir()
-    project = "wb04-profile-" + secrets.token_hex(8)
+    project = PROFILE_PROJECT_PREFIX + secrets.token_hex(8)
     policy = NetworkPolicy(network_mode=NetworkMode.NO_NETWORK)
     environment = DeadlineDockerEnvironment(
         cleanup_timeout_sec=config.cleanup_timeout_sec,
@@ -529,9 +637,10 @@ async def replay_environment(
     identity: dict[str, str],
     *,
     lifecycle: LifecycleFacts | None = None,
+    simulator_only: bool = False,
 ) -> AsyncIterator[ReplayContext]:
     lifecycle = lifecycle if lifecycle is not None else LifecycleFacts()
-    project = "wb04-replay-" + identity["replay_id"]
+    project = REPLAY_PROJECT_PREFIX + identity["replay_id"]
     root = config.output_root / project
     root.mkdir(mode=0o700)
     environment_dir = root / "environment"
@@ -583,6 +692,9 @@ async def replay_environment(
                         math.ceil(config.execute_timeout_sec)
                     ),
                     "N8N_DIAGNOSTICS_ENABLED": "false",
+                    "EXECUTIONS_DATA_SAVE_ON_SUCCESS": "all",
+                    "EXECUTIONS_DATA_SAVE_ON_ERROR": "all",
+                    "EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS": "true",
                     "N8N_VERSION_NOTIFICATIONS_ENABLED": "false",
                     "N8N_BLOCK_ENV_ACCESS_IN_NODE": "true",
                     "N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES": "true",
@@ -614,6 +726,11 @@ async def replay_environment(
         "volumes": {"database": {}},
     }
     compose_path = environment_dir / "docker-compose.yaml"
+    if simulator_only:
+        compose["services"].pop("n8n")
+        compose["services"].pop("runner")
+        compose["networks"].pop("broker")
+        compose.pop("volumes")
     compose_path.write_text(json.dumps(compose))
     compose_path.chmod(0o600)
     paths = TrialPaths(trial_dir=root / "harbor")
@@ -621,7 +738,7 @@ async def replay_environment(
     environment = DeadlineDockerEnvironment(
         cleanup_timeout_sec=config.cleanup_timeout_sec,
         environment_dir=environment_dir,
-        environment_name="t1-replay",
+        environment_name="replay",
         session_id=project,
         trial_paths=paths,
         task_env_config=EnvironmentConfig(
@@ -644,11 +761,11 @@ async def replay_environment(
                 "--format",
                 "{{.ID}}",
             )
-            ports = json.loads(
-                await docker(
-                    "inspect", container, "--format", "{{json .NetworkSettings.Ports}}"
-                )
-            )
+            metadata = json.loads(await docker("inspect", container))[0]
+            ports = metadata["NetworkSettings"]["Ports"]
+            management_ip = metadata["NetworkSettings"]["Networks"][
+                project + "_management"
+            ]["IPAddress"]
             bindings = ports.get(f"{config.control_port}/tcp")
             if not bindings:
                 raise RuntimeError("control_binding_missing")
@@ -665,6 +782,7 @@ async def replay_environment(
                 project,
                 config,
                 lifecycle,
+                protected_control_url=f"http://{management_ip}:{config.control_port}",
             )
             while True:
                 try:

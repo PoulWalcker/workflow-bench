@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from tests.integration.controls import identity, node, reset
 
+from workflow_bench.contracts import REPLAY_PROJECT_PREFIX, SUBMISSION_TRIAL_PREFIX
 from workflow_bench.data import read_json
 from workflow_bench.execution import accept_artifact, replay
 from workflow_bench.harbor import (
@@ -20,6 +21,58 @@ from workflow_bench.harbor import (
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK = ROOT / "tasks/t1-send-message"
+
+
+def test_primary_cancel_survives_failed_evidence_export(e1_config, tmp_path):
+    from workflow_bench.experiment import run_manual
+
+    task = tmp_path / "source-task"
+    shutil.copytree(TASK, task)
+    workflow = read_json(task / "solution/workflow.json", "control")
+    workflow["nodes"][2]["parameters"]["jsCode"] = "while (true) {}"
+    (task / "solution/workflow.json").write_text(json.dumps(workflow))
+
+    async def check():
+        pending = asyncio.create_task(run_manual(task, ("fresh-a",), config=e1_config))
+        try:
+            async with asyncio.timeout(120):
+                while True:
+                    imports = list(
+                        e1_config.output_root.glob(
+                            REPLAY_PROJECT_PREFIX + "*/harbor/agent/import.log"
+                        )
+                    )
+                    if imports:
+                        project = imports[0].parents[2].name
+                        container = await docker(
+                            "ps",
+                            "--filter",
+                            "label=com.docker.compose.project=" + project,
+                            "--filter",
+                            "label=com.docker.compose.service=main",
+                            "--format",
+                            "{{.ID}}",
+                        )
+                        if container:
+                            # The current Replay owns this simulator; killing it is the fault source.
+                            await docker("kill", container)
+                            break
+                    if pending.done():
+                        await pending
+                        pytest.fail("Replay did not reach the injected fault")
+                    await asyncio.sleep(0.2)
+            pending.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await pending
+            report = read_json(e1_config.output_root / "report.json", "report")
+            assert report["error"] == "cancelled"
+            assert report["cleanup_errors"] == report["residual_resources"] == []
+        finally:
+            if not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+
+    asyncio.run(check())
 
 
 def test_real_manual_cancellation_stops_submission_process(e1_config, tmp_path):
@@ -39,7 +92,9 @@ def test_real_manual_cancellation_stops_submission_process(e1_config, tmp_path):
             async with asyncio.timeout(90):
                 while True:
                     trials = list(
-                        (e1_config.output_root / "harbor").glob("wb04-manual-*")
+                        (e1_config.output_root / "harbor").glob(
+                            SUBMISSION_TRIAL_PREFIX + "*"
+                        )
                     )
                     if trials:
                         project = trials[0].name + "__env"

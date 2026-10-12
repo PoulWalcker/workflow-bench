@@ -1,481 +1,323 @@
-# SPEC — Workflow Bench MVP
+# Workflow Bench — product specification
 
-Версия 0.2 · 11 октября 2026 года
+Current MVP requirements and accepted decisions. Implementation status belongs to
+[ROADMAP](ROADMAP.md); technical contracts to [ARCHITECTURE](ARCHITECTURE.md).
+Open decisions below do not reopen accepted scope or imply completed implementation.
 
-**Статус: На согласовании после review**
+## Terms
 
-Единая актуальная продуктовая спецификация. Основания: `CHALLENGE_BRIEF.md`
-(предоставленный файл `workflow-bench-challenge-brief (2).md`, версия 1.0),
-[PRODUCT_REVIEW.md](PRODUCT_REVIEW.md) и подтверждения пользователя после review.
-Прежний SPEC использован как черновик, а не как свидетельство согласования.
-
-После review подтверждены: T3 работает по публичным правилам и шаблонам без
-runtime LLM; первый релиз проверяет повторное использование и показывает затраты,
-но не обязан доказывать экономию; все действия Telegram выполняются только
-в нашем симуляторе с общим состоянием API и UI.
-
-Ниже обязательные требования и принятые технические решения отделены от **предложений**.
-Рекомендация review становится решением только там, где это явно подтверждено.
-Документ не утверждает готовность реализации, совместимость инструментов или
-работающую изоляцию. Уточнения согласованной архитектуры: native Harbor Task,
-ограниченный native n8n JSON без DSL/compiler, Task-first и ранняя проверка
-T1/Sapiens сразу после T1/Codex. Их размещение и технические проверки описаны
-в [ARCHITECTURE.md](ARCHITECTURE.md); они ещё не подтверждены реальным запуском.
-
-## 1. Проблема, цель и границы выводов
-
-Предыдущий `benchmarking`, по сообщению пользователя, уже выполняет workflow и
-выдаёт результаты. Причина нового проекта — сложность сопровождения: слишком
-много инфраструктуры и служебных сущностей мешают проводить эксперименты.
-Нужен небольшой исследовательский инструмент, а не перенос старой платформы.
-
-**Цель:** проверить, способен ли AI исследовать доступное окружение и создать
-workflow, повторно решающий одну бизнес-задачу на новых входах без изменения логики.
-Приоритет — правильность результата, затем качество и фактические затраты.
-Успешное разовое действие Composer не засчитывается вместо работы сданного workflow.
-
-Наблюдаем результат конкретной версии workflow на конкретном кейсе. При сравнении
-Composer оценивается связка модели, harness, настроек, инструментов и бюджета,
-а не «чистое качество модели». Технические привязки и готовые tools не должны незаметно решать
-бизнес-задачу вместо AI.
-
-| Гипотеза | Что наблюдаем | Ограничение вывода |
-|---|---|---|
-| H1. Повторное использование | Неизменный workflow решает задачу на новых параметрах и состояниях | Успех только на исследованном примере не подтверждает перенос; результат ограничен проверенными кейсами |
-| H2. Программный UI-replay | Workflow читает текущее дерево, находит элементы и действует без runtime LLM-навигации | Проверяется согласованный класс изменений виртуального UI, не произвольный редизайн настоящего приложения |
-| H3. Выбор инструментов | При API+UI Composer выбирает способ решения; фиксируются правильность и затраты. На сопоставимых кейсах можно сравнивать профили доступа | Наличие обоих интерфейсов не доказывает их комбинирование или оптимальность выбора; T1 и T3 нельзя сравнивать как изолированный эффект API/UI |
-| H4. Полезность исправлений | Сохраняются результаты версий, feedback, число попыток и суммарные затраты | Улучшение на кейсах для исправлений не доказывает улучшение на новых данных или снижение общей стоимости |
-
-Первый релиз показывает фактические затраты создания и исполнения. Сравнение с
-разовым агентом и доказательство экономии не являются условиями его готовности.
-Без такого сравнения нельзя заявлять окупаемость автоматизации. Наличие exploration
-само по себе не доказывает его причинную пользу, а один успешный запуск — общую
-надёжность. Успех виртуального UI не доказывает переносимость на реальный Telegram
-и не измеряет задержки его серверов.
-
-## 2. Границы MVP
-
-| Входит в первый релиз | Не входит |
+| Term | Meaning |
 |---|---|
-| Все четыре задачи T1–T4 на одной симуляции Telegram | Другие приложения как продуктовые benchmark-задачи |
-| API-only, UI-only и совместный доступ API+UI | Настоящий Telegram, его серверы, аккаунты, ключи и внешние сообщения |
-| Динамическое виртуальное дерево и ограниченный профиль команд Blindly | Реальный рабочий стол, GUI, скриншоты, координатное управление и полная копия ОС/клиента |
-| Исследование окружения перед сдачей workflow, включая пробные действия | Обязательная отдельная Static App Model |
-| Параметризованный workflow и его повторное исполнение на новых входах | Вызов LLM внутри workflow для генерации ответа или навигации |
-| Подготовленные воспроизводимые кейсы, свежие состояния и ограниченные последовательные исправления | Генератор произвольных миров, параллельный поиск решений, выбор победителя по итоговым скрытым кейсам |
-| Независимые проверки, score 0–10, отдельный вердикт, LLM Judge для обоснованных смысловых критериев | Подмена оценки только Pass/Fail или обязательный Judge для каждого кейса |
-| Фактические затраты и объяснимые результаты/ошибки | Обязательное доказательство экономии относительно разового агента |
-| Независимость core и возможность заменить Composer | Универсальная поддержка любых приложений и новых возможностей без изменения контрактов |
+| Task | One business benchmark package: public intent/input contract, cases, checks, rubric and control. A WB implementation ticket is developer work, not a Task for Composer. |
+| Case | Prepared input, initial simulator state and private expected behavior for one check. Different versions may use it only from freshly restored state. |
+| Attempt | One creation/correction ending in a submitted version or recorded submission failure. Manual control submission occupies the same position without being model generation. |
+| WorkflowArtifact | Immutable submitted native n8n JSON. Technical binding does not create another business version or Attempt. |
+| Replay | One execution of one version on one fresh Case. Multiple Replay are not multiple Attempt. |
+| Harbor Trial | Harbor's agent/artifact/optional verification lifecycle unit. A submission Trial corresponds to an Attempt, not every Replay; technical completion does not mean Task success. |
+| Evidence | Protected environment facts tied to version and Case: state and action history. Candidate claims and diagnostic logs do not prove effects. |
+| Evaluation | Independent assessment of Evidence against Task criteria/rubric, producing criteria, completeness, score when available and Verdict. Reassessment of saved facts is not Replay. |
+| Verdict | `pass`, `fail` or `unknown`, distinct from process status, score or a single effect. |
+| input / state / expected | Request parameters available to workflow / simulator world observed through tools / private verifier expectations. A public training state does not expose private states. |
+| Unknown | Insufficient knowledge of value/outcome. Zero means a known zero, not missing measurement. |
 
-Начало с API-задачи — порядок проверки идеи, а не сокращение MVP до T1.
-Не требуются scheduler, plugin registry, универсальный workflow-язык, несколько
-execution-backend, большая БД/очереди, dashboard, глобальный budget ledger,
-Sapiens YAML или миграция старого evidence. Принятый технический путь и проверки вынесены в §11.
+## 1. Goal and limits of conclusions
 
-## 3. Обязанности и независимость core
+Build a small research tool that tests whether AI can explore an environment and
+create a workflow that solves the same business task on new inputs without changing
+its logic. Prioritize correctness, then quality and measured costs. Composer's
+one-off action cannot replace execution of its submitted artifact. Reducing
+maintenance complexity is a project goal; file counts and candidate score do not
+measure it.
 
-| Участник | Ответственность | Граница |
-|---|---|---|
-| Task | Бизнес-постановка, входные данные и кейсы, разрешённый профиль tools, предметные правила и критерии проверки | Описывает, что получить, а не готовый алгоритм, последовательность вызовов или UI-пути |
-| Окружение | Состояние приложения, наблюдения и действия tools, ошибки и ограничения доступа, доверенные факты изменений | Не выдаёт скрытые ожидания и не предоставляет инструмент, уже решающий всю benchmark-задачу |
-| Composer | Исследование разрешённой среды, создание и исправление параметризованного workflow | Не оценивает себя, не получает приватные проверки и не подменяет replay своими разовыми действиями |
-| Experiment | Условия и лимиты, последовательность попыток, фиксация версий, свежие кейсы, разрешённый feedback и итоговая проверка | Не меняет требования Task и не исправляет бизнес-логику за Composer |
-| Evaluation | Проверка зафиксированных фактов по критериям Task, Judge по необходимости, score, вердикт и объяснение | Не исправляет и не перезапускает workflow, не принимает самоотчёт кандидата за доказательство |
+The observation is one fixed version on one Case. Comparisons measure the complete
+model + harness + settings + tools + budget combination, not pure model quality.
+Tools and technical binding must not solve the business task for AI.
 
-Core содержит общие механизмы проведения и оценки эксперимента. Он не знает
-бизнес-семантику чатов, правильных ответов, пересылки или резервирования товара.
-Предметные правила принадлежат Task/окружению; общая логика расчёта использует
-результаты критериев, а не ветвления по имени задачи или приложения.
-
-Новая Task **в пределах поддержанных контрактов и возможностей приложения**
-добавляется только своим каталогом: постановка, параметры/пример, native config,
-кейсы, предметные проверки, рубрика и контроль. Она не меняет core, общий prompt,
-интеграцию Composer или общую scoring-логику. Новый Composer требует интеграции
-через штатную границу агента Harbor и конфигурации запуска; новое приложение —
-своего simApp и Task. Experiment не знает внутреннее устройство выбранного harness.
-Новая семантика исполнения может потребовать явного расширения контрактов.
-
-`instruction.md` выражает пользовательское намерение и бизнес-ограничения обычным
-языком. Схема полей, tools/ошибки и сдача workflow описываются отдельными публичными
-контрактами. Проверки не добавляют скрытых требований; отдельный парсер свободных
-просьб не требуется. `task.json` содержит публичный входной контракт и разрешённый
-пример, а не готовое решение или полный приватный кейс.
-
-Различаются пользовательские параметры, данные для получения через приложение
-и приватные ожидания проверяющего. Simulator получает initial state; replay —
-только параметры и технические привязки, затем получает наблюдения через tools.
-Composer видит публичный учебный пример и исследует учебную среду. Следующая попытка
-получает прежние публичные материалы/артефакт и только разрешённый feedback из
-проверки. Поле feedback в Task — правила раскрытия, не заранее готовые результаты.
-Подробное распределение доступа и пример самостоятельной Task — ARCHITECTURE §2, §6.
-
-## 4. Четыре бизнес-задачи
-
-| Задача | Доступ | Ожидаемое поведение и проверяемый результат |
-|---|---|---|
-| T1. Send Message | Только API симулятора | Отправить заданный текст указанному получателю ровно один раз; состояние подтверждает адресата, текст и отсутствие посторонних изменений |
-| T2. UI Message | Только виртуальный UI | Выполнить ту же отправку через наблюдение дерева и UI-действия. Поиск и ввод работают на новых входах и в поддержанном классе изменений дерева; обход через бизнес-API недопустим |
-| T3. Conditional Reply | API+UI, способ выбирает Composer | Прочитать последнее входящее сообщение указанного чата, применить публичные правила и шаблон ответа, отправить предусмотренный ответ без повторов и посторонних изменений. Runtime LLM-генерации и LLM-навигации нет |
-| T4. Smart Forwarding | API+UI, способ выбирает Composer | Найти сообщения по ключевому слову в заданных чатах и переслать подходящие в Saved Messages без дублей; проверить полноту отбора и идентичность оригиналов |
-
-Для T1/T2 при отсутствии или неразрешённой неоднозначности получателя нельзя
-отправлять сообщение предполагаемому адресату: нужен явный отказ по публичным
-правилам Task. Одинаковое отображаемое имя само по себе не доказывает идентичность.
-Общая бизнес-проверка отправки применима к обоим профилям доступа.
-
-Для T3 правила выбора последнего входящего, применения шаблонов, отсутствия
-входящих и уже обработанного сообщения должны быть публичными. Собственное
-исходящее не считается входящим. Правила и шаблоны входят в постановку или входные
-данные; скрытый verifier не добавляет отсутствующих требований. Задача проверяет
-условия и применение правил, а не свободную генерацию текста моделью.
-
-Для T4 дубликат определяется исходным сообщением и чатом, а не совпадением текста.
-Уже пересланные сообщения могут присутствовать в исходном состоянии кейса. Пустой
-набор совпадений не требует фиктивной отправки; разное число совпадений в пределах
-профиля обрабатывается одним workflow. Правила поиска ключевого слова, пределы
-выборки и поведение за пределами лимита задаются публично до проверки.
-
-Кейсы должны различать параметризацию и запоминание примера: новые получатели и
-тексты, разные ветви T3, пустые и многообъектные выборки T4, изменения порядка
-UI-элементов и начального черновика. Конкретный набор, размеры и инварианты UI
-ещё предстоит зафиксировать (§13); произвольные новые возможности не обещаются.
-
-При совместном доступе выбор только API или только UI допустим, если он решает
-задачу и соблюдает ограничения. **Предложение, не обязательство MVP:** отдельный
-профиль для проверки именно комбинирования, где возможности взаимодополняют друг
-друга. Простого ограничения API недостаточно, если всё ещё можно сделать через UI.
-
-В минимальном T1 готовый однозначный ID и текст проверяют отправку, не поиск
-человека. В задачах с поиском получатель должен определяться из публичного входа
-и разрешённых наблюдений: например, по уникальному username или достаточному
-контексту. Если данных недостаточно, действует публичное правило без ошибочной
-отправки; скрытый expected не служит источником ID. Личная история пользователя
-и память других запусков не подставляются. Уточняющий диалог, персональная память,
-универсальное разрешение идентичности и runtime LLM в MVP не добавляются.
-
-## 5. Окружение: исполняемая симуляция Telegram
-
-Все API-вызовы Telegram направляются **в наш симулятор, не на серверы Telegram**.
-Реальные аккаунты, ключи Telegram и доступ к рабочему столу не нужны. Credentials
-Composer/Judge, если нужны выбранному модельному провайдеру, относятся к отдельной
-интеграции и не являются credentials Telegram.
-
-Симулятор хранит чаты, сообщения, отправки и сведения о пересылке. Операции записи
-действительно изменяют это состояние, чтение возвращает актуальные наблюдаемые
-данные, ошибки и недопустимые действия обрабатываются согласно контракту.
-Ответ, всегда возвращающий success без соответствующего эффекта, не является
-реализацией окружения.
-
-simApp/UI — основное исследовательское направление; API — полноценный интерфейс
-того же приложения. MCP как транспорт tools не означает обязательный отдельный
-app-level simMCP. API и виртуальный UI используют **одно бизнес-состояние**:
-изменение через один интерфейс видно через другой. UI дополнительно отражает текущий экран, активный
-чат, фокус, поиск и черновик. Открытие чата меняет наблюдаемое дерево, ввод —
-черновик, Send — сообщения. Дерево представляет доступный сейчас интерфейс,
-а не всю базу данных, скрытые ожидания или готовое решение.
-
-UI-профиль описывает поддержанные наблюдения, поиск, ввод, выбор и нажатия,
-их ошибки и последствия. Неподдержанные действия явно отклоняются. Команды
-не сворачиваются в готовую бизнес-автоматизацию. Передача UI-команд через HTTP
-сама по себе не нарушает UI-only; нарушением является доступ к запрещённому
-бизнес-API, внутреннему состоянию или административным операциям.
-
-Название Blindly означает ограниченный виртуальный профиль, а не запуск native
-инструмента на desktop и не полную совместимость с настоящим клиентом. Во время
-replay разрешены детерминированные чтение свежего дерева, поиск по наблюдаемым
-признакам и ветвления. Повторное исследование Composer и изменение workflow
-допустимы только между попытками.
-
-## 6. Composer и сдаваемый workflow
-
-Первый Composer — **Codex Exec**, следующий — **Sapiens CLI**. Обязательна возможность
-заменить Composer без переписывания Task, исполнения workflow и бизнес-проверок
-в пределах поддержанного контракта. Это не обещание одинаковой интеграции,
-метрик или поведения разных harness. Тот же T1 через Sapiens проверяется сразу
-после рабочего end-to-end T1/Codex, до полной реализации T2–T4; первый Codex-запуск
-не зависит от готовности Sapiens. Blocker ранней проверки фиксируется честно.
-
-Composer получает публичную постановку, контракт сдачи артефакта, описания
-разрешённых tools, учебные данные, доступ к исследовательскому экземпляру среды,
-лимиты и при исправлении — предыдущую версию и разрешённый feedback. Он может
-наблюдать окружение и пробовать действия перед сдачей решения.
-
-Результат работы Composer — версия workflow либо явный неуспех её получения.
-Нужны наблюдаемые завершение, ошибка, остановка или неопределённый исход,
-идентичность harness/model и доступные фактические метрики. Принятая заявка не
-равна завершению, а прекращение наблюдения не подтверждает отмену. Состояние
-независимых экспериментов не должно протекать через память или сессии harness.
-Наш адаптер не добавляет скрытые попытки Composer или исправления артефакта;
-внутреннее retry-поведение harness учитывается отдельно, см. §9.
-
-Workflow параметризован; одна сданная версия исполняется на разных входах
-**без изменения логики**. Допустимы входные параметры и служебные привязки запуска,
-но не дописывание ветвей, подстановка скрытых ответов или исправление за Composer.
-Повторное использование требуется внутри одной задачи и профиля tools; один
-артефакт для API-only и UI-only не обязателен.
-
-Выбран один ограниченный native n8n JSON без собственного DSL/compiler. Validator
-проверяет допустимость, binder подставляет только технические данные, не бизнес-решение.
-Реальное исполнение обязательно: проверки структуры
-артефакта недостаточно. Workflow не вызывает LLM для генерации ответа или навигации;
-LLM участвует в Composer и, при обоснованной необходимости, в независимом Judge.
-
-## 7. Функциональный flow и попытки
-
-До оцениваемого запуска фиксируются Task, профиль tools, сценарии, критерии,
-правила успеха и выбора версии, разрешённый feedback, Composer/Judge и конечные
-лимиты. `max_attempts` настраивает число последовательных попыток. Попытка — один
-результат работы Composer: новая версия либо зарегистрированный неуспех сдачи.
-Много tool calls внутри исследования и replay на нескольких кейсах не считаются
-несколькими генерациями; один CLI-запуск не предполагается одним модельным вызовом.
-
-Кейс — подготовленные входы, исходное состояние и ожидаемое поведение одного
-проверочного запуска. Данные имеют три назначения, **не три обязательные подсистемы**:
-
-| Назначение | Доступ и использование |
+| Hypothesis | Observation and limit |
 |---|---|
-| Исследование | Разрешённые примеры и наблюдения Composer; примеры могут входить в набор для исправлений |
-| Проверки для исправлений | Оценка версии и ограниченный feedback по публичным требованиям |
-| Итоговая проверка | Новые кейсы без обратной связи для дальнейшего исправления или выбора победителя |
+| H1: reuse | Unchanged workflow on new parameters/states. Training-only success does not establish transfer beyond tested cases. |
+| H2: programmatic UI replay | Fresh-tree search/actions without runtime LLM navigation, within an agreed class of UI changes; no claim about arbitrary redesigns or real Telegram. |
+| H3: tool choice | Correctness/cost under API+UI and, where comparable, access profiles. Availability proves neither combination nor optimal choice; T1 versus T3 does not isolate API/UI effects. |
+| H4: corrections | Version results, feedback, attempts and total costs. Development improvement does not prove holdout improvement or lower total cost. |
 
-Последовательность:
+Exploration alone does not prove its causal benefit, one successful run does not
+prove general reliability, and virtual UI does not measure real server latency.
+Report creation/execution costs; first-release readiness does not require a
+one-off-agent baseline or demonstrated savings. Without a comparable baseline at
+comparable quality, do not claim amortization. Comparing first/selected versions
+on final data after selection remains optional, not an extra mandatory run series.
 
-1. Подготовить свежую исследовательскую среду и передать Composer публичные материалы.
-2. Дать исследовать tools и получить зафиксированную версию workflow либо ошибку сдачи.
-3. Проверить допустимость native n8n JSON, подставить технические привязки и подготовить импорт/исполнение без изменения бизнес-логики.
-4. Выполнить одну неизменную версию на свежих кейсах для исправлений; собрать доверенные факты.
-5. Оценить результаты. При достижении заранее заданных условий успеха остановить исправления; при неуспехе передать разрешённый feedback и продолжить в пределах лимита.
-6. После успеха или исчерпания лимита зафиксировать выбранную версию по заранее определённому правилу. При сбое или неопределённости применить правила §9.
-7. Проверить выбранную версию на итоговых кейсах без нового исправления и сформировать отчёт. Отсутствие пригодного артефакта также отражается в результате, не маскируется успешным запуском.
+## 2. MVP scope
 
-Для T1 согласованы [правила WB-06](docs/implementation/WB-06-t1-measurement.md):
-5 development + 5 private final, первая версия с полным development pass,
-иначе последняя валидная сдача, максимум две Attempt. Неполнота блокирует
-продолжение. Для остальных Task остаётся предложение ниже.
+The first release includes **all T1–T4**, one simulated Telegram, API-only, UI-only
+and API+UI access, virtual dynamic UI in a limited Blindly-style profile, active
+exploration including trial actions, parameterized native workflows, reproducible
+fresh cases, bounded sequential corrections, independent checks, score 0–10,
+separate Verdict, justified semantic Judge support, costs and explainable reports.
+Starting with T1 does not reduce the MVP to an API demo.
 
-**Предлагаемое правило выбора, требующее фиксации до измерений:** первая версия,
-достигшая условий успеха; если такой нет — последний результат Composer с явным
-указанием его отсутствия/невалидности. Выбор по итоговым скрытым кейсам запрещён
-при любом правиле. Успех проверки для исправлений не гарантирует успех итоговой.
+Excluded: real Telegram/accounts/keys/messages; physical desktop, screenshots or
+coordinate control; runtime LLM generation/navigation; arbitrary world generation
+or UI redesign; parallel solution search; holdout winner selection; other apps as
+product benchmark Tasks; mandatory Static App Model; Sapiens YAML/Haskell workflow
+notation; custom DSL/compiler, multiple execution backends, registry/scheduler,
+large database/queue/dashboard/budget platform, migration of old evidence.
+A small new Task/app fixture tests independence, not a fifth product Task.
 
-Перед каждым кейсом восстанавливается его исходное бизнес- и UI-состояние,
-включая черновики и состояние исполнения, способное влиять на результат.
-Пробные действия Composer не улучшают начальное состояние проверочного запуска.
-Между попытками переносится разрешённое знание, а не изменённый мир. Проверка
-повтора действия или уже пересланных сообщений проводится внутри заданного кейса
-и не требует накопления состояния между независимыми кейсами.
+## 3. Task independence
 
-Feedback содержит разрешённые технические ошибки и результаты публичных требований,
-но не эталон, скрытые ожидаемые значения, полный приватный input или dump verifier.
-Его состав фиксируется до измерений. Для проверки H4 сравнение первой и выбранной
-версий на итоговых данных после завершения выбора — **предложение review**, а не
-обязательная дополнительная серия запусков; без неё вывод о переносе исправлений
-ограничивается фактически полученными данными.
+Task owns human business intent, input schema/example, cases, public rules,
+permitted tools, checks, rubric, feedback disclosure and control. Environment owns
+state, elementary observations/actions/errors and protected facts. Composer explores
+and creates/corrects a workflow; Experiment runs the agreed policy; Evaluation
+checks facts without executing/correcting the candidate.
 
-## 8. Evaluation, score и затраты
+Core knows no chat/recipient/reply/forward/inventory business semantics. A new Task
+within existing contracts and app capabilities changes **only its directory**;
+no core/common prompt/Composer/runtime/scoring changes or Task registry. A new app
+supplies its simApp and Task; a new Composer supplies a Harbor agent integration
+and configuration. New execution semantics require explicit contract expansion.
 
-### Независимая оценка
+`instruction.md` is human intent and business constraints, not an algorithm or
+UI path. Public contracts separately describe fields, tools/errors and artifact
+submission; no natural-language parser is required. `task.json` supplies a public
+input contract/example, not a solution or full private Case. Its feedback field
+is disclosure policy, not precomputed feedback.
 
-Evaluation использует критерии Task и зафиксированные факты: состояние до/после,
-действия tools, ошибки и связь с оцениваемой версией. Правильность определяется
-поведением, а не совпадением структуры с единственным эталоном.
+Keep input, state and expected separate. Composer receives a public training world;
+simulator receives Case state; replay receives input and technical bindings and
+learns state through tools; verifier receives expected and protected facts.
 
-Код проверяет исполнение, адресата, точный текст/применение проверяемого шаблона,
-полноту отбора, дубли и посторонние изменения. Факт отправки подтверждает доверенное
-состояние симулятора, не текст кандидата и не Judge.
+## 4. Business Tasks
 
-LLM Judge сохраняется для **обоснованных смысловых критериев**, не покрываемых
-надёжной программной проверкой. Правила и шаблоны T3 не создают обязательного
-модельного вызова при оценке. Не нужно добавлять субъективный критерий ради Judge.
-Если критерий необходим, его рубрика, модель и условия оценки фиксируются заранее,
-а пригодность проверяется на небольшом вручную разобранном наборе.
-
-Judge работает в отдельном контексте без полномочий исполнения. Текст кандидата
-и переписок — оцениваемые данные, не инструкции. Результат должен содержать оценку
-критерия, объяснение и ссылки на существующие факты. Неполный ответ или выдуманное
-свидетельство не превращается в успех; проверка формата не доказывает правильность
-смыслового суждения.
-
-### Балл и вердикт
-
-Обязательны **score 0–10, отдельный вердикт и разбивка по критериям**. Итог вычисляет
-код по заранее заданной рубрике; Judge оценивает только свои критерии. Источник
-рубрики принадлежит Task (`tests/rubric.json`); manifest сохраняет применённый снимок,
-а не отдельную редактируемую копию методики. Требования критериев публичны,
-конкретные приватные ожидания остаются у проверяющего. Критический
-провал, например неверный адресат, не компенсируется качеством текста. Частичное
-выполнение не выдаётся за полностью решённую задачу.
-
-Для T1 применяется [методика WB-06](docs/implementation/WB-06-t1-measurement.md):
-2 балла за полный pass каждого из пяти final Case, cap 3 при critical,
-null при неполноте; эффективность отдельно, без Judge.
-
-**Для остальных Task ещё не утверждены:** веса, шкалы частичного выполнения, пороги успеха, ограничения
-score при критических ошибках, агрегация кейсов/задач и нормирование эффективности.
-Их нужно определить до первого оцениваемого запуска, не после знакомства с результатами.
-
-**Предложения для решения, не принятые формулы:** равные веса независимых
-бизнес-критериев, нормированная взвешенная сумма для score, среднее по полностью
-оценённому набору вместе с числом успешных кейсов, обязательное выполнение всех
-критических условий для успеха. Среднее, минимум и конкретный threshold не становятся
-требованием только потому, что встречались в черновике или review.
-
-Неполнота оценки показывается отдельно. Нельзя усреднить только удавшиеся кейсы
-и назвать это результатом всего набора или считать отсутствующую оценку нулём.
-Точные правила обработки ошибок приведены в §9.
-
-### Фактические затраты
-
-Отдельно отражаются создание workflow (exploration, генерация и исправления),
-его исполнение и Judge. Учитываются неудачные попытки и доступные затраты ошибочных
-запусков. Сохраняются время, раздельные API/UI-вызовы и наблюдаемая статистика токенов;
-отсутствующая метрика обозначается как неизвестная, не как ноль.
-
-Инфраструктурные задержки должны отличаться от времени исполнения workflow.
-Деньги вычисляются только при известных и записанных ценах; неподтверждённые суммы
-не выдаются за измеренные. Токены, время и число вызовов не взаимозаменяемы, а API-
-и UI-команды могут иметь разную детализацию.
-
-Сравнение проводится при сопоставимых задачах, входах и условиях, с явным указанием
-различий профиля tools и harness. Сам выбор API не даёт бонуса. **Предложение review:**
-до обоснованного нормирования показывать эффективность отдельными метриками без
-включения в score; её конкретное влияние на балл пока не утверждено. Отчёт о затратах
-обязателен независимо от этого решения.
-
-## 9. Ошибки, неизвестный исход и остановка
-
-| Ситуация | Требуемое поведение |
+| Task / access | Required result |
 |---|---|
-| Невалидный артефакт или доказанная ошибка workflow | Зафиксировать неуспех кандидата и известные нарушения; разрешить исправление только в пределах попыток и допустимого feedback |
-| Среда не запустилась или проверка сорвана инфраструктурой | Отразить инфраструктурную ошибку и отсутствие соответствующей оценки, не приписывать модели нулевое качество |
-| Действие могло выполниться, но ответ потерян | Различать фактический эффект и знание workflow о нём. Не повторять запись вслепую. Подтверждение возможно через разрешённое наблюдение либо гарантию идемпотентности операции, если она есть; иначе сохранить неопределённость и не заявлять полный успех |
-| Неизвестен исход обращения к Composer | Не отправлять запрос повторно автоматически; сохранить доступные факты, статус и затраты. Не подменять неизвестность новой «бесплатной» попыткой |
-| Обязательный Judge недоступен или его ответ непригоден | Сохранить программные результаты и известные провалы, полный score оставить отсутствующим. Не объявлять успех по неполному набору критериев и не исправлять workflow по выдуманному feedback |
-| Judge не нужен критериям Task | Оценка выполняется без него; его недоступность не блокирует результат |
-| Истёк лимит или запрошена отмена | Ограничить дальнейшую работу, установить статус остановки; прекращение ожидания само по себе не доказывает завершение. Пока остановка не подтверждена, исход отмечается как неопределённый |
-| Попытка обхода tools или подмены результатов | Не засчитывать полученный обходом результат; зафиксировать нарушение. Если доверенность фактов утрачена, не выдавать такой запуск за валидное измерение |
+| T1 Send Message / API-only | Send the exact supplied text to the exact supplied recipient once, with no unrelated changes. The minimal profile uses an unambiguous chat ID; it tests sending, not identity search. |
+| T2 UI Message / UI-only | The same sending behavior via fresh-tree observations and UI actions on new inputs and supported tree changes. Business-API bypass is forbidden. |
+| T3 Conditional Reply / API+UI | Read the specified chat's latest incoming message, apply public conditions/templates, send the prescribed reply without duplicates or unrelated changes. Own outgoing messages are not incoming. |
+| T4 Smart Forwarding / API+UI | Find keyword matches in specified chats and forward the appropriate originals to Saved Messages completely, with provenance and no duplicates. |
 
-Запрет автоматического повтора неизвестного вызова относится к нашему Experiment;
-запрет слепого повтора записи — к бизнес-действиям workflow. Внутренние обращения
-и технические повторы Codex/Sapiens CLI/SDK — часть исследуемого harness. Фиксируем
-его версию, доступную retry-политику, метрики и ограничения наблюдаемости, не требуя
-переписывать агента ради полного контроля provider retries. Доступ, конечные лимиты
-и подтверждённый stop остаются обязательными; неизвестные затраты не равны нулю.
+T1/T2 must refuse missing or unresolved ambiguous recipients according to public
+rules; equal display names do not establish identity. Search Tasks require enough
+public input/observations (e.g. unique username/context); never derive an ID from
+expected or personal memory. Clarifying dialogue and universal identity resolution
+are outside scope.
 
-При пропаже ответа verifier может установить факт действия по доверенному состоянию,
-даже если workflow не получил подтверждения. Это не разрешает скрыть ошибку исполнения.
-UI не получает гарантии идемпотентности только потому, что такая гарантия есть у API.
-Точные наблюдения, ошибки и гарантии каждой операции фиксирует профиль tools.
+T3 must publicly define latest-incoming selection, template branches, no incoming
+and already-processed behavior before cases are written. It tests rules, not free
+text generation. T4 deduplicates by original chat/message, not text; pre-forwarded
+objects may exist in Case state. Empty matches cause no fictional send; one version
+handles 0/1/N within published limits. Keyword semantics, complete selection bounds
+and over-limit behavior must be public before verification; pagination is required
+only if included in the profile.
 
-Нельзя повторно совершать бизнес-действия только ради восстановления оценки Judge.
-Если оценивание возобновляется, используются сохранённые факты; правила допустимого
-продолжения и пределы повторов внешних проверок определяются до измерений.
-Ошибка не снимает конечные ограничения времени, инструментов и модельного бюджета.
-Оплачиваемые модельные запуски требуют явного разрешения и конечных лимитов.
+Cases distinguish parameterization from memorization: new IDs/text, T3 branches,
+T4 cardinality/provenance, UI order/screen/draft changes. API+UI permits either
+interface alone; API receives no automatic bonus. Forced complementary use remains
+an optional proposed profile, not an MVP obligation or proof of free choice.
 
-## 10. Доверие, evidence и результат эксперимента
+## 5. Simulated environment
 
-Composer видит публичную постановку, контракт артефакта, разрешённые tools и учебные
-данные. Приватные проверки, эталоны, итоговые сценарии, служебные документы репозитория
-и личные файлы не попадают в его рабочий контекст.
+All Telegram operations target our simulator. Writes change real simulator state;
+reads return current permitted observations; unsupported actions/errors are explicit.
+A constant success response without an effect is insufficient.
 
-Workflow получает рабочие данные кейса через разрешённые tools, но не приватные
-ожидания, verifier, административный доступ к симулятору, ключ Judge, Docker socket
-или весь checkout. Ограничения инструментов, файлов и сети обеспечиваются средой,
-а не просьбой в prompt. Недоверенный workflow не исполняется рядом с приватными
-тестами в доверенном процессе проверки.
+API and virtual UI share **one business state**. UI additionally exposes current
+screen/chat, focus, search and draft: opening changes the tree, typing changes draft,
+Send changes messages. Trees show the currently observable UI, not the entire DB,
+private expected values or prepared solution selectors. Commands remain elementary; stateful UI actions execute sequentially.
 
-Факты поступают с защищённой стороны окружения и связываются с кейсом, попыткой
-и версией workflow. Кандидат не может заменить их своим журналом или записать
-себе успешный reward. Идентификатор/хеш артефакта связывает результат с версией,
-но сам по себе не делает источник фактов доверенным.
+Blindly denotes a limited virtual command profile, not native desktop execution or
+full compatibility. Deterministic fresh-tree search/branching is permitted during
+replay. Re-exploration and workflow changes occur only between Attempt. HTTP delivery
+of UI commands is allowed; forbidden business/admin access violates UI-only.
+MCP transport does not create a third app interface or mandatory app-level simMCP.
 
-Отчёт позволяет понять условия и версии инструментов, выбранный workflow,
-результаты кейсов и попыток, разрешённый feedback, score и вердикт с причинами,
-затраты и всё, что осталось неизвестным. Должны различаться пригодность артефакта,
-факт решения задачи, статус исполнения и полнота оценки. Не требуется отдельная
-историческая платформа или дублирование одних фактов в нескольких наборах логов.
+## 6. Composer and workflow
 
-## 11. Принятый технический путь и проверки
+Codex Exec is first; **the same T1 through Sapiens CLI follows a successful T1/Codex
+path, before full T2–T4**. Codex does not wait for Sapiens. A reproducible Sapiens
+blocker must be recorded; the owner decides its consequences for progression/release.
+Interchangeable contracts do not prove a working integration or equal metrics.
 
-Выбор ниже согласован пользователем; совместимость и фактическая изоляция ещё
-требуют реальных экспериментов. Одновременная поддержка альтернатив не нужна.
+Composer receives public materials, training tools/data, finite limits and, on
+correction, the prior artifact and permitted feedback. It may observe and try
+training actions. Each independent run has clean memory/config/sessions; accepted
+request, terminal result and confirmed stop are distinct. Harness planning stays
+inside the harness; adapters add no hidden generation/correction loop.
 
-| Решение | Что проверить реальным запуском |
+Submit one fixed `workflow.json` or record explicit missing/invalid/failure/unknown.
+A final message is not submission. One version executes on new inputs without logic
+changes; binder substitutes only input/technical access data, never state/expected,
+branches or answers. Reuse is within a Task/profile; one artifact for API-only and
+UI-only is not required. Actual n8n execution is mandatory, not just format checking.
+
+## 7. Experiment policy
+
+Before measurement freeze Task, profile, case sets/order, criteria/rubric,
+thresholds/aggregation, success/selection/feedback/continuation rules, harness/model,
+Judge when needed, and finite limits. `max_attempts` bounds sequential creation;
+many exploration calls or Replay do not add generations. One CLI run may contain
+many internal model requests/retries.
+
+Flow: fresh exploration → stopped submission/version → validation/technical binding
+→ fresh development Replay and Evaluation → permitted correction within limits
+→ selected version recorded **before final data** → final Replay/Evaluation/report.
+No corrections or winner selection based on final results. Restore business/UI/draft
+and n8n execution/static state for every Case; carry knowledge, not mutated worlds,
+between Attempt. Duplicate tests occur within Case, not accumulated cross-Case state.
+
+T1 uses the accepted policy below. Other Tasks' numbers, selection and handling of
+incomplete evaluation remain decisions for the owner before implementation/measurement;
+“first success, otherwise last result” is a proposal, not an implicit default.
+
+### Accepted T1 measurement
+
+The [Task rubric](tasks/t1-send-message/tests/rubric.json) is the editable source;
+[WB-06](docs/implementation/WB-06-t1-measurement.md) preserves approval/evidence.
+Use 5 development + 5 private final Case, one per type in each set: ordinary new
+input, equal display names, exact Unicode/whitespace/expression-like text, populated
+state (including an old equal-text message), missing recipient. Four sends and one
+refusal per set, different values; published/training/development/E1 values cannot
+become holdout by renaming. Freeze both sets/order/hashes before measurement; final
+values stay outside Git/public export/build/feedback.
+
+All applicable required criteria must pass: recipient, text, multiplicity,
+preservation, journal and refusal; applicability is predetermined. Missing chat
+requires tool-confirmed `refused/not_found` without a send. Historical equal text
+is not a duplicate: the new request still requires one new effect.
+
+Only the selected version's complete final set receives a score: **2 × passed Case**,
+**cap 3** for wrong recipient, duplicate send, altered text, unrelated mutation or
+unauthorized send. No within-Case partial credit. Pass requires 5/5 and no critical
+violation; any proven failure gives fail. Missing/incomplete/untrusted results give
+score=null, with known trusted fail retained, otherwise unknown. Development and
+per-Case scores remain null. Earlier development failures do not cap the corrected
+version. Efficiency is separate; no Judge or runtime LLM for T1.
+
+Maximum two Attempt, counting invalid/missing submissions. Select the first complete
+5/5 development pass, otherwise the **last valid submission in Attempt order**;
+an invalid second result does not displace a valid first. With no valid artifact,
+report none. Unknown Composer, unconfirmed stop or incomplete/untrusted development
+blocks automatic continuation and final Replay. Feedback contains only allowlisted
+criterion IDs/status/safe reason or artifact-error codes, no private values/refs.
+
+## 8. Evaluation and cost
+
+Independent Evaluation uses protected before/after state, tool events, errors and
+version identity. Check behavior, not equality with a single reference graph.
+Code proves effects/recipient/text/templates/selection/duplicates/preservation;
+candidate claims and Judge cannot prove a send.
+
+Return score **0–10 or null**, separate Verdict, criteria/reasons/refs, completeness
+and critical violations. Task owns the rubric; manifest saves its applied snapshot
+and hash, not another editable policy. Critical failure cannot be compensated by
+text quality or efficiency. Never average only available cases into a whole-set
+result or count missing as zero.
+
+Judge is supported for justified semantic criteria not reliably checked by code.
+Do not invent subjective criteria to use it; templates alone need no Judge. Freeze
+rubric/model and validate suitability on a small manually labeled set before using
+its scores. Judge gets minimum evidence in a separate context with no execution
+powers; candidate/chat text is data, not instructions. Validate criterion value,
+range, explanation and existing evidence refs. Valid JSON/refs do not prove semantic
+quality. Failure of required Judge leaves full score absent; unneeded Judge does
+not block Evaluation. Reassessment uses saved facts without redoing business actions.
+
+Report creation (including exploration, correction and failures), development/final
+replay and Judge costs separately from infrastructure setup/cleanup. Preserve time,
+API/UI/tool counts and available model calls/input/output tokens with sources and
+completeness. Missing cost metrics alone do not invalidate a complete business
+assessment. Unknown is not zero. Money requires recorded known prices; tokens,
+time and differently granular commands are not interchangeable. Remaining Tasks'
+weights/partial credit/thresholds/gates/aggregation/efficiency normalization require
+approval before measurement, not fitting to observed results.
+
+## 9. Errors and lifecycle
+
+| Situation | Required outcome |
 |---|---|
-| Native Harbor Task и Docker | Lifecycle, ограничения доступа, отдельный replay и независимый verifier, сохранение фактов; custom hook только при недостаточности штатного пути |
-| Ограниченный native n8n JSON → validator/binder → n8n | Поиск по свежему UI, условия и переменное число объектов; реальный импорт/execute; отсутствие бизнес-решений в binder и изоляция исполняемого кода |
-| Python/uv для собственного кода | Воспроизводимость окружения и совместимость зависимостей |
-| Штатная граница агента Harbor | Exploration, сдача файла, ошибки, доступные метрики и подтверждённая остановка; Codex adapter сначала штатный, отдельный Composer HTTP bridge не нужен |
+| Invalid artifact/proven workflow error | Record candidate failure/known violations; correct only within agreed Attempt/feedback limits. |
+| Setup/verifier infrastructure failure | Preserve available facts; mark absent/incomplete assessment, not zero model quality. |
+| Response lost after possible write | Preserve effect separately from workflow knowledge/status. No blind write retry; only permitted read-back or documented operation idempotency can resolve it, otherwise unknown and no full success. UI does not inherit API guarantees. |
+| Unknown Composer call | Save facts/status/cost; Experiment must not automatically resubmit or grant a free Attempt. |
+| Timeout/cancel | Close admission, drain accepted operations within deadline, stop processes/children and verify cessation. Stopping observation is not stopping work; unconfirmed stop remains unknown. Committed effects are not declared rolled back. |
+| Bypass/tampering | No credit from forbidden access; record violation. Lost evidence provenance invalidates measurement rather than proving model failure. |
 
-Порядок — Codex Exec, затем сразу **тот же T1 через Sapiens CLI** до полного T2–T4.
-Интеграция Sapiens находится вне общего ядра и не реализует планирование harness.
-Нужно проверить контролируемое состояние, доступ только к симулированным tools,
-сдачу того же артефакта и фактическую остановку. Без запуска замена не доказана;
-ранний эксперимент может выявить конкретный blocker.
+Harness/CLI/SDK internal retries are part of the measured harness: pin version,
+record available retry policy/usage/observability limits, without rewriting its
+agent loop. Finite time/tool/model/cost limits and confirmed local stop remain
+mandatory. Remote accepted computation/cost can remain unknown after local stop.
+Model runs require explicit authorization and finite limits before credential access.
+API-billed runs also require an independently verified external credential/project
+spending constraint. For the owner-authorized WB-07 ChatGPT subscription run, use
+the live Codex account allowance instead: check available usage before each Attempt
+and block continuation when remaining usage is unavailable or exhausted. This is
+the current work's authentication decision, not an API spending-cap assertion.
+A config assertion or local timeout is not provider enforcement; disclose documented
+lag/possible overrun and agree practical limits/reserve, not a mathematical zero-overrun
+promise. Unknown remaining budget blocks another Attempt. Continuation/reassessment
+rules and external-check retry limits must be fixed before measurement.
 
-Точные версии, схемы и topology определяются и проверяются по ARCHITECTURE.
-PRODUCT_REVIEW сохраняет историю анализа, включая уже заменённый typed graph
-baseline. AutoWFBench и старый benchmarking — источники опыта, не зависимости.
+## 10. Security and Evidence
 
-## 12. Критерии готовности первого релиза
+Composer sees only the public task/artifact/tool contracts and authorized training
+materials, never private tests, controls, final cases, service docs, personal files,
+skills or other-run memory. Replay gets working input/tool observations, never
+expected/verifier/admin access, Judge credentials, Docker socket or whole checkout.
+Enforce file/network/tool/resource rights outside candidate code, including runner
+and child processes; prompt instructions are insufficient.
 
-1. Все T1–T4 доступны в полном сквозном flow с предусмотренными профилями tools.
-   T3 применяет публичные правила/шаблоны; runtime LLM-генерации и навигации нет.
-2. Операции действительно изменяют симулятор; API и UI наблюдают общее состояние.
-   Кейсы запускаются из заданного исходного состояния без обращения к реальному Telegram.
-3. Composer реально исследует разрешённое окружение и сдаёт артефакт; его одна
-   зафиксированная версия повторно исполняется на разных входах. Отчёт показывает
-   фактическую правильность, в том числе провалы; ручные исправления не скрываются.
-4. Для каждой задачи подготовлен корректный контрольный workflow и отрицательные
-   контроли; они проходят тот же runtime и независимую проверку, что кандидат.
-   Проверяются не только формат и happy path, но и неверный адресат, дубли,
-   запоминание входа/UI-пути и относящиеся к задаче пограничные случаи.
-5. Лимиты, feedback, выбор версии и итоговая проверка соблюдаются. Рубрика,
-   thresholds и агрегация определены до измерений. Score 0–10 и вердикт различаются;
-   пропуски, инфраструктурные ошибки и неизвестные затраты не превращаются в нули.
-6. Ограничения доступа проверены фактическими попытками обхода: приватные тесты
-   недоступны кандидату, защищённые записи фактов нельзя подменить. Рабочие данные
-   кейса остаются доступны через разрешённые tools. Проверены потерянный
-   ответ, timeout, остановка и неполная оценка. Диаграмма или анализ документа не
-   считаются доказательством изоляции.
-7. LLM Judge доступен для обоснованных критериев; при их использовании проверены
-   рубрика, пригодность судьи и обработка отказа. Отсутствие таких критериев у
-   конкретной задачи не требует искусственного модельного вызова.
-8. Добавление малого контрольного Task в уже поддержанных контрактах не требует
-   бизнес-правок core. Это проверка границы, не пятая продуктовая задача. Контракт
-   Composer допускает другой harness; статус проверки Sapiens указан честно.
-9. Есть воспроизводимый запуск и понятный отчёт, фактический контроль выбранного
-   runtime/окружения и ограниченный разрешённый запуск с моделью. Нужны реальные
-   n8n и Harbor, а не их моки. Cleanup затрагивает только
-   ресурсы текущего эксперимента.
+Untrusted workflow executes separately from the private verifier. Protected
+simulator facts reach host/verifier through a trusted channel, bound to run,
+Attempt, artifact, Replay, Case and profile. Candidate logs/evidence/reward cannot
+replace them. Hash proves identity/integrity after receipt, not producer trust.
 
-Готовность стенда и успешность AI — разные результаты. Низкий score модели не даёт
-права ослабить критерии; успешный эталон не доказывает способность Composer.
-Моки, отсутствие credentials или Docker не заменяют реальную проверку. Экономия
-относительно разового агента не входит в критерии готовности первого релиза.
+Report conditions/tool versions, selected artifact, cases/Attempt, allowed feedback,
+criteria/score/Verdict/completeness, execution/stop, costs, errors, cleanup and
+unknowns, with native log/evidence refs. Artifact validity, business effect, process
+status and assessment completeness remain distinct. Cleanup touches owned resources
+only; no separate history platform or duplicate fact/log trees is required.
 
-## 13. Оставшиеся решения: кто и когда
+## 11. Accepted technical path
 
-Роли ниже обозначают ответственность за решение, а не новые подсистемы или backlog.
-«Владелец эксперимента» — пользователь либо назначенный им ответственный за методику.
+Native Harbor Task + Docker; one restricted native n8n JSON → validator/binder →
+n8n; Python/uv; Harbor's installed-agent seam with stock Codex first and separate
+Sapiens integration. No Composer HTTP bridge or parallel alternative implementations.
+Compatibility/isolation require real controls for the chosen host/profile/versions;
+[ARCHITECTURE](ARCHITECTURE.md) describes current contracts, [ROADMAP](ROADMAP.md)
+places E1–E5, and tickets retain results. External projects are ideas, not dependencies.
 
-| Вопрос | Текущий статус / рекомендуемый вариант | Кто решает | Когда |
-|---|---|---|---|
-| Поддержанная семантика native-артефакта | Native n8n JSON выбран; конкретный allowlist и достаточность для UI-поиска, условий и коллекций требуют проверки | Архитектор и исполнитель эксперимента | До фиксации рабочего профиля; второй язык не вводится |
-| Реальная изоляция и совместимые версии | Требования §10 обязательны; конкретный способ и работоспособность неизвестны | Архитектор предлагает, исполнитель технического эксперимента проверяет | До запуска недоверенного workflow и использования приватных проверок |
-| Интеграция Composer | Штатная граница Harbor; Codex первым, затем сразу тот же T1/Sapiens до полного T2–T4 | Архитектор и исполнитель интеграционного эксперимента | До заявлений о работающем пути каждого harness; первый Codex-запуск не зависит от Sapiens |
-| Пригодность Sapiens | Этап раннего T1 зафиксирован; tools, память, сдача и stop ещё не проверены | Исполнитель эксперимента; владелец проекта решает последствия blocker для релиза | Сразу после рабочего T1/Codex; не объявлять интеграцию готовой по документации |
-| Профиль API/UI и бизнес-неоднозначности | Нужны правила адресации, последнего входящего, шаблонов, отбора/дублей, наблюдаемости эффекта и допустимых изменений UI | Автор Task/окружения с владельцем эксперимента; архитектор проверяет реализуемость | До подготовки проверочных кейсов и фиксации соответствующих контрактов |
-| Наборы кейсов и методика гипотез | T1 зафиксирован в WB-06; для остальных Task фиксированные воспроизводимые данные; итоговые кейсы не используются для исправлений. Размеры, повторения и дополнительное сравнение версий для H4 ещё не утверждены | Владелец эксперимента и автор Task | До первого оцениваемого запуска |
-| Лимиты и доступность метрик | Конечные бюджеты обязательны; численные значения и наблюдаемые метрики выбранного harness ещё нужно определить | Владелец эксперимента с исполнителем интеграционной проверки | До запуска; разрешение и бюджет модельного обращения — до оплачиваемого вызова |
-| Рубрика, score и успех | T1 — WB-06; для остальных Task веса, partial credit, thresholds, gates, агрегация и влияние эффективности остаются предложениями, см. §8 | Владелец эксперимента с автором Task | До первого оцениваемого запуска, включая stop по результатам проверок |
-| Выбор версии и feedback | T1 — WB-06 (последняя valid); для остальных Task предложено «первая успешная, иначе последний результат»; состав feedback и правила продолжения неполной оценки нужно закрепить | Владелец эксперимента; архитектор реализует принятые правила | До реализации цикла оценки и обязательно до измерений |
-| Обоснованность Judge | Определить, какие критерии действительно требуют смысловой оценки, и проверить выбранную рубрику/модель; не добавлять критерии ради Judge | Автор Task и владелец эксперимента | До использования Judge в оцениваемом запуске |
-| Обязательное комбинирование API+UI | Не утверждено; совместный доступ и свободный выбор обязательны, специальный взаимодополняющий профиль — предложение | Владелец эксперимента | До формирования кейсов, если заявляется отдельная проверка комбинирования |
+## 12. First-release acceptance
 
-Блокирующие продуктовые вопросы review о runtime-генерации T3 и обязательной
-экономии закрыты подтверждениями пользователя. Принятые архитектурные решения
-синхронизированы; оставшиеся технические предположения требуют проверки. До измерений
-обязательна фиксация методики, а до заявлений о совместимости и изоляции — реальные проверки. Эта
-спецификация остаётся **на согласовании**, а не объявляется утверждённой реализацией.
+1. Full T1–T4 flow and their access profiles; public T3 templates without runtime LLM.
+2. Real simulator effects and API/UI shared-state observations from fresh Case state.
+3. Actual Composer exploration/submission and unchanged-version replay on new inputs;
+   report model failures honestly, without hidden manual repair.
+4. Positive and negative controls through the same runtime/verifier for every Task,
+   covering wrong recipient, duplicates, memorized input/UI paths and relevant edges.
+5. Agreed finite limits, feedback, pre-final selection and complete-set methodology;
+   score/Verdict/completeness/costs keep unknown/infrastructure failures distinct.
+6. Actual attempts prove isolation/evidence protection, plus lost-response, timeout,
+   stop and incomplete-assessment controls. Diagrams/mocks do not prove isolation.
+7. Judge integration is available; suitability/rubric/failure handling are proven
+   before any justified semantic scoring, without artificial per-Case model calls.
+8. Small supported-contract Task/app controls prove independence without core business
+   changes; Composer replacement contract and Sapiens outcome are reported honestly.
+9. Reproducible setup/report, real Harbor/n8n controls and bounded authorized model
+   checks, with owned cleanup. A full harness × Task matrix is not automatically required.
+
+Bench readiness differs from AI success: low score never justifies weakening checks,
+and successful controls do not prove Composer ability. Missing Docker/credentials
+or mocks cannot replace required real checks. Savings are not a release gate.
+
+## 13. Decisions still required
+
+| Decision / owner | Deadline |
+|---|---|
+| Final model/harness/config, finite budgets, retry/usage limits and verified external cap / experiment owner + implementer | Before each paid Codex, Sapiens, Judge or acceptance run; T1 numerical budget proposals remain unapproved. |
+| UI identity/tree changes, stale observations, draft/search/effect rules; T3 latest/templates/no-input/processed and T4 keyword/provenance/bounds / Task author + owner | WB-09, before cases/implementation. Native T1 profile is already fixed. |
+| Remaining Task sets/order/repetitions, rubric/aggregation/efficiency, selection/feedback/continuation / owner + Task author | Before their evaluated runs and policy implementation. Optional forced hybrid/H4 comparisons require an explicit decision if claimed. |
+| Native profile extensions and host/version isolation / architect + implementer | Before unsupported semantics or untrusted execution; no automatic second language/backend. |
+| Sapiens tools, state, submission and complete stop / implementer; blocker consequences / project owner | WB-08 immediately after successful E2, before progressing/release claims. |
+| Necessary semantic criteria, labeled set/suitability/model/rubric / Task author + owner | Before E5 and any use of Judge scores. |

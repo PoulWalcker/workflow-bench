@@ -1,6 +1,9 @@
 # WB-06 — методика и готовность измерения T1
 
-Статус: **IN PROGRESS; реализация начата 12 октября 2026 года**.
+Статус: **DONE для принятого ChatGPT-auth E2 пути, 12 октября 2026 года**.
+Исторический незакрытый budget gate ниже разрешён последующим согласованием
+конечных limits/native allowance и live evidence в [WB-07](WB-07-codex-e2.md#live-mcp-completion--12-октября-2026).
+API-billed model execution остаётся закрытым без verified external cap.
 Этап 2 [ROADMAP](../../ROADMAP.md), зависимость —
 [WB-05](WB-05-e1-trust-and-failures.md). Реализация и проверки готовности
 WB-06 подтверждаются только evidence в конце документа. Текущее поручение —
@@ -18,10 +21,9 @@ Development определяет feedback и выбор версии; holdout о
 
 - [SPEC §4, §6–10, §12–13](../../SPEC.md): T1 с готовым ID, неизменный workflow,
   свежие состояния, независимая оценка, приватность, неизвестность и бюджеты.
-- [ARCHITECTURE §1–3, §6, §10](../../ARCHITECTURE.md): Task-first, native Harbor
+- [ARCHITECTURE §1–6](../../ARCHITECTURE.md): Task-first, native Harbor
   Task, validator/binder, отдельные replay и verifier, существующие Interface.
-- [Principles §2, §5–8](../../Principles.md), [AGENTS](../../AGENTS.md) и
-  [GLOSSARY](../../GLOSSARY.md): владельцы правил, TDD, честные результаты.
+- [Engineering rules](../../AGENTS.md) и [Terms](../../SPEC.md#terms): владельцы правил, TDD, честные результаты.
 - WB-05 закрывает технический E1: есть реальные отрицательные контроли,
   freeze/stop, защита фактов и числовой протокол Harbor. Его fixture `7.25`
   не является рубрикой T1; технические лимиты E1 не являются бюджетами модели.
@@ -33,17 +35,16 @@ Attempt, feedback по критериям без приватных значен
 development pass, иначе последняя валидная сдача; детерминизм, отсутствие Judge,
 отдельная эффективность и конечные бюджеты до E2.
 
-Это уточняет прежние предложения: SPEC §7 предлагает «иначе последний результат
-Composer», включая missing/invalid; здесь fallback — **последняя валидная
-сдача**. SPEC §8/§13 и ARCHITECTURE §8 пока оставляют числа и правила открытыми;
-этот тикет фиксирует решение для T1, без назначения методики T2–T4. При реализации
-синхронизировать эти пометки ссылкой на методику T1, сохранив открытые вопросы
-остальных Task. История технического E1 в WB-05 не переписывается.
+Это уточнило прежнее предложение «иначе последний результат Composer», включая
+missing/invalid: принято **последняя валидная сдача**. Актуальная методика T1
+теперь принадлежит [SPEC](../../SPEC.md#accepted-t1-measurement); ниже сохранены
+решение, дизайн и evidence этой задачи. Методика T2–T4 остаётся открытой;
+история технического E1 в WB-05 не переписывается.
 
 **Предложения дизайна текущей задачи:** конкретная матрица типов, форма
 минимальных расширений контрактов, политика остановки при неполной оценке,
 test seams и предварительные бюджеты. Они не объявлены ранее согласованными.
-Перед coding согласовать предложенные seams по Principles §5; перед E2 —
+Перед coding согласовать предложенные seams по AGENTS “Behavioral TDD”; перед E2 —
 окончательные наборы, профиль и численные бюджеты. Наличие плана не даёт
 разрешения реализовывать или запускать модель в текущем поручении.
 
@@ -282,7 +283,7 @@ timeouts и CPU/RAM также явно фиксируются. Если лим�
 
 ## Минимальный дизайн в существующей архитектуре
 
-Термины GLOSSARY сохраняются: Attempt создаёт WorkflowArtifact, Replay исполняет
+Термины SPEC сохраняются: Attempt создаёт WorkflowArtifact, Replay исполняет
 его на Case, Evaluation проверяет Evidence. Новые доменные сущности/ADR не нужны.
 Module и Interface используются в смысле codebase-design; API tools и границы
 доверия сохраняют предметный смысл проекта.
@@ -316,7 +317,7 @@ S2–S8 сохраняются как действующие seams; строки
 Наличие этой таблицы не означает согласование новых тестов. После согласования
 использовать один вертикальный срез: один red → минимальный green → следующий
 сценарий. Ожидания брать из разобранных примеров и таблицы score, не из самого
-scorer. Локальный рефакторинг на green допустим по Principles §5.
+scorer. Локальный рефакторинг на green допустим по AGENTS “Behavioral TDD”.
 
 | Seam / публичный Interface | Наблюдаемое поведение; что обнаруживает | Чего не доказывает | Среда проверки |
 |---|---|---|---|
@@ -467,3 +468,91 @@ internals. Первая проба отклонена containment-проверк
 `runs/wb06-task-first-correction/audit.json`; старые копии/evidence не переписаны.
 Повторный Spec review исправлений не нашёл новых нарушений ответственности.
 Docker/n8n и модели в этой коррекции не запускались; commit/push не выполнялись.
+
+## Historical command and cleanup evidence
+
+Moved from the former README. Historical counts and runs are retained as recorded, not as current-suite claims.
+
+После разделения core и предметных тестов 12 октября 2026 года default fast
+suite — 253 passed, в том числе в копии checkout без всего каталога `tasks/`.
+Generic Definition, Execution, Experiment, Harbor и Evaluation используют
+синтетическую Task резервирования из `tests/fast/conftest.py`; core-набор без
+двух тестов самого Telegram simulator также прошёл без
+`simapps/telegram/tools.json` — 251 passed. Тестам simulator нужен его собственный
+app-контракт.
+
+29 проверок настоящего T1 verifier сохранены в
+`tests/integration/test_t1_evaluation.py`. Это opt-in интеграция Task script с
+Evaluation на синтетических frozen inputs; Docker и `--e1-config` ей не нужны.
+Вместе с общей проверкой reward выполнена команда — 30 passed:
+
+```sh
+uv run --locked --offline pytest -q tests/fast/test_evaluation.py tests/integration/test_t1_evaluation.py --run-integration
+```
+
+В WB-04 быстрый pytest — 206 passed (101 S1 + 76 S2 + 29 S3/S5); Ruff lint/format — exit 0,
+без lint-исключений.
+После технических исправлений 12 октября 2026 года
+fast suite — 216 passed; default collection — 216 tests, без integration/model.
+Форматирование ограничено созданным Python-кодом: Ruff 0.17 также обрабатывает
+Markdown; первоначальный `ruff format --check .` завершился exit 1 на примерах
+в ARCHITECTURE и ещё не отформатированном новом коде. Новый код отформатирован,
+архитектурные документы не переписывались.
+
+Повторное `uv sync --locked --offline` прошло с заполненным кэшем. Для чистого
+кэша требуется сеть; lock фиксирует версии и hashes, но не содержит дистрибутивы
+зависимостей или Python. Другие ОС и версии Python/uv совместным запуском не проверены.
+
+### Recorded WB-06 commands
+
+```sh
+uv run --locked --offline python environments/build.py --output runs/wb06-images/config.json
+uv run --locked --offline pytest -q tests/integration/test_measurement.py tests/integration/test_trust.py --run-integration --e1-config runs/wb06-images/config.json --measurement-task runs/wb06-private/task --basetemp runs/wb06-native --log-cli-level=INFO
+uv run --locked --offline pytest -q tests/integration/test_measurement.py --run-integration --e1-config runs/wb06-images/config.json --measurement-task runs/wb06-private/task --basetemp runs/wb06-measurement-confirm --log-cli-level=INFO
+uv run --locked --offline pytest -q
+uv run --locked --offline ruff check src tests simapps environments tasks
+uv run --locked --offline ruff format --check src tests simapps environments tasks
+```
+
+### Pre-WB-07 cleanup
+
+Регрессия S1 проверяет `run_manual(submission=...)` с symlink файла и родительского
+`solution/`: отказ до записи, исходная Task побайтно сохранена. Red воспроизвёл
+изменение source в обоих случаях; после исправления focused Experiment/Measurement
+suite — 46 passed. Полный fast suite — 282 passed; Ruff lint/format — exit 0.
+Локальные ссылки/anchors и уникальность заголовков ARCHITECTURE/README проверены.
+Раздельные Standards/Spec reviews scoped diff — по 0 замечаний. `instruction.md`
+не изменён; остальные optional findings complexity review остаются будущей работой.
+
+Проверенные fast-команды (с UV-переменными из раздела установки):
+
+```sh
+uv run --locked --offline pytest -q tests/fast/test_experiment.py tests/fast/test_measurement.py
+uv run --locked --offline pytest -q
+uv run --locked --offline ruff check src tests simapps environments tasks
+uv run --locked --offline ruff format --check src tests simapps environments tasks
+```
+
+Замена custom lock traversal на `uv export` отклонена после реальной сборки.
+`uv export --frozen --offline --no-dev --no-emit-project --prune harbor
+--no-annotate --no-header` сохраняет 14 names/versions и все 663 package hashes,
+но marker `python_full_version < "3.13"` исключает `typing-extensions` из
+закреплённого Python 3.13 image: устанавливаются 13 пакетов вместо прежних 14.
+Это нарушает условие точного dependency set. Builder восстановлен побайтно;
+дополнительная обработка export и новые dependency groups не добавлены.
+Локальные build logs spike сохранены в `runs/pre-wb07-cleanup/`.
+
+
+### Закрытие оставшегося E2 budget gate · 12 октября 2026
+
+После model-free реализации владелец в WB-07 выбрал ChatGPT subscription auth
+и отдельно разрешил live run/повтор с finite limits: 300 s Composer,
+40 exploration calls на Attempt, максимум две Attempt, 2400 s total.
+[SPEC §9](../../SPEC.md#9-errors-and-lifecycle) фиксирует native Codex allowance
+как принятый enforcement source для этого auth пути; это не API spending-cap
+assertion и не утверждение прежних token/USD предложений. Native remaining
+allowance проверен до/после Attempt; local stop/cleanup подтверждены. Evidence и
+ограничения — [WB-07](WB-07-codex-e2.md#live-mcp-completion--12-октября-2026),
+`runs/wb07-completion-review/live-audit.json`. Единственный остававшийся критерий
+WB-06 для выбранного E2 auth пути закрыт; прежние policy/sets/rubric/контроли
+сохранены. API-billed mode отдельно остаётся закрытым, как требует SPEC.

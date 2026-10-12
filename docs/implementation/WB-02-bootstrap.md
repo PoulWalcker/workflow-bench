@@ -15,7 +15,7 @@ S1 согласован пользователем и проверен безо�
 - [SPEC §11](../../SPEC.md): Python/uv, воспроизводимость зависимостей.
 - [ARCHITECTURE §1 и §6](../../ARCHITECTURE.md): обязанности и будущее размещение;
   дерево не является требованием создать все модули сразу.
-- [Principles §1, §3–5, §7–8](../../Principles.md): минимальность, конфигурация,
+- [Engineering rules](../../AGENTS.md): минимальность, конфигурация,
   Ruff, разделение проверок и проверенные команды.
 
 ## Зависимости
@@ -56,13 +56,13 @@ Composer/Judge, оплачиваемые вызовы. Не добавлять �
 Минимальный устанавливаемый `src/workflow_bench` без продуктовых модулей.
 Build backend — `uv_build`; runtime dependencies WB-02 пусты, dev group содержит
 только pytest и Ruff. Python 3.12 — рекомендуемый baseline на основании
-[ARCHITECTURE §10.7](../../ARCHITECTURE.md), а не уже проверенная установка.
+[ARCHITECTURE §6](../../ARCHITECTURE.md), а не уже проверенная установка.
 Patch Python, uv, build backend и dev versions выбраны установкой и проверками
 этой задачи; результаты принадлежат README. `uv.lock` фиксирует разрешённые версии;
 для изолированной сборки backend закрепляется в build-system отдельно от lock.
 При статической проверке документов `python3` сообщил 3.10.11; это не проверка
 доступности других интерпретаторов. Python/uv проверены при реализации WB-02.
-Никаких Harbor/jsonschema/aiohttp в bootstrap: сроки их появления — §10.7.
+Никаких Harbor/jsonschema/aiohttp в bootstrap: исторические сроки их появления — WB-03/04.
 
 Ниже **предложение design-сессии**, не файл установки.
 Реализованный `pyproject.toml` содержит project/build metadata и проверенные зависимости.
@@ -99,11 +99,11 @@ UP удерживает синтаксис выбранного Python, B лов
 Не включаем ALL и конфликтующие с formatter стилистические группы.
 88 колонок — цель formatter, а не искусственный запрет длинного URL (E501
 не включён). Предварительных ignore/per-file-ignores нет; политика исключений
-принадлежит Principles §4.
+принадлежит AGENTS “Code quality and portability”.
 [Ruff configuration](https://docs.astral.sh/ruff/configuration/),
 [uv build backend](https://docs.astral.sh/uv/concepts/build-backend/).
 
-Gate pytest реализуется по [Principles §5](../../Principles.md), а не одним
+Gate pytest реализуется по [Engineering rules](../../AGENTS.md), а не одним
 marker. Небольшой `conftest.py` — конфигурация тестового запуска, не продуктовый
 компонент. Пустые fast/integration/model каталоги и бессодержательные тесты
 не создаются. Без тестов фиксируем pytest exit 5, а не заявляем покрытие benchmark.
@@ -148,3 +148,81 @@ bootstrap, но не считается успешной проверкой E1.
 
 WB-03 получает минимальный установленный пакет, фактические команды и ограничения
 среды. Не передавать список пустых модулей как выполненную архитектуру.
+
+## Historical setup and gate evidence
+
+Moved from the former README during documentation consolidation; these are historical checks, not new runs.
+
+### Setup baseline
+
+Проверено 11 октября 2026 года на macOS arm64:
+
+| Инструмент | Проверенная версия / источник фиксации |
+|---|---|
+| CPython | 3.12.13 / `.python-version`; baseline >=3.12 в `pyproject.toml` |
+| uv | 0.12.4 / существующая установка, не обновлялась |
+| uv_build | 0.12.4 / точная версия в `build-system.requires`, проверена изолированная PEP 517 сборка |
+| pytest | 9.1.1 / `uv.lock`, dev group |
+| Ruff | 0.17.0 / `uv.lock`, dev group |
+| Harbor | 0.24.0 / точная прямая зависимость; проверены native Task/config parser |
+| jsonschema | 4.26.0 / `uv.lock`; Draft 2020-12 |
+| referencing | 0.37.0 / прямая зависимость для проверки локальных refs |
+
+Prerequisites: доступный `uv` (проверена указанная версия) и доступ к PyPI и
+загрузке Python при первом восстановлении. Системный `python3` 3.10.11 не
+используется для проекта. Установка uv здесь не выполняется. Команды ниже —
+из корня checkout, в shell с синтаксисом POSIX; Python и кэш остаются в проекте,
+`--no-bin` не создаёт глобальных ссылок на интерпретатор.
+
+```sh
+export UV_CACHE_DIR="$PWD/.uv-cache"
+export UV_PYTHON_INSTALL_DIR="$PWD/.uv-python"
+uv python install 3.12.13 --no-bin
+uv sync --locked
+uv lock --check --offline
+uv run --locked pytest -q
+uv run --locked pytest --collect-only -q
+uv run --locked ruff check src tests simapps environments tasks
+uv run --locked ruff format --check src tests simapps environments tasks
+```
+
+### Gate verification
+
+`tests/fast/test_gate.py` запускает настоящий pytest в временных проектах через
+штатный pytester. Probes создают только локальные файлы-сигналы import/setup;
+не обращаются к Docker, сети или моделям. Каждый дочерний запуск имеет timeout
+10 секунд. Поведение gate реализовано в `tests/conftest.py`:
+
+- Default и default collect-only не импортируют `tests/integration` и `tests/model`.
+- Явный integration-каталог, файл или node ID без opt-in отклоняются до setup,
+  включая collect-only и отбор через `-m`. Markers не ослабляют классификацию пути.
+- Integration opt-in позволяет синтетическую fixture; collect-only с opt-in
+  не запускает её. Model path/marker остаются закрыты.
+- `--run-model` отклоняется с exit 4 как нереализованный режим, до collection,
+  в том числе вместе с `--run-integration` или `--collect-only`.
+- Для function/module/package/session fixtures gate проверяется до setup
+  и получения cached value. Непомеченный fast-тест не может получить integration
+  fixture даже с opt-in; model fixtures запрещены. Проверены запрос аргументом,
+  через `request.getfixturevalue` и локальную fixture, включая повторное получение
+  после разрешённого integration setup. Collect-only не выполняет setup.
+
+Техническое исправление S1: на время pytest Config gate оборачивает
+`pytest.FixtureDef.execute` и восстанавливает метод через `config.add_cleanup`.
+Локальный `pytest_fixture_setup` недостаточен: pytest выбирает conftests по узлу
+scope fixture и не вызывает этот hook для cached value. Потребляющий тест берётся
+из `request._pyfuncitem`, поскольку `request.node` может быть Module, Package
+или Session. Это зависимость от внутреннего устройства pytest, проверенная на
+зафиксированной в lock версии 9.1.1; совместимость других версий не заявляется.
+
+В репозитории есть fast-проверки gate и Definition S2. Настоящие resource fixtures,
+Реальный integration-контроль WB-04 расположен в `tests/integration`; model-каталог
+не создан. Ресурсы должны
+создаваться внутри fixtures после проверки разрешения; import/collection,
+параметризация и root autouse setup не должны создавать ресурсы
+([Behavioral TDD](../../AGENTS.md#behavioral-tdd)). Gate защищает от случайного запуска тестовых
+ресурсов и не является доказательством sandbox isolation.
+
+В пустом временном проекте с одними gated probes default pytest честно возвращает
+exit 5, без import/setup. Это проверка gate, а не успешная benchmark suite.
+`pytest tests/integration --run-integration` требует подготовленного `--e1-config`;
+проверенная полная команда находится в README. Отсутствующие Docker/images/credentials не объявляются зелёным skip.

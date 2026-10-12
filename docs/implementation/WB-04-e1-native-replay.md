@@ -14,10 +14,9 @@
 
 - [SPEC §3–6](../../SPEC.md): T1 с готовым chat_id, исполняемая симуляция,
   параметризованный native workflow; §8–11: независимые факты, ошибки и доверие.
-- [ARCHITECTURE §1 «Что оставляем Harbor»](../../ARCHITECTURE.md): штатный путь
-  перед условным hook; §2: сдача, execution/evidence/reward; §3: отдельные sandbox;
-  §5: native-профиль, CLI и external JS runner; §6: пример T1; §8: E1.
-- [Principles §2–7](../../Principles.md): один путь исполнения, реальные контроли,
+- [ARCHITECTURE §3–5](../../ARCHITECTURE.md): native-профиль, сдача, replay,
+  external JS runner, separate verifier и защищённые факты; E1 — в ROADMAP.
+- [Engineering rules](../../AGENTS.md): один путь исполнения, реальные контроли,
   отсутствие бизнес-решений в binder и честная классификация результатов.
 
 ## Зависимости
@@ -51,7 +50,7 @@ T1 API до подготовки контролей. Численная мето
    тот же путь приёма, который затем получит кандидат, без model adapter.
 5. Реализовать validator и binder принятого native-профиля: проверка node
    types/versions/options, связей и слотов; только параметры и технические
-   bindings в BenchInput, результат через BenchResult. Ограничения §5 действуют
+   bindings в BenchInput, результат через BenchResult. Ограничения artifact contract действуют
    и для пока неиспользуемых опций; поддержка профиля не означает доказательство
    всей семантики T2–T4. Исходная бизнес-логика неизменна, замены и hashes записаны.
 6. Импортировать и исполнить файл единственным n8n CLI-путём в свежей локальной
@@ -96,7 +95,7 @@ execution/contracts, связь штатных операций Harbor, мини
 
 ### Техническое уточнение первого прохода
 
-Контракты и владение ресурсами — [ARCHITECTURE §10.3–10.7](../../ARCHITECTURE.md).
+Контракты и владение ресурсами — [ARCHITECTURE §3–6](../../ARCHITECTURE.md).
 Точка сборки создаёт один E1Config с явными Task/output paths, digests образов,
 конечными setup/execute/control/drain/verifier/total timeouts, CPU/RAM/max_calls.
 Нативные Harbor timeout overrides производятся из него, без независимых defaults.
@@ -104,7 +103,7 @@ execution/contracts, связь штатных операций Harbor, мини
 свой state и capability. `replay` заимствует Harbor environment; harbor.py владеет
 созданием/stop/cleanup, Task script владеет бизнес-проверкой, не lifecycle.
 
-Сначала проверить узкую передачу штатного lifecycle из §10.5: collected file
+Сначала проверить узкую передачу штатного lifecycle из ARCHITECTURE §4: collected file
 после stop → отдельный replay → защищённые входы → separate verifier. Факт
 наличия `TrialEvent.VERIFICATION_START` не закрывает доставку в verifier:
 он ещё не создан, runtime mounts не наследуются. Записать доступное публичное
@@ -127,7 +126,7 @@ Fault injection доступна только host через тестовую �
 не как кандидатский tool и не через magic input в рабочем запросе.
 
 WB-04 фиксирует shape Set/BenchInput, единственного BenchResult и allowlist
-typeVersion/options на выбранных n8n images; baseline §5 не расширяется.
+typeVersion/options на выбранных n8n images; artifact profile не расширяется.
 Извлечение claim и execution ID проверяется настоящим CLI; без корректного
 выхода claim отсутствует, бизнес-факты всё равно получаются от simulator.
 Результаты без scoring/success policy имеют score=null, общий verdict=unknown
@@ -217,7 +216,7 @@ not_found без записи, полный T1 list до 100 сообщений,
 | Ruff lint/format, lock check, diff check | Exit 0; lint-исключения не добавлялись |
 
 Версии/digests, проверенные команды и технические лимиты принадлежат
-[README](../../README.md#реальный-технический-контроль-wb-04); config, manifest,
+[README](../../README.md#verified-docker-controls); config, manifest,
 source/bound hashes, bindings, evidence refs и результаты сохранены в игнорируемом
 `runs/wb04/`. Harbor 0.24.0 ожидает численный reward: при score=null штатный
 результат содержит RewardFileNotFoundError, независимый evaluation сохранён.

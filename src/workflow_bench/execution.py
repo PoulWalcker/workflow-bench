@@ -7,9 +7,11 @@ import json
 import logging
 import math
 import os
+import shlex
 import stat
 import time
 from copy import deepcopy
+from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -183,25 +185,6 @@ def bind_workflow(
     )
 
 
-def _cli_data(output: str) -> dict[str, JsonValue] | None:
-    data = None
-    decoder = json.JSONDecoder()
-    for offset in range(len(output)):
-        if output[offset] == "{" and (offset == 0 or output[offset - 1] == "\n"):
-            try:
-                _, consumed = decoder.raw_decode(output[offset:])
-                candidate = decode_json(
-                    output[offset : offset + consumed].encode(), "n8n_output"
-                )
-                if candidate.get("mode") == "cli" and isinstance(
-                    candidate.get("data"), dict
-                ):
-                    data = candidate
-            except (ValueError, AttributeError):
-                continue
-    return data
-
-
 async def replay(
     artifact: WorkflowArtifact,
     case_input: JsonValue,
@@ -227,6 +210,9 @@ async def replay(
         destination=context.root / "bound.json",
     )
     encoded = base64.b64encode(bound.path.read_bytes()).decode()
+    collector = base64.b64encode(
+        files("workflow_bench").joinpath("resources/n8n-result.js").read_bytes()
+    ).decode()
     logs = context.root / "harbor/agent"
     logs.mkdir()
     result: dict[str, JsonValue] = {
@@ -237,10 +223,11 @@ async def replay(
     }
     LOGGER.info("phase=replay case_id=%s log=%s", context.identity["case_id"], logs)
     started = time.monotonic()
+    primary_error = None
     try:
         async with asyncio.timeout(config.execute_timeout_sec):
             uploaded = await context.environment.service_exec(
-                f"printf %s '{encoded}' | base64 -d > /tmp/workflow.json",
+                f"printf %s '{encoded}' | base64 -d > /tmp/workflow.json && printf %s '{collector}' | base64 -d > /tmp/n8n-result.js",
                 service="n8n",
                 timeout_sec=math.ceil(config.control_timeout_sec),
             )
@@ -259,35 +246,51 @@ async def replay(
             else:
                 workflow_id = artifact.document["id"]
                 executed = await context.environment.service_exec(
-                    f'n8n execute --id={workflow_id} --rawOutput > /tmp/execute-output 2>&1; status=$?; head -c {MAX_JSON_BYTES} /tmp/execute-output; exit "$status"',
+                    f'n8n execute --id={workflow_id} --rawOutput > /tmp/execute-output 2>/tmp/execute-errors; status=$?; head -c {MAX_JSON_BYTES} /tmp/execute-output; head -c {MAX_JSON_BYTES} /tmp/execute-errors >&2; exit "$status"',
                     service="n8n",
                     timeout_sec=math.ceil(config.execute_timeout_sec),
                 )
-                output = (executed.stdout or "") + (executed.stderr or "")
-                (logs / "execute.log").write_text(output)
-                data = _cli_data(output)
+                (logs / "execute.log").write_text(executed.stdout or "")
+                (logs / "execute-errors.log").write_text(executed.stderr or "")
+                collected = await context.environment.service_exec(
+                    "node /tmp/n8n-result.js /home/node/.n8n/database.sqlite "
+                    + shlex.quote(workflow_id)
+                    + " "
+                    + str(MAX_JSON_BYTES)
+                    + f' > /tmp/result-output 2>/tmp/result-errors; status=$?; head -c {MAX_JSON_BYTES + 1} /tmp/result-output; head -c {MAX_JSON_BYTES} /tmp/result-errors >&2; exit "$status"',
+                    service="n8n",
+                    timeout_sec=math.ceil(config.control_timeout_sec),
+                )
+                content = (collected.stdout or "{}").encode()
+                if len(content) > MAX_JSON_BYTES:
+                    raise DataError("native_result_too_large", "n8n_result")
+                data = decode_json(content, "n8n_result")
+                if not isinstance(data, dict):
+                    raise DataError("invalid_native_result", "n8n_result")
+                (logs / "result.json").write_text(json.dumps(data))
+                result_valid = (
+                    collected.return_code == 0
+                    and data.get("workflow_id") == workflow_id
+                    and isinstance(data.get("execution_id"), str)
+                )
                 result.update(
                     process_status="completed"
-                    if executed.return_code == 0
-                    and data
+                    if result_valid
+                    and executed.return_code == 0
                     and data.get("status") == "success"
-                    else "failed",
+                    else "failed"
+                    if result_valid
+                    and data.get("status") in {"error", "crashed", "canceled"}
+                    or executed.return_code != 0
+                    else "unknown",
                     exit_code=executed.return_code,
                 )
-                if (
-                    data
-                    and data["data"].get("resultData", {}).get("lastNodeExecuted")
-                    == "BenchResult"
-                ):
+                if result_valid:
+                    result["native_execution_id"] = data["execution_id"]
                     try:
-                        items = data["data"]["resultData"]["runData"]["BenchResult"][
-                            -1
-                        ]["data"]["main"][0]
-                        if len(items) == 1:
-                            claim = items[0]["json"]
-                            validate_contract("claim", claim)
-                            result["claim"] = claim
-                    except (DataError, KeyError, IndexError, TypeError):
+                        validate_contract("claim", data.get("claim"))
+                        result["claim"] = data["claim"]
+                    except DataError:
                         pass
     except TimeoutError:
         result["process_status"] = "timed_out"
@@ -295,19 +298,34 @@ async def replay(
         result.update(
             process_status="unknown", errors=["exec_failed:" + type(error).__name__]
         )
-    except asyncio.CancelledError:
+    except DataError as error:
+        result.update(process_status="unknown", errors=[error.code])
+    except asyncio.CancelledError as error:
+        primary_error = error
         result["process_status"] = "cancelled"
+        raise
+    except Exception as error:
+        primary_error = error
         raise
     finally:
         LOGGER.info("phase=freeze case_id=%s", context.identity["case_id"])
         result["stop_requested"] = True
-        result["stop_confirmed"] = await context.finish()
-        stop = json.loads((context.root / "stop.json").read_text())
-        result["errors"] = result.get("errors", []) + stop["errors"]
+        try:
+            result["stop_confirmed"] = await context.finish()
+        except Exception:
+            result["stop_confirmed"] = False
+            context.stop_errors.append("finish_failed")
+            LOGGER.warning("phase=cleanup code=finish_failed")
+        result["errors"] = result.get("errors", []) + context.stop_errors
         if not result["stop_confirmed"]:
             result["initial_process_status"] = result["process_status"]
             result["process_status"] = "unknown"
-        (context.root / "execution.json").write_text(json.dumps(result))
+        try:
+            (context.root / "execution.json").write_text(json.dumps(result))
+        except OSError:
+            LOGGER.warning("phase=replay code=execution_log_failed")
+            if primary_error is None:
+                raise
         LOGGER.info(
             "phase=replay result=%s case_id=%s elapsed=%.2fs",
             result["process_status"],

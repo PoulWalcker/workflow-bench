@@ -88,6 +88,26 @@ async def native_control(config, workflow, *, fault=None):
     return result, observation
 
 
+def test_flooded_native_workflow_retains_duplicate_failure(e1_config):
+    workflow = read_json(TASK / "solution/workflow.json", "control")
+    workflow["nodes"][2]["parameters"]["jsCode"] = (
+        "const bench = $input.first().json.bench; "
+        "return Array.from({length: 500}, () => ({json: {schema_version:'1.0', arguments:bench.input}}));"
+    )
+    result, observed = asyncio.run(native_control(e1_config, workflow))
+    assert "request_limit_exceeded" in observed["evidence"]["violations"]
+    assert len(json.dumps(observed["evidence"]).encode()) < 512 * 1024
+    assert result.evaluation["cases"][0]["verdict"] == "fail"
+    assert (
+        next(
+            c
+            for c in result.evaluation["cases"][0]["criteria"]
+            if c["criterion_id"] == "multiplicity"
+        )["reason_code"]
+        == "duplicate_send"
+    )
+
+
 @pytest.mark.parametrize(
     "change,criterion",
     [

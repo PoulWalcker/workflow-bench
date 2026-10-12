@@ -1,218 +1,50 @@
-# Workflow Bench — план реализации MVP
+# Workflow Bench — roadmap
 
-Дата планирования: 11 октября 2026 года; verification обновлена 12 октября.
-WB-02–WB-05 — **DONE**; WB-06 — **IN PROGRESS**, остальные — **TODO**. Технический E1 проверен;
-E2–E5 и готовность MVP не подтверждены.
+Status as of 12 October 2026. Dependencies require verified results, not files.
+[SPEC](SPEC.md) owns scope/methodology; [ARCHITECTURE](ARCHITECTURE.md) owns interfaces;
+[AGENTS](AGENTS.md) owns engineering rules. Tickets retain evidence and limitations.
 
-## Основания и исходное состояние
+## Milestones
 
-Требования принадлежат [SPEC](SPEC.md), технические границы —
-[ARCHITECTURE](ARCHITECTURE.md), правила разработки — [Principles](Principles.md).
-Порядок работы исполнителя задаёт [AGENTS](AGENTS.md). Этот документ владеет
-последовательностью задач и условиями перехода, а не меняет продуктовый scope.
-
-Исходный checkout до WB-02: есть документы и исторический
-`docs/implementation/01-project-structure.md`; нет исходников, Task-каталогов,
-`pyproject.toml`, lockfile, конфигурации окружений и `.codegraph/`.
-При планировании установка Python/uv/Docker/Harbor/n8n не проверялась.
-Проверенные результаты WB-02 и ограничения среды находятся в [README](README.md).
-Проверенный технический CLI WB-04 описан в README; будущие файлы и примеры
-в архитектуре не являются реализацией.
-В Git уже есть пользовательское состояние (документы не отслеживаются,
-`workflow-bench.zip` имеет staged addition и удалён из рабочего дерева);
-план не требует его исправлять, добавлять в индекс или коммитить.
-
-PRODUCT_REVIEW и прежний WB-01 — история; зависимостей на них нет.
-В исходных документах остаются пометки «на review» и «ROADMAP отсутствует».
-Для этого поручения основанием служат текущие редакции и прямое указание
-пользователя о завершённом согласовании границ. Эти пометки не означают согласия
-с численными предложениями методики. Исходные документы здесь не редактируются.
-
-## Этапы и переходы
-
-Подробные задания подготовлены только для первого этапа. Поздние тикеты
-уточняются по фактам E1; их scope и критерии ниже уже обязательны для плана.
-Стрелка зависимости означает проверенный результат, а не наличие файлов.
-
-| Этап / задача | Статус | Зависит от | Наблюдаемый результат и критерий перехода |
+| Milestone | Status | Depends on | Acceptance / transition |
 |---|---|---|---|
-| 1 · [WB-02: минимальная основа](docs/implementation/WB-02-bootstrap.md) | DONE | Текущие документы | Воспроизводимая Python/uv-среда, минимальный пакет, быстрые проверки и проверенные инструкции; без будущих подсистем |
-| 1 · [WB-03: организация компонентов](docs/implementation/WB-03-component-boundaries.md) | DONE | WB-02 | Работающая загрузка и публичный экспорт малого Task-примера; границы данных и зависимостей закреплены до интеграции |
-| 1 · [WB-04: E1, сквозной контроль](docs/implementation/WB-04-e1-native-replay.md) | DONE | WB-03 | Ручной native T1 сдан, исполнен настоящим n8n в Harbor на свежем input, защищённые факты проверены отдельным verifier |
-| 1 · [WB-05: E1, отрицательные контроли](docs/implementation/WB-05-e1-trust-and-failures.md) | DONE | WB-04 | Доказаны границы доверия, остановка, обработка missing/unknown и ошибок; все обязательные контроли E1 завершены |
-| 2 · [WB-06: методика и готовность измерения T1](docs/implementation/WB-06-t1-measurement.md) | IN PROGRESS | WB-05 | Владелец утвердил профиль, кейсы, рубрику, правила и конечные лимиты; они реализованы и проверены без модели |
-| 3 · WB-07: T1/Codex, E2 | TODO | WB-06; явное разрешение на модельный запуск | Реальное exploration, сдача и успешный replay неизменного T1 на новых входах; независимая оценка, метрики и подтверждённый stop |
-| 4 · WB-08: немедленно T1/Sapiens, E3 | TODO | Рабочий E2; отдельное разрешение и лимиты Sapiens | Тот же T1 через установленную границу Harbor либо воспроизводимый blocker и решение владельца о продолжении |
-| 5 · WB-09: методика и профили расширения | TODO | Результат WB-08; решение владельца при blocker | Зафиксированы необходимые публичные правила UI/T3/T4, наборы, рубрики и условия их измерения |
-| 5 · WB-10: общий UI и T2, часть E4 | TODO | WB-09 | API/UI используют одно состояние; T2 решается через свежие деревья, API-обход отклоняется; положительный и отрицательные native-контроли |
-| 5 · WB-11: T3/T4, часть E4 | TODO | WB-10 | Публичные шаблоны T3 и отбор/пересылка T4 на 0/1/N исполняются одним native-профилем без runtime LLM и бизнес-ветвлений core |
-| 5 · WB-12: полный эксперимент и результат MVP | TODO | WB-11 и согласованная методика | Последовательные исправления, выбор версии до holdout, итоговые кейсы, общий score/вердикт и объяснимый отчёт с затратами работают для T1–T4 |
-| 5 · WB-13: поддержка Judge, E5 при необходимости | TODO | WB-12; решение об обоснованных критериях | Независимая интеграция Judge с контролем ответа и отказов; E5 выполнен до использования смысловых оценок либо явно неприменим при отсутствии таких критериев |
-| 6 · WB-14: независимость Task/core, завершение E4 | TODO | WB-13 | Малая новая Task меняет только свой каталог; fixture другого приложения проходит общий путь без бизнес-правок core |
-| 6 · WB-15: итоговая приёмка MVP | TODO | WB-14; разрешения и бюджеты приёмочных модельных запусков | Выполнены критерии SPEC §12, реальные контроли и ограниченные модельные запуски; ограничения и статус Sapiens отражены явно |
+| [WB-02 Bootstrap](docs/implementation/WB-02-bootstrap.md) | DONE | Assigned bootstrap | Reproducible Python/uv package, fast test gate, Ruff and verified setup; no future scaffolding. |
+| [WB-03 Component boundaries](docs/implementation/WB-03-component-boundaries.md) | DONE | WB-02 | Native Task loading/public export, safe paths/disclosure and another synthetic Task without registration. |
+| [WB-04 Native replay](docs/implementation/WB-04-e1-native-replay.md) | DONE | WB-03 | Manual unchanged T1 executes through real Harbor/n8n/JS runner on fresh inputs; protected facts reach independent verifier. |
+| [WB-05 Trust/failure controls](docs/implementation/WB-05-e1-trust-and-failures.md) | DONE | WB-04 | E1 negative matrix completed: private/file/network/evidence/reward attacks, lost response, unknown, timeout/cancel and owned cleanup, including actual processes/metadata. |
+| [WB-06 T1 measurement](docs/implementation/WB-06-t1-measurement.md) | DONE for accepted ChatGPT-auth E2 | WB-05 | Approved T1 policy/sets/scoring/selection/feedback verified with manual/negative controls; finite limits/native allowance approved and verified in WB-07. API-billed mode remains closed without verified external cap. |
+| [WB-07 Codex, E2](docs/implementation/WB-07-codex-e2.md) | DONE | WB-06 method; permission + auth-appropriate enforced limits | Separately authorized live repeat after MCP packaging fix: native JSONL confirms 3 actual MCP calls; one genuine submission passed 5/5 development and 5/5 private final with unchanged frozen policy, score=10/pass/complete, native reward=10.0. Isolation/stop/cleanup verified; original artifact/frozen reassessment preserved. |
+| WB-08 Sapiens, E3 | TODO | Successful E2; separate permission/limits | Immediately repeat identical T1/profile/rubric/runtime/Evaluation through isolated Sapiens host+CLI; tools/file/terminal/disconnect/cancel/children and no late work proven. Same T1 success criterion, or reproducible blocker with owner decision; blocker is not successful E3. |
+| WB-09 Expansion methodology | TODO | WB-08 result; owner decision if blocked | Agree public UI identity/tree/stale-handle/search/draft/effect rules, T3 branches, T4 provenance/search/bounds and T2–T4 sets/rubrics/aggregation before cases or measurement. |
+| WB-10 Shared UI/T2, E4 part | TODO | WB-09 | Real API-write/UI-read and reverse share state; fresh-tree native T2 works on new inputs/trees. Hardcoded paths/IDs, wrong recipients, duplicates and direct UI-only→API fail; unsupported actions explicit. |
+| WB-11 T3/T4, E4 part | TODO | WB-10 | Immutable native controls cover T3 templates/no-input/processed and T4 0/1/N, equal-text distinct originals, pre-forwarded/empty/limit cases, sequential stateful UI; no business patches to binder/core or runtime LLM. |
+| WB-12 Full flow/report | TODO | WB-11 + agreed methodology | Bounded sequential T1–T4 corrections, stop/feedback/selection-before-final, reset all state, task-owned score/Verdict/completeness and separate creation/replay/Judge/setup costs; deterministic failure controls and real replay prove the path. |
+| WB-13 Judge, E5 if needed | TODO | WB-12 + justified-criterion decision | Separate context and validated values/refs; missing/malformed/injected data preserve programmatic facts/null scores; reassessment without Replay. Real authorized connection check; suitability on a pre-labeled set before semantic scoring, or explicit E5 inapplicability when no such criteria. Support remains required. |
+| WB-14 Independence, E4 completion | TODO | WB-13 | Small Task on existing Telegram capabilities changes only its directory and passes positive/negative controls. Another small app fixture implements the same tools/control/evidence and real runtime path without core/Composer/n8n changes; not a fifth product Task. |
+| WB-15 MVP acceptance | TODO | WB-14 + acceptance permissions/budgets | Evidence for every [SPEC §12](SPEC.md#12-first-release-acceptance) item, clean reproducible setup, real controls and bounded authorized model checks of remaining capabilities; failures/Sapiens blockers explicit and resolved by owner. |
 
-Первый работающий сквозной результат находится в **WB-04**. Разрешение на переход
-к подготовке измерений даёт **WB-05**, на запуск Codex — **WB-06 плюс разрешение**.
-После успешного T1/Codex следующая интеграционная работа — **WB-08**, до полного
-T2–T4. Наличие плохого workflow честно завершает попытку, но не доказывает успешный
-E2: критерии не ослабляются, артефакт вручную не чинится, дополнительные вызовы
-возможны только в уже разрешённых пределах либо после нового решения владельца.
+## Gates
 
-## Ближайший этап: минимальный T1 без модели
+E1 = WB-04/05 lifecycle and trust; E2 = WB-07 stock Codex;
+E3 = immediate WB-08 Sapiens; E4 = WB-10/11 expressiveness + WB-14 independence;
+E5 = WB-13 semantic Judge suitability when needed. Technical E1 is recorded;
+E2 is confirmed; E3–E5 and MVP readiness are not established. Model-free Codex wiring, controls or
+a low-score AI result do not satisfy successful E2. No manual candidate repair or
+extra calls beyond authorized limits to obtain DONE.
 
-WB-02–WB-05 выполнены. Загрузка/public export и S2 сохранены. Настоящий n8n/JS
-runner исполнил один native T1 на трёх свежих кейсах; protected facts проверены
-отдельным verifier. Результаты, базовая изоляция и ограничения — в
-[WB-04](docs/implementation/WB-04-e1-native-replay.md). Trust/failure controls,
-W1–W3, фактические результаты и пределы — в
-[WB-05](docs/implementation/WB-05-e1-trust-and-failures.md#реализация-и-evidence-12-октября-2026).
-WB-04 и WB-05 вместе закрывают технический E1. Следующий этап — WB-06:
-реализация методики T1 без модели; результаты и незакрытые условия готовности
-записаны в тикете WB-06. Codex требует утверждённого бюджета и отдельного разрешения.
+WB-07 Phase A required no model calls. WB-06's remaining budget gate is closed
+for the accepted ChatGPT-auth E2 path; API-billed mode stays closed.
+Phase B's recorded ChatGPT run used concrete owner authorization and live native
+subscription allowance checks. API-billed runs still require verified external
+spending enforcement; configuration assertions are insufficient. Numeric budget
+proposals are not approval. The separately authorized live repeat after the packaging fix confirms actual MCP
+exploration and the unchanged T1 evaluation path. API-billed mode remains closed.
+UI/protocol extensions and remaining methodology use the owners/deadlines in
+[SPEC §13](SPEC.md#13-decisions-still-required). A fundamental native-format failure
+must preserve minimal JSON/fixtures/versions/error for the owner, not introduce a DSL.
 
-Штатные операции Harbor проверяются первыми. Только воспроизводимое ограничение
-этого пути разрешает проверить один минимальный host-side BaseVerifier hook.
-Два варианта одновременно не реализуются. Потребность скопировать Trial,
-запустить вложенный Harbor или создать свой orchestrator останавливает задачу
-с конкретным техническим вопросом владельцу.
-
-E1 допускает критерии без численного score. Тест совместимости числового Harbor
-reward — технический тест протокола, а не утверждение формулы качества T1.
-Полный score 0–10 остаётся обязательным результатом MVP.
-
-## Поздние задачи: scope и готовность
-
-**WB-06 — методика T1 и подготовка к измерению.** По результатам E1 автор Task
-и владелец эксперимента принимают решения из таблицы ниже. Task хранит рубрику,
-а manifest — её применённый снимок и версии существенных входов. Реализуются
-согласованный расчёт T1, отдельный вердикт, полнота и преобразование в Harbor
-reward. Для E2 достаточно явно согласованного ограниченного режима попыток;
-полный цикл исправлений остаётся WB-12. Решение о правилах выбора/feedback
-принимается до их реализации, даже если первый режим обходится без исправлений.
-Готовность: ручной T1 и отрицательные контроли оценены по утверждённым правилам;
-без методики или разрешения оцениваемый модельный запуск отклоняется. Ни веса,
-ни число попыток, ни «первая успешная» не становятся default по этому плану.
-
-**WB-07 — E2.** Использовать штатный Harbor Codex adapter, публичный пакет и
-инструменты exploration, чистые home/config/session storage и файловую сдачу.
-Добавить MCP-вход над теми же операциями симулятора, если для E1 хватило HTTP.
-Зафиксировать версию harness/backend/model, доступную retry-политику и конечный
-внешний лимит credential; проверить egress и stop, включая дочерние процессы.
-Сохранить исходные usage-события: missing не превращается в ноль при нормализации
-Harbor. Смена input/state не меняет бизнес-логику сданной версии. Готовность E2
-подтверждается реальным exploration и успешным T1 через независимую проверку,
-а также наблюдаемой остановкой при timeout/cancel. Неизвестный вызов не повторять.
-Auth/tool access/stop blocker фиксируется отдельно от плохого workflow.
-Минимальная поправка в Harbor seam допустима лишь при конкретном дефекте штатного
-adapter; HTTP bridge и новый model loop не входят в задачу.
-
-**WB-08 — E3.** Минимальный Sapiens BaseInstalledAgent adapter живёт вне core;
-точка сборки выбирает Composer конфигурацией. Используются отдельные host+CLI,
-data-dir/home/config/provider sessions, без личной памяти и физического desktop.
-Сравнить hashes Task, cases, профиля, рубрики, runtime и Evaluation с E2;
-различия harness и его затрат записать отдельно. Проверить exploration, файл,
-terminal state, потерю связи после accepted, cancel, child/delegated calls и
-отсутствие фоновых действий после stop. Ctrl-C наблюдателя не доказывает отмену.
-Готовность: тот же критерий T1 выполнен обоими harness без изменения Task/core.
-Если tools/изоляция/сдача/stop недостижимы в этой границе, результат — версии,
-минимальный воспроизводитель, логи и точное ограничение. Владелец решает последствия
-для дальнейшей работы и релиза; blocker не переименовывается в успешный E3,
-переписывание Sapiens не входит в scope.
-
-**WB-09 — правила расширения.** До реализации соответствующих кейсов согласовать
-UI-признаки идентичности и класс изменений дерева, stale handles, поиск/черновик,
-наблюдение эффекта и границы выборок. Для T3 — последнее входящее, ветви шаблонов,
-нет входящих и уже обработано; для T4 — поиск, provenance, уже пересланные,
-пустая выборка и превышение предела. Зафиксировать методику T2–T4 и агрегацию
-общего результата до их измерений. Совместный доступ не требует комбинирования
-API и UI, не даёт бонуса за API. Готовность: публичные правила достаточны для
-однозначной проверки, скрытые ожидания не добавляют новых требований.
-
-**WB-10 — UI/T2.** Реализовать виртуальный Blindly-профиль над тем же состоянием
-Telegram. Проверить запись через API/чтение UI и обратно, динамическое дерево,
-фокус, поиск, черновик, свежесть handles и явные ошибки неподдержанных действий.
-Один ручной workflow T2 проходит новые inputs/деревья; hardcoded path/ID,
-неверный адресат и дубль проваливаются. UI-only→API отклоняется сервером даже
-при прямом HTTP. Готовность включает реальный n8n/Harbor, а не UI snapshot.
-
-**WB-11 — T3/T4.** Расширить только необходимые операции и предметные проверки.
-Ручные неизменные workflow проходят ветви T3 и 0/1/N T4, одинаковые тексты разных
-оригиналов, уже пересланные объекты, пустой результат и границу выборки.
-Stateful UI-действия последовательны; tools не выполняют отбор/шаблоны за AI.
-Готовность E4 в этой части: native JSON выражает поведение без DSL, новых runtime
-или task-specific binder/evaluator. При фундаментальном сбое сохранить минимальный
-артефакт, fixtures, версии и ошибку для решения владельца.
-
-**WB-12 — полный flow, score и отчёт.** Расширить ограниченный T1-путь до всех
-согласованных последовательных попыток и кейсов T1–T4. Зафиксировать каждую версию,
-результаты и разрешённый feedback; восстанавливать business/UI/n8n state между
-кейсами. Выбрать версию до holdout и не исправлять/перевыбирать по итоговым данным.
-Реализовать общую оценку по task-owned рубрикам, ограничения критических ошибок,
-score 0–10 либо null, отдельный вердикт и полноту. Отчёт связывает версии,
-кейсы, факты, ошибки и затраты creation/replay/Judge; подготовка инфраструктуры
-отдельна. Неудачные попытки учитываются, неизвестные метрики явны, деньги только
-по сохранённым известным ценам. Проверки с управляемыми ответами покрывают stop,
-лимит попыток, feedback, выбор версии, missing artifact и неполную оценку;
-реальный replay контролей подтверждает интеграцию. Модельная проверка полного flow
-выполняется только с разрешением и бюджетом, не в обычном pytest.
-
-**WB-13 — Judge.** Поддержать отдельный контекст без полномочий исполнения,
-минимальный evidence, зафиксированную модель/рубрику, ссылки на факты и проверку
-контракта. Проверить missing response, неверные refs и injection в данных;
-сохранение программных результатов при неполноте и повтор оценки по тем же фактам
-без повторения действий. Готовность поддержки требует реальной разрешённой
-проверки подключения; mock доказывает лишь обработку отказа. Если в Task есть
-обоснованный смысловой критерий, до его измерения выполнить E5 на заранее
-размеченном наборе с заранее утверждённым критерием пригодности. Если критериев
-нет, E5 неприменим с записанной причиной; поддержка Judge остаётся, субъективный
-критерий и вызов Judge в каждом T1–T4 не добавляются.
-
-**WB-14 — независимость.** Малая Task на прежних Telegram-возможностях добавляется
-только своим каталогом и проходит положительный/отрицательный контроль общим
-путём; diff core, общего prompt, runtime и simApp отсутствует. Отдельная малая
-fixture приложения, например резервирование/отказ, реализует существующие
-tools/control/evidence contracts и проходит тот же путь без изменения core,
-Composer и n8n. Это проверка границы ARCHITECTURE §7/E4, не пятая продуктовая Task
-и не универсальный framework. Готовность фиксируется реальным исполнением и diff.
-
-**WB-15 — приёмка.** Сопоставить evidence с каждым пунктом SPEC §12: полный flow
-T1–T4, контроли, повторное использование, изоляция, ошибки/stop, score, отчёт,
-Judge и независимость. Выполнить воспроизводимый запуск с чистой подготовкой
-по README и ограниченные разрешённые модельные проверки возможностей, ещё не
-подтверждённых E2/E3. Полная матрица всех harness × Task не вводится автоматически.
-Отчёт честно показывает низкое качество AI, провалы и статус Sapiens; успешный
-эталон не заменяет результат Composer. Открытый blocker закрывается решением
-владельца, а не отсутствием credentials. Только выполненные критерии позволяют
-объявить MVP готовым; экономия относительно разового агента не требуется.
-
-## Решения владельца и сроки
-
-Численных значений этот план не назначает. Исполнитель предлагает технические
-настройки на основании E1; владелец эксперимента утверждает методику и расходы.
-
-| Решение | Кто участвует | До какого шага |
-|---|---|---|
-| Публичный T1 API: адресация готовым ID, ошибки, наблюдение эффекта, idempotency/её отсутствие, пределы tools | Автор Task/окружения и владелец | Технический минимум фиксируется в WB-04 до контролей; измерительный профиль утверждается WB-06 |
-| Кейсы T1, назначение наборов, размеры/повторения, публичные критерии | Автор Task и владелец | WB-06, до E2; раскрытые в документации значения не служат настоящим holdout |
-| Веса, partial credit, thresholds, критические gates/caps, агрегация, роль эффективности | Владелец с автором Task | Для T1 — WB-06; расширение — WB-09 до соответствующих измерений |
-| Число попыток, stop/selection, feedback, продолжение неполной оценки и повторы внешних проверок | Владелец | WB-06 до реализации этих правил; изменение — до нового измерения |
-| Harness/model/config, разрешение, конечные время/tool/model/стоимостные лимиты, внешний предел credential, наблюдаемость usage | Владелец с исполнителем | Перед каждым модельным запуском; отдельно E2, E3, Judge и приёмка |
-| UI-инварианты, правила T3/T4, пределы выборки и методика этих задач | Автор Task/окружения и владелец | WB-09 до реализации кейсов и измерений |
-| Нужен ли смысловой Judge, размеченный набор, критерий пригодности, модель/рубрика, бюджет | Автор Task и владелец | WB-13 до E5 и использования его оценок |
-| Последствия воспроизводимого blocker Sapiens | Владелец проекта | Сразу в WB-08, до перехода дальше и решения о релизе |
-
-## Где закрываются E1–E5
-
-| Проверка предположения | Работа и сохраняемый результат |
-|---|---|
-| E1: native lifecycle, n8n/runner, защищённые факты и изоляция | WB-04 + WB-05: реальные контроли, версии, связанный evidence и результат штатного пути либо обоснованного одного hook |
-| E2: достаточность штатного Codex adapter | WB-07: разрешённый реальный T1, файл, свежий replay, метрики и stop |
-| E3: управляемый Sapiens в той же границе | WB-08: сопоставимый T1 или воспроизводимый blocker с решением владельца |
-| E4: выразительность native-профиля и Task-first | WB-10/11: T2–T4; WB-14: новая Task/app fixture, контроли и diff |
-| E5: пригодность необходимого смыслового Judge | WB-13: заранее размеченный набор, результат по согласованному критерию; без таких критериев — явная неприменимость |
-
-Это проверки предположений внутри работ, не названия готовых компонентов.
-Новые эксперименты без конкретного выявленного риска не добавляются.
-Для каждого результата сохраняются фактически выполненные команды, версии,
-статусы и неизвестности. Evidence живёт в локальном `runs/`, не коммитится;
-README пополняется только действительно проверенными командами.
+Use native Harbor first; a custom verifier hook requires a reproducible insufficiency
+and only one minimal alternative, never copied Trial/nested Harbor/new orchestrator.
+Current E1 uses the native separate verifier. Later tickets are refined from evidence
+within these milestone boundaries. Required real checks cannot be closed by mocks,
+unavailable credentials/Docker or a successful reference in place of Composer.

@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stock",
+    "reservations"
+  ],
+  "properties": {
+    "stock": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reservations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

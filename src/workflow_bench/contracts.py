@@ -27,6 +27,9 @@ PUBLIC_PACKAGE_FILES: Mapping[str, str] = MappingProxyType(
     }
 )
 WORKFLOW_ARTIFACT_FILE = "workflow.json"
+SUBMISSION_TRIAL_PREFIX = "wb-submission-"
+REPLAY_PROJECT_PREFIX = "wb-replay-"
+PROFILE_PROJECT_PREFIX = "wb-profile-"
 
 
 @dataclass(frozen=True)

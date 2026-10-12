@@ -1,0 +1,174 @@
+{
+  "id": "inventoryControl",
+  "name": "Reserve inventory",
+  "nodes": [
+    {
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "parameters": {},
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "input",
+      "name": "BenchInput",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bench",
+              "name": "bench",
+              "type": "object",
+              "value": "{\"input\":{},\"tools\":{}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "id": "prepare",
+      "name": "Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{json: {schema_version: '1.0', arguments: $input.first().json.bench.input}}];"
+      },
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "id": "reserve",
+      "name": "Reserve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$('BenchInput').first().json.bench.tools.base_url + '/tools/reserve'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $('BenchInput').first().json.bench.tools.capability}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "options": {
+          "timeout": 5000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify($json)}}"
+      },
+      "onError": "stopWorkflow",
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "id": "result",
+      "name": "BenchResult",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "type": "string",
+              "value": "completed"
+            },
+            {
+              "id": "reason",
+              "name": "reason_code",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "result",
+              "name": "result",
+              "type": "object",
+              "value": "={{$json}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "position": [
+        800,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "BenchInput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BenchInput": {
+      "main": [
+        [
+          {
+            "node": "Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request": {
+      "main": [
+        [
+          {
+            "node": "Reserve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reserve": {
+      "main": [
+        [
+          {
+            "node": "BenchResult",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -90,6 +90,7 @@
         },
         "events": {
           "type": "array",
+          "maxItems": 1200,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -442,6 +443,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "native_execution_id": {"type": "string", "pattern": "^[0-9]+$"},
         "process_status": {
           "enum": [
             "completed",

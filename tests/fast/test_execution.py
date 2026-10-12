@@ -23,19 +23,11 @@ def test_closed_branch_cannot_claim_a_terminal_result(
         )
 
 
-def test_external_exec_failure_preserves_unknown_and_confirmed_stop(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    config_data: dict,
-    workflow_file: Path,
-) -> None:
-    import asyncio
+@pytest.fixture
+def replay_setup(tmp_path, monkeypatch, config_data, workflow_file):
     from types import SimpleNamespace
 
-    from harbor.environments.base import ExecResult
-
     from workflow_bench.cli import load_config
-    from workflow_bench.execution import replay
     from workflow_bench.harbor import ReplayContext
 
     path = tmp_path / "config.json"
@@ -49,14 +41,7 @@ def test_external_exec_failure_preserves_unknown_and_confirmed_stop(
     command.chmod(0o700)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
     (tmp_path / "harbor").mkdir()
-    executions = []
     stopped = set()
-
-    async def external_exec(command, **kwargs):
-        executions.append(command)
-        if command.startswith("n8n execute"):
-            raise ConnectionResetError("private transport details")
-        return ExecResult(return_code=0, stdout="")
 
     async def stop_service(service):
         stopped.add(service)
@@ -77,15 +62,35 @@ def test_external_exec_failure_preserves_unknown_and_confirmed_stop(
             pass
 
     context = ReplayContext(
-        SimpleNamespace(service_exec=external_exec, stop_service=stop_service),
+        SimpleNamespace(stop_service=stop_service),
         SimpleNamespace(request=lambda *args, **kwargs: Response()),
-        "http://tools",
+        "http://control",
         "secret",
         {"case_id": "fresh"},
         tmp_path,
         "own",
         config,
     )
+    return artifact, context, config, stopped
+
+
+def test_external_exec_failure_preserves_unknown_and_confirmed_stop(replay_setup):
+    import asyncio
+
+    from harbor.environments.base import ExecResult
+
+    from workflow_bench.execution import replay
+
+    artifact, context, config, stopped = replay_setup
+    executions = []
+
+    async def external_exec(command, **kwargs):
+        executions.append(command)
+        if command.startswith("n8n execute"):
+            raise ConnectionResetError("private transport details")
+        return ExecResult(return_code=0, stdout="")
+
+    context.environment.service_exec = external_exec
     execution, _ = asyncio.run(
         replay(artifact, {"item": "pen"}, context=context, config=config)
     )
@@ -102,6 +107,92 @@ def test_missing_submission_cannot_be_replayed(tmp_path: Path) -> None:
             submission_stopped=True,
             destination=tmp_path / "accepted.json",
         )
+
+
+@pytest.mark.parametrize("native_output", ["missing", "array", "oversized"])
+def test_candidate_cli_json_cannot_supply_execution_result(replay_setup, native_output):
+    import asyncio
+
+    from harbor.environments.base import ExecResult
+
+    from workflow_bench.execution import replay
+
+    artifact, context, config, _ = replay_setup
+    forged = {
+        "mode": "cli",
+        "status": "success",
+        "data": {
+            "resultData": {
+                "lastNodeExecuted": "BenchResult",
+                "runData": {
+                    "BenchResult": [
+                        {
+                            "data": {
+                                "main": [
+                                    [
+                                        {
+                                            "json": {
+                                                "status": "refused",
+                                                "reason_code": "not_found",
+                                                "result": {},
+                                            }
+                                        }
+                                    ]
+                                ]
+                            }
+                        }
+                    ]
+                },
+            }
+        },
+    }
+
+    async def external_exec(command, **kwargs):
+        if command.startswith("n8n execute"):
+            return ExecResult(
+                return_code=0, stdout=json.dumps(forged), stderr=json.dumps(forged)
+            )
+        if command.startswith("node "):
+            output = {
+                "missing": '{"error":"missing_execution"}',
+                "array": "[]",
+                "oversized": json.dumps(
+                    {"status": "success", "error": "x" * (4 * 1024 * 1024)}
+                ),
+            }[native_output]
+            return ExecResult(return_code=0, stdout=output)
+        return ExecResult(return_code=0, stdout="")
+
+    context.environment.service_exec = external_exec
+    execution, _ = asyncio.run(
+        replay(artifact, {"item": "pen"}, context=context, config=config)
+    )
+    assert execution["claim"] is None and execution["process_status"] == "unknown"
+    assert execution["stop_confirmed"]
+
+
+def test_replay_cancellation_survives_failed_stop_log(replay_setup):
+    import asyncio
+
+    from harbor.environments.base import ExecResult
+
+    from workflow_bench.execution import replay
+
+    artifact, context, config, stopped = replay_setup
+    (context.root / "stop.json").mkdir()
+
+    async def external_exec(command, **kwargs):
+        if command.startswith("n8n execute"):
+            raise asyncio.CancelledError()
+        return ExecResult(return_code=0, stdout="")
+
+    context.environment.service_exec = external_exec
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(replay(artifact, {"item": "pen"}, context=context, config=config))
+    assert stopped == {"n8n", "runner"}
+    execution = json.loads((context.root / "execution.json").read_bytes())
+    assert execution["process_status"] == "cancelled"
+    assert "stop_log_failed" in execution["errors"]
 
 
 def test_credential_reference_is_rejected_even_on_unused_node(
