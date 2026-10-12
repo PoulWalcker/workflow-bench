@@ -9,7 +9,7 @@ and control commands. This roadmap describes capabilities and remaining work.
 | Area | Status and limits |
 |---|---|
 | Task definition | Native Task loading, public export, path/disclosure validation and a synthetic Task without registration are implemented. |
-| T1 — Telegram API automation | Manual unchanged native n8n workflows run through Harbor on fresh cases, with protected Evidence and independent evaluation. T1 measurement includes development/final separation, selection, feedback and task-owned scoring. |
+| T1 — Telegram API automation | API-only Definition → Experiment → Evaluation → Report is verified with unchanged native n8n workflows and the frozen 5+5 methodology. Model-free controls cover bounded correction, invalid second submission, pre-final selection, fresh protected Evidence, incomplete-development blocking and separate Replay/infrastructure/Judge reporting. Missing creation metrics remain unknown; failed submissions retain reproducible conditions. |
 | Lifecycle and trust | Model-free controls cover isolation, forbidden access, evidence protection, lost responses, timeout/cancel, confirmed stop and owned cleanup. |
 | Stock Codex | Exploration, submission and successful T1 development/final evaluation have been demonstrated with ChatGPT authentication. API-billed execution remains closed without verified external spending enforcement. |
 | Sapiens | Host/CLI integration, model-free lifecycle controls and live native artifact generation are demonstrated. Successful T1 evaluation remains blocked by a generated n8n expression failure; partial evaluation prevents correction/private final under the current policy. |
@@ -45,7 +45,7 @@ MVP readiness is not established.
 | NAV-3 and NAV-1 on V2 | Requires a frozen V1 map and controlled V2 with a model-free reachability control. Compare the unchanged old map against a mandatory V2 baseline without a map; report recovery costs without supplying V2 repairs. |
 | Native SimsApp compatibility | Independent technical experiment through Harbor/n8n and the verifier. Early navigation probes can precede full T2; full business controls require T2 cases/verifier. Preserve a minimal reproducible blocker before proposing contract extensions. |
 | Candidate-failure continuation | Requires an approved policy distinguishing trustworthy candidate failures from infrastructure/unknown outcomes. Preserve partial/null scores, finite Attempt limits and complete-development final gating; no automatic retry is currently authorized. |
-| Full flow and reporting | Reconcile scope, then integrate the agreed Tasks, corrections, selection-before-final and separate creation/replay/Judge/setup costs. |
+| Full flow and reporting beyond API-only T1 | API-only T1 verification is complete. Broader Task integration still requires scope reconciliation and agreed methodology; it does not authorize new Tasks, UI/NAV work or Judge implementation. |
 | Independence and Judge | Reconcile release obligations. Prove Task-directory-only expansion and a small app through real controls. Judge needs justified semantic criteria, a labeled suitability set and failure controls before scoring. |
 
 NAV conditions are online agent episodes, separate from native workflow Replay.

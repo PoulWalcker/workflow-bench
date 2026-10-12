@@ -6,6 +6,7 @@ import json
 import logging
 import shutil
 import time
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, replace
 from importlib.metadata import version
@@ -33,6 +34,13 @@ LOGGER = logging.getLogger(__name__)
 
 def _write(path: Path, document: JsonValue) -> None:
     path.write_text(json.dumps(document, ensure_ascii=False, allow_nan=False, indent=2))
+
+
+def _runtime_snapshot(config: E1Config) -> dict[str, JsonValue]:
+    return {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in asdict(config).items()
+    }
 
 
 async def run_manual(
@@ -163,10 +171,7 @@ async def _run_manual(
             "source": "manual",
             "harbor_version": version("harbor"),
             "aiohttp_version": version("aiohttp"),
-            "config": {
-                key: str(value) if isinstance(value, Path) else value
-                for key, value in asdict(config).items()
-            },
+            "config": _runtime_snapshot(config),
             "materials": dict(materials.hashes),
             "public_files": dict(public.files),
             "profile_hash": profile_hash,
@@ -273,6 +278,13 @@ async def _run_manual(
                             "tool_calls": sum(
                                 e["stage"] == "accepted" for e in evidence["events"]
                             ),
+                            "tool_calls_by_operation": dict(
+                                Counter(
+                                    e["operation"]
+                                    for e in evidence["events"]
+                                    if e["stage"] == "accepted"
+                                )
+                            ),
                             "source": "host_monotonic_and_frozen_events",
                             "model_calls": 0,
                             "input_tokens": None,
@@ -295,6 +307,10 @@ async def _run_manual(
                         ),
                     }
                 )
+                cleanup_started = time.monotonic()
+            replays[-1]["metrics"]["cleanup_ms"] = (
+                time.monotonic() - cleanup_started
+            ) * 1000
         LOGGER.info("phase=verification inputs=protected result=ready")
 
     native_result = await run_native_trial(
@@ -327,6 +343,14 @@ async def _run_manual(
             "replay_metrics": [r["metrics"] for r in replays],
             "model_calls": 0,
             "judge_calls": 0,
+            "judge": {"calls": 0, "source": "not_used", "usd": None},
+            "infrastructure": {
+                "setup_ms": sum(r["metrics"]["setup_ms"] for r in replays),
+                "cleanup_ms": sum(r["metrics"]["cleanup_ms"] for r in replays),
+                "native_phase_timings_ref": native_result.result_ref,
+                "source": "host_monotonic_and_native_harbor",
+                "usd": None,
+            },
             "source": "manual_control",
             "usd": None,
         },
@@ -485,6 +509,11 @@ async def _run_measurement(
         {
             "run_id": run_id,
             "source": "composer" if submit else "controlled",
+            "harbor_version": version("harbor"),
+            "aiohttp_version": version("aiohttp"),
+            "config": _runtime_snapshot(config),
+            "materials": dict(materials.hashes),
+            "profile_hash": hashlib.sha256(contract.read_bytes()).hexdigest(),
             "max_attempts": 2,
             "model_calls": None if submit else 0,
             "model_calls_source": "native_logs" if submit else "controlled_submissions",
@@ -526,8 +555,7 @@ async def _run_measurement(
             if submit
             else submissions[index - 1]
         )
-        if submission.metrics is not None:
-            creation_metrics.append(submission.metrics)
+        creation_metrics.append(submission.metrics or {})
         artifact = None
         artifact_status = "missing" if submission.path is None else "invalid"
         submission_code = (
@@ -595,6 +623,15 @@ async def _run_measurement(
         selection = select_attempts(
             tuple(attempts), feedback_rules=materials.public_data["feedback"]
         )
+        if artifact is not None and report["completeness"] != "complete":
+            selection.update(
+                {
+                    "blocked": True,
+                    "continue": False,
+                    "feedback": [],
+                    "block_code": "development_incomplete",
+                }
+            )
         if (
             selection["continue"]
             and submit is not None

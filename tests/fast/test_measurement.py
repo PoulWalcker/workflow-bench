@@ -80,6 +80,88 @@ def evaluated_cases():
     return identities, results
 
 
+@pytest.fixture
+def measurement_files(native_task_files):
+    task, tools = native_task_files
+    metadata = task / "task.toml"
+    metadata.write_text(
+        metadata.read_text().replace(
+            "[metadata]", '[metadata]\nwb_final_cases = "tests/final.json"'
+        )
+    )
+    final = json.loads((task / "tests/cases.json").read_bytes())
+    final["purpose"] = "final"
+    for case in final["cases"]:
+        case["id"] = "final-" + case["id"]
+        case["input"]["item"] = "final-" + case["input"]["item"]
+    (task / "tests/final.json").write_text(json.dumps(final))
+    return task, tools
+
+
+def test_creation_total_is_unknown_when_an_attempt_has_no_metrics(
+    tmp_path, monkeypatch, config_data, measurement_files
+):
+    import asyncio
+
+    from workflow_bench.cli import load_config
+    from workflow_bench.experiment import ControlledSubmission, run_measurement
+
+    task, tools = measurement_files
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config_data))
+
+    async def exported_tools(config, **kwargs):
+        return tools
+
+    monkeypatch.setattr("workflow_bench.experiment.tool_contract", exported_tools)
+    result = asyncio.run(
+        run_measurement(
+            task,
+            (
+                ControlledSubmission(None, metrics={"input_tokens": 12}),
+                ControlledSubmission(None),
+            ),
+            config=load_config(config_path, output=tmp_path / "run"),
+        )
+    )
+    assert result["attempt_count"] == 2
+    assert result["efficiency"]["creation"]["input_tokens"] is None
+    assert len(result["efficiency"]["creation"]["attempts"]) == 2
+    assert result["model_calls"] == 0
+
+
+def test_missing_submissions_retain_reproducible_conditions(
+    tmp_path, monkeypatch, config_data, measurement_files
+):
+    import asyncio
+
+    from workflow_bench.cli import load_config
+    from workflow_bench.experiment import ControlledSubmission, run_measurement
+
+    task, tools = measurement_files
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config_data))
+    output = tmp_path / "run"
+
+    async def exported_tools(config, **kwargs):
+        return tools
+
+    monkeypatch.setattr("workflow_bench.experiment.tool_contract", exported_tools)
+    asyncio.run(
+        run_measurement(
+            task,
+            (ControlledSubmission(None),),
+            config=load_config(config_path, output=output),
+        )
+    )
+    manifest = json.loads((output / "manifest.json").read_bytes())
+    assert manifest["config"]["app_image"] == config_data["app_image"]
+    assert manifest["config"]["total_timeout_sec"] == config_data["total_timeout_sec"]
+    assert manifest["harbor_version"]
+    assert manifest["materials"]["task.toml"]
+    assert manifest["profile_hash"]
+
+
 @pytest.mark.parametrize(
     "passed,critical,score",
     [(5, False, 10), (4, False, 8), (4, True, 3), (1, True, 2), (0, False, 0)],
@@ -152,6 +234,57 @@ def test_aggregate_rejects_results_of_another_measurement(change, rubric_data):
         aggregate_evaluation(
             tuple(results), rubric=rubric, expected_identities=tuple(identities)
         )
+
+
+@pytest.mark.parametrize(
+    "completeness,evidence_hash",
+    [
+        ("invalid", None),
+        ("invalid", "c" * 64),
+        ("unavailable", None),
+        ("partial", None),
+    ],
+)
+def test_invalid_evidence_cannot_establish_a_business_failure(
+    rubric_data, completeness, evidence_hash
+):
+    from workflow_bench.evaluation import aggregate_evaluation
+
+    identities, results = evaluated_cases()
+    results[0].update(
+        completeness=completeness,
+        verdict="fail",
+        evidence_hash=evidence_hash,
+        critical_violations=["unexpected_reservation"],
+    )
+    result = aggregate_evaluation(
+        tuple(results), rubric=rubric_data, expected_identities=tuple(identities)
+    )
+    assert result["score"] is None
+    assert result["completeness"] == (
+        "invalid" if completeness == "invalid" else "partial"
+    )
+    assert result["verdict"] == "unknown"
+    assert result["critical_violations"] == []
+
+
+def test_trusted_failure_survives_invalid_neighbour(rubric_data):
+    from workflow_bench.evaluation import aggregate_evaluation
+
+    identities, results = evaluated_cases()
+    results[0].update(completeness="invalid", verdict="unknown", evidence_hash=None)
+    results[1].update(
+        completeness="partial",
+        verdict="fail",
+        critical_violations=["repeated_reservation"],
+    )
+    result = aggregate_evaluation(
+        tuple(results), rubric=rubric_data, expected_identities=tuple(identities)
+    )
+    assert result["score"] is None
+    assert result["completeness"] == "invalid"
+    assert result["verdict"] == "fail"
+    assert result["critical_violations"] == ["repeated_reservation"]
 
 
 def test_selection_uses_first_full_pass_or_last_valid_and_redacts_feedback(

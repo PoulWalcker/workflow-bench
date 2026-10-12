@@ -271,10 +271,16 @@ def aggregate_evaluation(
         and all(c["status"] != "unknown" for c in r["criteria"])
         for r in results
     )
+    trusted = [
+        r
+        for r in results
+        if r["completeness"] not in {"invalid", "unavailable"}
+        and r["evidence_hash"] is not None
+    ]
     critical = sorted(
-        {code for r in results for code in r.get("critical_violations", [])}
+        {code for r in trusted for code in r.get("critical_violations", [])}
     )
-    failed = bool(critical) or any(r["verdict"] == "fail" for r in results)
+    failed = bool(critical) or any(r["verdict"] == "fail" for r in trusted)
     score = None
     if complete and purpose == "final":
         score = policy["points_per_pass"] * sum(r["verdict"] == "pass" for r in results)

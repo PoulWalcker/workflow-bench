@@ -129,6 +129,21 @@ business Task passed. Reports, manifests, evidence and native logs stay under
 ignored `runs/`. Model outcomes and current limitations are summarized in
 [ROADMAP](docs/ROADMAP.md).
 
+The measurement report links each development phase and the selected final phase.
+Their reports contain criteria, protected Evidence refs, native execution/stop and
+per-operation request counts. `efficiency.creation` includes every Attempt, including
+submission failures; a total stays null if any Attempt lacks that metric. Phase
+`efficiency.infrastructure` separates Replay setup/teardown and links native Harbor
+timings; `efficiency.judge` records calls actually used. Money stays null without
+known prices. See [reporting interfaces](docs/ARCHITECTURE.md#6-experimentconfiguration-interfaces)
+for timing boundaries and reference roots.
+
+The opt-in measurement controls above cover unchanged 5+5 Replay, correction after
+a complete development failure, invalid second submission, lifecycle uncertainty,
+workflow-error blocking and separate cost reporting. They use fixed model-free
+submissions through the same Harbor/n8n/verifier path; they do not measure model
+reasoning. Incomplete development still blocks automatic correction and final.
+
 ## SimsApp UI controls
 
 SimsApp exposes `ui_observe` and `ui_action`: navigation, focus, exact draft

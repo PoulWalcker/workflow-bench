@@ -357,6 +357,22 @@ Task-allowed development projection. Selection ID/hash/ref is written before fin
 Replay; source/phase manifests save applied config/material/profile/case/rubric
 snapshots and hashes. Report references native logs and closed run facts once.
 
+The measurement manifest retains runtime, dependency versions and material/profile
+hashes even when no valid artifact is submitted. Automatic correction/final Replay
+requires complete development Evaluation **and** a complete phase report, including
+lifecycle/cleanup confirmation. A blocked selection retains its artifact identity.
+
+Creation totals require a known value for every Attempt; available subsets never
+become whole-run totals. `efficiency.creation.attempts` follows report Attempt order;
+its native refs are relative to `attempt-N/creation`. Phase reports separate Replay
+setup/teardown in `efficiency.infrastructure`, with native Harbor phase timing refs,
+and record unused Judge calls separately. Replay's measured interval includes import,
+execution, result collection, freeze/stop and Evidence export; setup and subsequent
+environment teardown are outside that interval. Per-operation tool counts come from
+journaled requests (including rejected admissions), not effect counts. This timing
+partition is a reporting decision of the API flow verification work. Monetary
+values remain null without recorded prices; absent model metrics remain unknown.
+
 | Parameter | Source |
 |---|---|
 | Task/output/case/submission paths | Explicit CLI; resolve once relative to invocation cwd. Internal paths are absolute. |
