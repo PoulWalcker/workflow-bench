@@ -9,6 +9,7 @@ import subprocess
 import time
 import tomllib
 from pathlib import Path
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "python@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a"
@@ -64,6 +65,7 @@ def build(output: Path, *, simapp: Path, codex_version: str | None = None) -> No
             "data.py",
             "evaluation.py",
             "mcp.py",
+            "simulator.py",
         ):
             shutil.copyfile(ROOT / "src/workflow_bench" / name, code / name)
         shutil.copytree(ROOT / "src/workflow_bench/resources", code / "resources")
@@ -73,7 +75,7 @@ def build(output: Path, *, simapp: Path, codex_version: str | None = None) -> No
             ignore=shutil.ignore_patterns("__pycache__"),
         )
         app_contract = json.loads((simapp / "tools.json").read_bytes())
-        app_tag = app_contract["app_image"]
+        app_tag = app_contract["app_image"] + "-" + uuid4().hex
         lock = tomllib.loads((ROOT / "uv.lock").read_text())
         packages = {package["name"]: package for package in lock["package"]}
         needed, pending = set(), ["aiohttp", "jsonschema", "referencing"]

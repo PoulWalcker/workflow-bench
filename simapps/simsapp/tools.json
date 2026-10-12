@@ -1,0 +1,355 @@
+{
+  "schema_version": "1.0",
+  "app_image": "wb-simsapp:wb17",
+  "profile": "simsapp-navigation-v1",
+  "tools": [
+    {
+      "name": "ui_observe",
+      "schema_version": "1.0",
+      "description": "Read only the current complete bounded V1 UI. References expire on any state revision. No IDs of business objects are exposed.",
+      "arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "result_schema": {
+        "$defs": {
+          "node": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              "role": {
+                "enum": [
+                  "group",
+                  "button",
+                  "textbox",
+                  "heading",
+                  "text"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 128,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 4096,
+                    "pattern": "^[^\\ud800-\\udfff]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "focused": {
+                "type": "boolean"
+              },
+              "actions": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "activate",
+                    "focus",
+                    "replace_text"
+                  ]
+                }
+              },
+              "children": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "$ref": "#/$defs/node"
+                }
+              },
+              "identity": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "display_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[^\\ud800-\\udfff]*$"
+                  },
+                  "identity_hint": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[^\\ud800-\\udfff]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "display_name",
+                  "identity_hint"
+                ]
+              },
+              "direction": {
+                "enum": [
+                  "incoming",
+                  "outgoing"
+                ]
+              }
+            },
+            "required": [
+              "ref",
+              "role",
+              "label",
+              "value",
+              "enabled",
+              "focused",
+              "actions",
+              "children"
+            ]
+          }
+        },
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "origin": {
+            "const": "control"
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "screen": {
+            "enum": [
+              "chat_list",
+              "search",
+              "conversation"
+            ]
+          },
+          "coverage": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tree": {
+                "enum": [
+                  "complete",
+                  "incomplete"
+                ]
+              },
+              "collection": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "conversations",
+                      "history"
+                    ]
+                  },
+                  "complete": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "complete"
+                ]
+              }
+            },
+            "required": [
+              "tree",
+              "collection"
+            ]
+          },
+          "tree": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "required": [
+          "origin",
+          "scope",
+          "revision",
+          "screen",
+          "coverage",
+          "tree"
+        ]
+      },
+      "effect": "read",
+      "limits": {
+        "max_nodes": 256,
+        "max_depth": 8
+      },
+      "errors": [
+        "invalid_arguments",
+        "stale_locator",
+        "target_unavailable",
+        "disabled",
+        "unsupported_action",
+        "not_focused",
+        "limit_exceeded",
+        "forbidden",
+        "observation_incomplete",
+        "transport_unknown"
+      ],
+      "idempotency": "No automatic retries; repeat focus or identical replacement is a no-op.",
+      "effect_observation": "Fresh ui_observe and protected transition/observation evidence; acknowledgement alone does not prove receipt."
+    },
+    {
+      "name": "ui_action",
+      "schema_version": "1.0",
+      "description": "Act on a current scoped reference: activate, focus, or replace_text on the focused Search textbox. Literal case-sensitive substring search over display name or hint. Back returns to chat_list; open clears query/focus. No Send/composer/scroll.",
+      "arguments_schema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "enum": [
+                  "activate",
+                  "focus"
+                ]
+              },
+              "locator": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[^\\ud800-\\udfff]*$"
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[^\\ud800-\\udfff]*$"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "revision",
+                  "ref"
+                ]
+              }
+            },
+            "required": [
+              "action",
+              "locator"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "replace_text"
+              },
+              "locator": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[^\\ud800-\\udfff]*$"
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[^\\ud800-\\udfff]*$"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "revision",
+                  "ref"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 256,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              }
+            },
+            "required": [
+              "action",
+              "locator",
+              "text"
+            ]
+          }
+        ]
+      },
+      "result_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "committed",
+              "no_effect"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "status",
+          "revision"
+        ]
+      },
+      "effect": "write",
+      "limits": {},
+      "errors": [
+        "invalid_arguments",
+        "stale_locator",
+        "target_unavailable",
+        "disabled",
+        "unsupported_action",
+        "not_focused",
+        "limit_exceeded",
+        "forbidden",
+        "observation_incomplete",
+        "transport_unknown"
+      ],
+      "idempotency": "No automatic retries; repeat focus or identical replacement is a no-op.",
+      "effect_observation": "Fresh ui_observe and protected transition/observation evidence; acknowledgement alone does not prove receipt."
+    }
+  ]
+}

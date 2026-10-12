@@ -48,3 +48,10 @@ and only one minimal alternative, never copied Trial/nested Harbor/new orchestra
 Current E1 uses the native separate verifier. Later tickets are refined from evidence
 within these milestone boundaries. Required real checks cannot be closed by mocks,
 unavailable credentials/Docker or a successful reference in place of Composer.
+
+## WB-17 implementation result
+
+[WB-17 SimsApp navigation](docs/implementation/WB-17-simsapp-navigation-implementation.md):
+**DONE — bounded navigation V1**, with protected Evidence, 5 real model-free Harbor
+controls, 303 fast tests and 37 selected T1 regressions. Send, full T2, NAV/V2 and
+WB-18–WB-22 implementation remain outside this slice.

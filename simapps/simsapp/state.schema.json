@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "conversations": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          },
+          "identity_hint": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "identity_hint"
+        ]
+      }
+    },
+    "messages": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          },
+          "conversation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          },
+          "direction": {
+            "enum": [
+              "incoming",
+              "outgoing"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4096,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "direction",
+          "text"
+        ]
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "screen": {
+          "enum": [
+            "chat_list",
+            "search",
+            "conversation"
+          ]
+        },
+        "active_conversation_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 256,
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "focus": {
+          "enum": [
+            null,
+            "search"
+          ]
+        },
+        "drafts": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4096,
+            "pattern": "^[^\\ud800-\\udfff]*$"
+          }
+        }
+      },
+      "required": [
+        "screen",
+        "active_conversation_id",
+        "query",
+        "focus",
+        "drafts"
+      ]
+    }
+  },
+  "required": [
+    "conversations",
+    "messages",
+    "ui"
+  ]
+}

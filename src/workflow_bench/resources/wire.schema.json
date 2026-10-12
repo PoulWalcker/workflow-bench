@@ -44,7 +44,7 @@
         "profile_hash"
       ]
     },
-    "evidence": {
+    "evidence_v1": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -677,6 +677,307 @@
         "purpose",
         "case_ids",
         "cases"
+      ]
+    },
+    "control_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {
+          "const": "ui_control"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "control_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "case_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "profile": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "profile_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "protocol",
+        "run_id",
+        "control_id",
+        "case_id",
+        "profile",
+        "profile_hash"
+      ]
+    },
+    "evidence_v2": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "2.0"
+        },
+        "identity": {
+          "$ref": "#/$defs/control_identity"
+        },
+        "before": {
+          "$ref": "#/$defs/evidence_v1/properties/before"
+        },
+        "after": {
+          "$ref": "#/$defs/evidence_v1/properties/after"
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 1200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "seq": {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/properties/seq"
+              },
+              "call_id": {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/properties/call_id"
+              },
+              "actor": {
+                "const": "control"
+              },
+              "profile": {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/properties/profile"
+              },
+              "operation": {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/properties/operation"
+              },
+              "arguments": {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/properties/arguments"
+              },
+              "stage": {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/properties/stage"
+              },
+              "details": {
+                "type": "object"
+              },
+              "timestamp": {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/properties/timestamp"
+              }
+            },
+            "required": [
+              "seq",
+              "call_id",
+              "actor",
+              "profile",
+              "operation",
+              "arguments",
+              "stage",
+              "details",
+              "timestamp"
+            ],
+            "allOf": [
+              {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/allOf/0"
+              },
+              {
+                "if": {
+                  "properties": {
+                    "stage": {
+                      "const": "effect"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "committed",
+                            "no_effect",
+                            "unknown"
+                          ]
+                        },
+                        "message_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "evidence_ref": {
+                          "type": "string",
+                          "pattern": "^/"
+                        },
+                        "transition": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "from_revision": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "to_revision": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "changes": {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 256,
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "path": {
+                                    "type": "string",
+                                    "pattern": "^/"
+                                  },
+                                  "before": {},
+                                  "after": {}
+                                },
+                                "required": [
+                                  "path",
+                                  "before",
+                                  "after"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "from_revision",
+                            "to_revision",
+                            "changes"
+                          ]
+                        },
+                        "observation": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "revision": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "screen": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "query": {
+                              "type": "string"
+                            },
+                            "coverage": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "tree": {
+                                  "enum": [
+                                    "complete",
+                                    "incomplete"
+                                  ]
+                                },
+                                "collection": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "conversations",
+                                        "history"
+                                      ]
+                                    },
+                                    "complete": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "complete"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "tree",
+                                "collection"
+                              ]
+                            },
+                            "visible_conversation_ids": {
+                              "type": "array",
+                              "uniqueItems": true,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "pattern": "^[^\\ud800-\\udfff]*$"
+                              }
+                            },
+                            "visible_message_ids": {
+                              "type": "array",
+                              "uniqueItems": true,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "pattern": "^[^\\ud800-\\udfff]*$"
+                              }
+                            }
+                          },
+                          "required": [
+                            "revision",
+                            "screen",
+                            "query",
+                            "coverage",
+                            "visible_conversation_ids",
+                            "visible_message_ids"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "message_id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "$ref": "#/$defs/evidence_v1/properties/events/items/allOf/2"
+              }
+            ]
+          }
+        },
+        "violations": {
+          "$ref": "#/$defs/evidence_v1/properties/violations"
+        },
+        "freeze_status": {
+          "$ref": "#/$defs/evidence_v1/properties/freeze_status"
+        },
+        "pending_call_ids": {
+          "$ref": "#/$defs/evidence_v1/properties/pending_call_ids"
+        }
+      },
+      "required": [
+        "schema_version",
+        "identity",
+        "before",
+        "after",
+        "events",
+        "violations",
+        "freeze_status",
+        "pending_call_ids"
+      ]
+    },
+    "evidence": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/evidence_v1"
+        },
+        {
+          "$ref": "#/$defs/evidence_v2"
+        }
       ]
     }
   }

@@ -20,6 +20,15 @@ Open decisions below do not reopen accepted scope or imply completed implementat
 | input / state / expected | Request parameters available to workflow / simulator world observed through tools / private verifier expectations. A public training state does not expose private states. |
 | Unknown | Insufficient knowledge of value/outcome. Zero means a known zero, not missing measurement. |
 
+WB-17 authorizes a bounded standalone Simulated SimsApp V1 navigation environment
+and model-free controls under the [WB-17 navigation implementation](docs/implementation/WB-17-simsapp-navigation-implementation.md).
+This is a narrow exception to the single-Telegram scope and Sapiens progression
+wording below: T1 stays compatible, E3 remains blocked, and WB-17 does not complete
+T2 or revise release gates. SimsApp owns one business/UI state and offers only
+current UI observations and elementary navigation actions; tools never receive a
+Task target or private expected values. Composer/Send, Cases/scoring, NAV/model
+experiments, UI V2 and native compatibility remain separate WB-18–WB-22 work.
+
 ## 1. Goal and limits of conclusions
 
 Build a small research tool that tests whether AI can explore an environment and

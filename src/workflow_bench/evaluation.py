@@ -1,7 +1,9 @@
 """Evaluate frozen criteria and apply the Task-owned complete-set policy."""
 
 import hashlib
+import re
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,7 +88,85 @@ def read_evidence(
         or any(len(value) != 3 for value in stages.values())
     ):
         raise DataError("incomplete_freeze", "evidence")
+    if document["schema_version"] == "2.0":
+        _validate_control_chain(document)
     return FrozenEvidence(document, hashlib.sha256(content).hexdigest())
+
+
+def _validate_control_chain(document: dict[str, JsonValue]) -> None:
+    state = deepcopy(document["before"]["state"])
+    revision = document["before"]["revision"]
+    known = True
+    admissions = {}
+    for event in document["events"]:
+        details = event["details"]
+        if (
+            event["stage"] == "response"
+            and details["status"] == "unknown"
+            and document["freeze_status"] == "complete"
+        ):
+            raise DataError("incomplete_freeze", "evidence")
+        if event["stage"] == "accepted":
+            admissions[event["call_id"]] = details
+            continue
+        if event["stage"] != "effect":
+            continue
+        transition = details.get("transition")
+        observation = details.get("observation")
+        rejected = admissions[event["call_id"]]["status"] == "rejected"
+        if rejected and (details["status"] != "no_effect" or observation is not None):
+            raise DataError("invalid_transition", "evidence")
+        if details["status"] == "unknown":
+            known = False
+            if document["freeze_status"] == "complete":
+                raise DataError("incomplete_freeze", "evidence")
+        if (details["status"] == "committed") != (transition is not None):
+            raise DataError("invalid_transition", "evidence")
+        if observation is not None:
+            if (
+                details["status"] != "no_effect"
+                or transition is not None
+                or (known and observation["revision"] != revision)
+            ):
+                raise DataError("invalid_observation", "evidence")
+        if transition is None:
+            continue
+        if transition["to_revision"] != transition["from_revision"] + 1 or (
+            known and transition["from_revision"] != revision
+        ):
+            raise DataError("invalid_transition", "evidence")
+        paths = set()
+        for change in transition["changes"]:
+            path = change["path"]
+            if re.search(r"~(?![01])", path) or path in paths:
+                raise DataError("invalid_transition", "evidence")
+            paths.add(path)
+            parent_path, _, encoded_key = path.rpartition("/")
+            parent = resolve_ref(state, parent_path) if parent_path else state
+            key = encoded_key.replace("~1", "/").replace("~0", "~")
+            if isinstance(parent, dict) and key in parent:
+                previous = parent[key]
+            elif (
+                isinstance(parent, list)
+                and key.isdecimal()
+                and str(int(key)) == key
+                and int(key) <= len(parent)
+            ):
+                key = int(key)
+                previous = parent[key] if key < len(parent) else None
+            else:
+                raise DataError("invalid_transition", "evidence")
+            if known and (previous != change["before"] or previous == change["after"]):
+                raise DataError("invalid_transition", "evidence")
+            if isinstance(parent, list) and key == len(parent):
+                parent.append(deepcopy(change["after"]))
+            else:
+                parent[key] = deepcopy(change["after"])
+        revision = transition["to_revision"]
+    if known and (
+        revision != document["after"]["revision"] or state != document["after"]["state"]
+    ):
+        raise DataError("invalid_transition", "evidence")
 
 
 def assemble_evaluation(

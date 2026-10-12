@@ -17,6 +17,8 @@ implementation evidence. Source signatures and packaged schemas define exact sha
 | [CLI](src/workflow_bench/cli.py) | Resolve user paths/config, construct dependencies, logging and cancellation; select submission source. |
 | [Composer integration](src/workflow_bench/composer.py), [MCP transport](src/workflow_bench/mcp.py) | Shared Harbor submission with stock Codex or Sapiens and native usage/lifecycle facts; stdio JSON-RPC over existing HTTP tools. Live ChatGPT integration is verified; API-billed mode remains closed. |
 | [Telegram](simapps/telegram/app.py) | One app-owned state, tool semantics/authorization and protected event history. Current API profile; future UI shares this state. |
+| [SimsApp](simapps/simsapp/app.py) | One application-owned state, bounded current UI projection and elementary navigation transitions. No Task target or business API. |
+| [Simulator transport](src/workflow_bench/simulator.py) | Shared capability/reset/issue/revoke/drain/freeze/journal and separated HTTP listeners; Telegram and SimsApp supply their own state validation and tool semantics. |
 | `tasks/<task>/tests/` | Business checks/expected/rubric; executed by native separate verifier, not imported into host core. |
 | [contracts](src/workflow_bench/contracts.py), [data](src/workflow_bench/data.py), [resources](src/workflow_bench/resources/) | Checked exchange values, strict external JSON and installed schemas/public texts. |
 
@@ -212,7 +214,7 @@ Prepared images expose packaged Python modules through the interpreter’s site 
 so Codex’s filtered MCP subprocess environment does not require `PYTHONPATH`.
 MCP is a thin stdio facade over these operations; MCP/HTTP share authorization/count,
 no write retry and no admin publication. UI-only must reject API at server level,
-even for direct HTTP; that future profile needs its own real control.
+even for direct HTTP; SimsApp navigation has its own real model-free control.
 
 Host-only control: POST reset(identity/state/profile/tool limits), issue(identity/
 actor/TTL/max_calls), revoke(identity), freeze(identity/drain deadline), GET export.
@@ -227,6 +229,14 @@ The wire evidence limit (1200 events) owns the journal bound; after 400 journale
 requests, reject excess traffic without growing events. Protected violation summaries
 retain overflow and unauthorized-send facts. Overflow adds no scoring penalty; the
 existing unauthorized-send criterion also reads its protected summary.
+
+WB-17 model-free controls reuse the existing Harbor sandbox topology, stop and
+protected export responsibilities. `ui_control` identities use `run_id`,
+`control_id`, `case_id`, `profile`, `profile_hash`; resources use `wb-control-`
+scopes. They do not invent artifact/Attempt/Replay IDs or execute a native workflow.
+A scripted UI caller runs in the existing isolated sandbox; cancellation uses the
+existing writer-stop callback before host exec teardown. No online agent harness
+or second lifecycle is introduced.
 
 ## 5. Evidence and Evaluation interfaces
 
@@ -268,6 +278,15 @@ experiment's score; host recomputes aggregate and compares parsed reward.
 Future Judge receives minimum facts/rubric without execution authority; response
 validation and repeated assessment use saved facts, never another business Replay.
 Suitability and failure rules belong to [SPEC §8](SPEC.md#8-evaluation-and-cost).
+
+Wire Evidence v1 remains the unchanged native T1 branch. Version 2.0 currently
+supports only tagged `ui_control` identity and actor=`control`; it reuses the
+before/after/event/freeze envelope and adds protected observation facts and
+revision-linked transition deltas. `read_evidence` independently validates stage
+ordering, references and the delta chain from before to after; unknown/pending
+facts cannot fabricate a complete freeze. App payload semantics stay in app/control
+checks, and no second state/journal or score calculation is stored. The current
+SimsApp profile preserves drafts but exposes no composer/Send, pagination or scroll.
 
 ## 6. Experiment/configuration interfaces
 

@@ -24,6 +24,7 @@ from harbor.trial.hooks import TrialEvent, TrialHookEvent
 from harbor.trial.trial import Trial
 
 from workflow_bench.contracts import (
+    CONTROL_PROJECT_PREFIX,
     PROFILE_PROJECT_PREFIX,
     REPLAY_PROJECT_PREFIX,
     SUBMISSION_TRIAL_PREFIX,
@@ -640,7 +641,11 @@ async def replay_environment(
     simulator_only: bool = False,
 ) -> AsyncIterator[ReplayContext]:
     lifecycle = lifecycle if lifecycle is not None else LifecycleFacts()
-    project = REPLAY_PROJECT_PREFIX + identity["replay_id"]
+    if identity.get("protocol") == "ui_control":
+        validate_contract("control_identity", identity)
+        project = CONTROL_PROJECT_PREFIX + identity["control_id"]
+    else:
+        project = REPLAY_PROJECT_PREFIX + identity["replay_id"]
     root = config.output_root / project
     root.mkdir(mode=0o700)
     environment_dir = root / "environment"
