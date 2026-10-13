@@ -228,3 +228,6 @@ credentials/
 !.env.example
 .DS_Store
 .codegraph/
+.codex
+/CLAUDE.local.md
+/AGENTS.override.md
