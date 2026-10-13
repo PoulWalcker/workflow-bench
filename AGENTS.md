@@ -148,3 +148,19 @@ Skill revision provenance for the original design is in the
 [WB-03 ticket](docs/implementation/WB-03-component-boundaries.md#design-skill-provenance).
 Project TDD permits local refactoring after green; Interface/Seam is not a synonym
 for the product's API/UI or trust boundary. A single runtime still requires its trust seam.
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown in the private `.codex/tasks/<milestone>/` workspace, when present. See
+[docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Default role names, used as ticket `Status:` values. See
+[docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Deferred to milestone M0: no `GLOSSARY.md` or `docs/adr/` yet; SPEC owns terms until then.
