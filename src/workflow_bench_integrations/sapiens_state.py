@@ -1,4 +1,7 @@
-"""Bounded Sapiens chronology export for Harbor's agent log collection."""
+"""Bounded Sapiens chronology export with exact injected-secret masking.
+
+Pattern masking is best-effort; inspect transcripts before sharing them.
+"""
 
 import json
 import os
@@ -40,6 +43,7 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
     in SQLite. This exports only the fields needed for an offline transcript.
     It never copies the database, WAL, workspaces, notes or credential files.
     """
+    secrets = _secret_values()
     database = source / "corpora.sqlite3"
     if database.is_symlink() or not database.is_file():
         raise ValueError("sapiens_state_unavailable")
@@ -54,7 +58,7 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
         ).fetchall()
         truncated["agents"] = len(agent_rows) > _MAX_AGENTS
         agents = [
-            {key: _text(row[key]) for key in ("id", "name", "role")}
+            {key: _text(row[key], secrets) for key in ("id", "name", "role")}
             for row in agent_rows[:_MAX_AGENTS]
         ]
         turn_rows = connection.execute(
@@ -65,7 +69,7 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
         truncated["turns"] = len(turn_rows) > _MAX_TURNS
         turns = [
             {
-                key: _text(row[key])
+                key: _text(row[key], secrets)
                 for key in ("id", "agent", "input", "output", "status", "created")
             }
             for row in turn_rows[:_MAX_TURNS]
@@ -101,6 +105,7 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
                                 "request",
                                 "output",
                             ),
+                            secrets,
                         )
                         for call in calls[:_MAX_CALLS]
                         if isinstance(call, dict)
@@ -108,7 +113,7 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
                     if isinstance(calls, list)
                     else [],
                     "decisions": [
-                        _decision(decision)
+                        _decision(decision, secrets)
                         for decision in decisions[:_MAX_DECISIONS]
                         if isinstance(decision, dict)
                     ]
@@ -130,12 +135,16 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
         stream.write(encoded)
 
 
-def _select(source: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
-    return {key: _text(source[key]) for key in keys if key in source}
+def _select(
+    source: dict[str, object], keys: tuple[str, ...], secrets: tuple[str, ...]
+) -> dict[str, object]:
+    return {key: _text(source[key], secrets) for key in keys if key in source}
 
 
-def _decision(source: dict[str, object]) -> dict[str, object]:
-    selected = _select(source, ("agent", "node", "callId", "created", "accepted"))
+def _decision(source: dict[str, object], secrets: tuple[str, ...]) -> dict[str, object]:
+    selected = _select(
+        source, ("agent", "node", "callId", "created", "accepted"), secrets
+    )
     response = source.get("response")
     if isinstance(response, dict):
         selected["response"] = _select(
@@ -150,23 +159,54 @@ def _decision(source: dict[str, object]) -> dict[str, object]:
                 "role",
                 "request",
             ),
+            secrets,
         )
     transition = source.get("transition")
     if isinstance(transition, dict):
         selected["transition"] = _select(
-            transition, ("before", "event", "after", "nextNode")
+            transition, ("before", "event", "after", "nextNode"), secrets
         )
     return selected
 
 
-def _text(value: object) -> object:
+def _text(value: object, secrets: tuple[str, ...]) -> object:
     if isinstance(value, str):
+        for secret in secrets:
+            value = value.replace(secret, "[REDACTED]")
         return _SECRET.sub("[REDACTED]", value[:_MAX_TEXT])
     if isinstance(value, list):
-        return [_text(item) for item in value[:32] if isinstance(item, str)]
+        return [_text(item, secrets) for item in value[:32] if isinstance(item, str)]
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return "[unsupported]"
+
+
+def _secret_values() -> tuple[str, ...]:
+    """Read injected values from the run's private Codex auth source."""
+    values = set()
+    home = os.environ.get("CODEX_HOME")
+    if not home:
+        raise ValueError("auth_source_unavailable")
+    try:
+        with (Path(home) / "auth.json").open("rb") as stream:
+            content = stream.read(1024 * 1024 + 1)
+        if len(content) > 1024 * 1024:
+            raise ValueError("auth_source_unavailable")
+        pending = [json.loads(content)]
+        while pending:
+            item = pending.pop()
+            if isinstance(item, dict):
+                pending.extend(item.values())
+            elif isinstance(item, list):
+                pending.extend(item)
+            elif isinstance(item, str) and len(item) >= 16:
+                values.add(item)
+    except (OSError, ValueError, RecursionError):
+        raise ValueError("auth_source_unavailable") from None
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if api_key:
+        values.add(api_key)
+    return tuple(sorted(values, key=len, reverse=True))
 
 
 if __name__ == "__main__":

@@ -4,12 +4,19 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from workflow_bench_integrations.sapiens_state import write_state_snapshot
 
 
 def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text("{}")
+    monkeypatch.setenv("CODEX_HOME", str(home))
     source = tmp_path / "data"
     source.mkdir()
     database = source / "corpora.sqlite3"
@@ -131,7 +138,12 @@ def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
 
 def test_state_snapshot_marks_capped_decisions(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text("{}")
+    monkeypatch.setenv("CODEX_HOME", str(home))
     source = tmp_path / "data"
     source.mkdir()
     with sqlite3.connect(source / "corpora.sqlite3") as connection:
@@ -150,3 +162,68 @@ def test_state_snapshot_marks_capped_decisions(
     snapshot = json.loads(destination.read_text())
     assert len(snapshot["workloads"][0]["decisions"]) == 64
     assert snapshot["truncated"]["decisions"] is True
+
+
+def test_state_snapshot_masks_injected_values_in_selected_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "data"
+    source.mkdir()
+    home = tmp_path / "codex"
+    home.mkdir()
+    auth_value = "DUMMY_UNLABELLED_AUTH_VALUE_123456"
+    nested_value = "DUMMY_NESTED_AUTH_VALUE_123456"
+    api_key = "DUMMY_ENV_API_VALUE_123456"
+    (home / "auth.json").write_text(
+        json.dumps({"auth": {"access": auth_value, "nested": [nested_value]}})
+    )
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    monkeypatch.setenv("OPENAI_API_KEY", api_key)
+    with sqlite3.connect(source / "corpora.sqlite3") as connection:
+        connection.executescript(
+            "CREATE TABLE agents (id TEXT, name TEXT, role TEXT, created TEXT);"
+            "CREATE TABLE turns (id TEXT, agent TEXT, input TEXT, output TEXT, "
+            "status TEXT, created TEXT);"
+            "CREATE TABLE workloads (value TEXT);"
+        )
+        connection.execute(
+            "INSERT INTO turns VALUES (?,?,?,?,?,?)",
+            (
+                "turn1",
+                "chief",
+                f"bare {auth_value}; URL https://example.test/{nested_value}",
+                f'JSON {{"value":"{api_key}"}}',
+                "done",
+                "2026-01-01T00:00:00Z",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO workloads VALUES (?)",
+            (
+                json.dumps(
+                    {
+                        "calls": [{"request": auth_value, "output": nested_value}],
+                        "decisions": [
+                            {"response": {"reason": api_key, "reply": nested_value}}
+                        ],
+                    }
+                ),
+            ),
+        )
+    destination = tmp_path / "sapiens-state.json"
+    write_state_snapshot(source, destination)
+    output = destination.read_text()
+    assert all(value not in output for value in (auth_value, nested_value, api_key))
+    assert "[REDACTED]" in output
+
+
+def test_state_snapshot_requires_readable_injected_auth_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    destination = tmp_path / "sapiens-state.json"
+    with pytest.raises(ValueError, match="auth_source_unavailable"):
+        write_state_snapshot(tmp_path, destination)
+    assert not destination.exists()

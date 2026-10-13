@@ -320,6 +320,128 @@ def test_transcript_redacts_common_secrets_and_invalid_session_counters(
         assert secret not in output
 
 
+def test_transcript_masks_injected_values_across_saved_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    auth_value = "DUMMY_UNLABELLED_AUTH_VALUE_123456"
+    nested_value = "DUMMY_NESTED_AUTH_VALUE_123456"
+    api_key = "DUMMY_ENV_API_VALUE_123456"
+    auth = tmp_path / "auth.json"
+    auth.write_text(
+        json.dumps({"auth": {"access": auth_value, "nested": [nested_value]}})
+    )
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth))
+    monkeypatch.setenv("OPENAI_API_KEY", api_key)
+    job = _job(tmp_path, "private-job")
+    _trial(job, "codex", criteria=_criteria("pass"))
+    _session(
+        job / "codex" / "agent",
+        "rollout.jsonl",
+        [
+            _message("2026-01-01T00:00:00Z", "user", f"bare {auth_value}"),
+            {
+                "timestamp": "2026-01-01T00:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call_output",
+                    "call_id": "one",
+                    "output": f'{{"url":"https://example.test/{nested_value}"}}',
+                },
+            },
+            _message("2026-01-01T00:00:02Z", "assistant", f"Done {api_key}"),
+        ],
+    )
+    _trial(job, "sapiens", criteria=_criteria("pass"), harness="sapiens")
+    agent = job / "sapiens" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [{"id": "chief", "name": "Chief", "role": "admin"}],
+                "turns": [
+                    {
+                        "id": "one",
+                        "agent": "chief",
+                        "input": f"bare {nested_value}",
+                        "output": f'{{"value":"{auth_value}"}}',
+                        "status": "done",
+                        "created": "2026-01-01T00:00:00Z",
+                    }
+                ],
+                "workloads": [
+                    {
+                        "calls": [{"request": auth_value, "output": api_key}],
+                        "decisions": [
+                            {
+                                "agent": "chief",
+                                "node": "Assessing",
+                                "created": "2026-01-01T00:00:01Z",
+                                "response": {
+                                    "event": "Completed",
+                                    "reason": nested_value,
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert all(value not in output for value in (auth_value, nested_value, api_key))
+    assert "[REDACTED]" in output
+
+
+def test_transcript_marks_unavailable_exact_masking_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+    monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    job = _job(tmp_path, "offline-job")
+    _trial(job, "offline", criteria=_criteria("pass"))
+    assert main(["compare", "--transcript", str(job)]) == 0
+    assert "[missing: exact-value masking source]" in capsys.readouterr().out
+
+
+def test_transcript_resolves_saved_agent_auth_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    secret = "DUMMY_SAVED_AUTH_VALUE_123456"
+    api_key = "DUMMY_SAVED_API_VALUE_123456"
+    auth = tmp_path / "auth.json"
+    auth.write_text(json.dumps({"nested": [{"value": secret}]}))
+    job = _job(tmp_path, "saved-source-job")
+    config_path = job / "config.json"
+    config = json.loads(config_path.read_text())
+    config["agents"] = [
+        {
+            "name": "codex",
+            "env": {"CODEX_AUTH_JSON_PATH": str(auth), "OPENAI_API_KEY": api_key},
+        }
+    ]
+    config_path.write_text(json.dumps(config))
+    _trial(job, "saved-source", criteria=_criteria("pass"))
+    _session(
+        job / "saved-source" / "agent",
+        "rollout.jsonl",
+        [_message("2026-01-01T00:00:00Z", "user", f"{secret} {api_key}")],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert secret not in output and api_key not in output
+    assert "[missing: exact-value masking source]" not in output
+
+
 def test_transcript_marks_mixed_timestamp_styles_missing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

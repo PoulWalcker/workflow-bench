@@ -187,13 +187,18 @@ phase timing, the same outcome class as the report, verifier criteria, token cou
 artifact status and paths to diagnostic files.
 `--transcript` prints a read-only Markdown conversation for each saved Trial: the
 task, Sapiens decision nodes or Codex messages, tool calls and results, time and
-tokens when recorded, and the verifier result. Sapiens captures a bounded,
-credential-filtered state snapshot in its Harbor agent log for speaker names,
+tokens when recorded, and the verifier result. Sapiens captures a bounded
+state snapshot in its Harbor agent log for speaker names,
 delegations and transitions. Older Trials without that snapshot show missing-data
 markers. Node prompts show a short excerpt by default; add `--full-prompts` to
-show their full text. The transcript redacts recognized credential and account-ID
-patterns, so review it before sharing when task or tool text may contain other
-sensitive material.
+show their full text. State export and transcript rendering mask every occurrence
+of each string value of at least 16 characters in the run's `auth.json`, plus
+`OPENAI_API_KEY` when set. Export reads `$CODEX_HOME/auth.json` in the container;
+offline rendering resolves the host source used by the adapter from the saved
+agent configuration and current host environment. If that source is unavailable,
+the transcript marks exact-value masking as unavailable. Additional pattern
+masking for credential and account-ID forms is best-effort. Check transcripts
+before sharing them.
 
 ## Navigation
 

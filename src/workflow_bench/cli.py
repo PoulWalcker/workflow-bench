@@ -65,7 +65,7 @@ def _check_task(arguments: argparse.Namespace) -> int:
 
 
 def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> int:
-    if arguments.full_prompts and not arguments.transcript:
+    if arguments.should_show_full_prompts and not arguments.is_transcript_requested:
         parser.error("--full-prompts requires --transcript")
     job_dirs = [path.resolve() for path in arguments.job_dirs]
     if len(set(job_dirs)) != len(job_dirs):
@@ -74,12 +74,13 @@ def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         report = compare(job_dirs)
     except DataError as error:
         parser.error(f"not a Harbor job directory: {error.relative_path}")
-    if arguments.transcript:
+    if arguments.is_transcript_requested:
         if arguments.format != "json":
             parser.error("--transcript cannot be combined with --format")
         sys.stdout.write(
             render_transcripts(
-                summarize(job_dirs, report), full_prompts=arguments.full_prompts
+                summarize(job_dirs, report),
+                should_show_full_prompts=arguments.should_show_full_prompts,
             )
         )
     elif arguments.format == "markdown":
@@ -155,11 +156,13 @@ def _parser() -> argparse.ArgumentParser:
     compare_command.add_argument(
         "--transcript",
         action="store_true",
+        dest="is_transcript_requested",
         help="Print read-only Markdown conversations for saved Trials.",
     )
     compare_command.add_argument(
         "--full-prompts",
         action="store_true",
+        dest="should_show_full_prompts",
         help="Show full Sapiens node prompts in a transcript.",
     )
     preflight = commands.add_parser(
