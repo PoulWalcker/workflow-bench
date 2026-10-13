@@ -1,5 +1,8 @@
 """Assess the collected basket answer against the private expectation."""
 
+import sys
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from workflow_bench.contracts import Criterion, JsonValue
@@ -13,7 +16,8 @@ FIELDS = ("item_count", "total_cents")
 
 
 def main() -> None:
-    """Write the private basket criteria and derived evaluation for Harbor."""
+    """Write the basket evaluation for Harbor and print a short safe summary."""
+    started = time.monotonic()
     expected = read_json(EXPECTED_PATH, "expected")
     if not isinstance(expected, dict):
         raise DataError("invalid_expected", "expected")
@@ -27,7 +31,12 @@ def main() -> None:
     ]
     for field in FIELDS:
         criteria.append(_field_criterion(field, answer, expected[field]))
-    write_evaluation(VERIFIER_DIR, criteria)
+    evaluation = write_evaluation(VERIFIER_DIR, criteria)
+    timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    sys.stdout.write(
+        f"at={timestamp} phase=verifier result={evaluation['verdict']} "
+        f"duration={time.monotonic() - started:.3f}s criteria={len(criteria)}\n"
+    )
 
 
 def _read_answer() -> tuple[dict[str, JsonValue] | None, str]:

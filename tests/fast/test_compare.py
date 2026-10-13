@@ -150,6 +150,48 @@ def _compare(
     return status, json.loads(capsys.readouterr().out)
 
 
+def test_summary_reads_trial_facts_and_reuses_report_outcomes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "job-a")
+    _trial(job, "a-pass", criteria=_criteria("pass"), tokens=(120, 20, 8))
+    _trial(job, "b-fail", criteria=_criteria("fail"))
+    _trial(job, "c-unknown", criteria=_criteria("unknown"))
+    _trial(job, "d-infra", criteria=_criteria("fail"), artifacts_status="failed")
+
+    _, report = _compare([job], capsys)
+    status = main(["compare", "--format", "summary", str(job)])
+    summary = json.loads(capsys.readouterr().out)
+
+    assert status == 0
+    reported = {
+        trial["trial"]: trial for pair in report["pairs"] for trial in pair["trials"]
+    }
+    assert {trial["trial"]: trial["outcome"] for trial in summary["trials"]} == {
+        trial: outcome["outcome"] for trial, outcome in reported.items()
+    }
+    passed = summary["trials"][0]
+    assert passed["phases"]["agent_execution"] == {
+        "started_at": "2026-01-01T00:00:00Z",
+        "duration_seconds": 10.0,
+        "status": "finished",
+    }
+    assert passed["evaluation"]["verdict"] == "pass"
+    assert passed["evaluation"]["criteria"] == _criteria("pass")
+    assert passed["tokens"] == {"input": 120, "cached": 20, "output": 8}
+    assert passed["artifact_manifest"]["status"] == "ok"
+    assert passed["artifact_manifest"]["entries"] == [
+        {"destination": "artifacts/work/output", "status": "ok"}
+    ]
+    assert passed["errors"] == []
+    assert passed["paths"]["result"] == str(job / "a-pass" / "result.json")
+    assert passed["paths"]["evaluation"] == str(
+        job / "a-pass" / "verifier" / "evaluation.json"
+    )
+    assert summary["trials"][3]["artifact_manifest"]["status"] == "failed"
+    assert summary["trials"][3]["errors"] == ["artifacts_failed"]
+
+
 def _trial_outcome(
     trial: str, outcome: str, reason: str | None = None, exception: str | None = None
 ) -> dict[str, str | None]:

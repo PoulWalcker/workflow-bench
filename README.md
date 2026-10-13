@@ -66,7 +66,7 @@ needs Docker and the `agents` image, but no model or credentials; the native Har
 jobs of the controls stay under `--jobs-dir`.
 
 ```sh
-uv run --locked wb check-task tasks/l1-basket-total --jobs-dir runs/readiness
+uv run --locked wb check-task tasks/l1-basket-total --jobs-dir "$PWD/runs/readiness"
 uv run --locked pytest -q --run-integration tests/integration
 ```
 
@@ -79,13 +79,15 @@ or its helper is stale.
 
 [The native job example](examples/codex/job.yaml) runs the trivial task using
 `SessionSafeCodex` and `DeadlineDockerEnvironment`, with one attempt and no retry.
+Its absolute `jobs_dir` is `/tmp/workflow-bench-codex`, so Harbor's artifact copy
+uses the intended host directory regardless of the task's working directory.
 It explicitly disables ambient authentication and points Codex at an unused
 loopback port inside the container. These commands use Docker, with no credentials
 or model calls:
 
 ```sh
 uv run --locked harbor run -c examples/codex/job.yaml
-uv run --locked wb compare runs/codex/codex-empty-provider
+uv run --locked wb compare /tmp/workflow-bench-codex/codex-empty-provider
 uv run --locked pytest -q --run-integration tests/integration/test_codex_direct.py
 uv run --locked wb preflight --help
 ```
@@ -124,14 +126,17 @@ Reporting reads saved Harbor job directories offline and needs no Docker, model 
 credentials. Each argument is one job directory, `<jobs-dir>/<job-name>`.
 
 ```sh
-uv run --locked wb compare runs/readiness/check-*
-uv run --locked wb compare --format markdown runs/readiness/check-*
+uv run --locked wb compare "$PWD"/runs/readiness/check-*
+uv run --locked wb compare --format markdown "$PWD"/runs/readiness/check-*
+uv run --locked wb compare --format summary /tmp/workflow-bench-codex/codex-empty-provider
 ```
 
 The first command prints a JSON report and exits 0: one outcome per Trial and, per
 task and configuration, counts, pass rate and medians. With the readiness controls
 above it shows `oracle` with pass rate 1.0 and `nop` with 0.0. A directory that is not
-a Harbor job exits 2.
+a Harbor job exits 2. `--format summary` prints one JSON record per Trial with native
+phase timing, the same outcome class as the report, verifier criteria, token counts,
+artifact status and paths to diagnostic files.
 
 ## Navigation
 

@@ -5,6 +5,7 @@ import logging
 import re
 import shlex
 import time
+from datetime import UTC, datetime
 from typing import TypedDict, cast, override
 
 from harbor.agents.capabilities import AgentCapabilities
@@ -14,6 +15,7 @@ from harbor.models.agent.context import AgentContext
 from workflow_bench.composer import SessionSafeCodex
 from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
+from workflow_bench.observability import format_phase_line
 
 LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +62,29 @@ class SapiensInstalledAgent(SessionSafeCodex):
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
         """Submit one instruction to a fresh Sapiens host and await its completion."""
+        started = time.monotonic()
+        phase_result = "failed"
+        try:
+            await self._run_sapiens(instruction, environment, context)
+            phase_result = "completed"
+        except asyncio.CancelledError:
+            phase_result = "cancelled"
+            raise
+        finally:
+            self.logger.info(
+                format_phase_line(
+                    "agent_run",
+                    phase_result,
+                    time.monotonic() - started,
+                    datetime.now(UTC),
+                    trial=self.logs_dir.parent.name,
+                )
+            )
+
+    async def _run_sapiens(
+        self, instruction: str, environment: BaseEnvironment, context: AgentContext
+    ) -> None:
+        """Submit once to the host and await the Chief turn's terminal state."""
         if self.model_name is None:
             raise RuntimeError("sapiens_model_required")
         home = self._REMOTE_CODEX_HOME.as_posix()

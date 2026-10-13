@@ -5,13 +5,14 @@ import statistics
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
 from harbor.models.job.config import JobConfig
 from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.trial.artifact_manifest import ArtifactManifest
-from harbor.models.trial.result import TrialResult
+from harbor.models.trial.result import TimingInfo, TrialResult
 
 from workflow_bench.contracts import Evaluation
 from workflow_bench.data import DataError, read_bytes, read_json, validate_contract
@@ -115,6 +116,51 @@ class ComparisonReport(TypedDict):
     incomplete_trials: list[IncompleteTrial]
 
 
+class PhaseSummary(TypedDict):
+    """A native phase's UTC start, elapsed seconds and observed timing state."""
+
+    started_at: str | None
+    duration_seconds: float | None
+    status: Literal["not_started", "started", "finished"]
+
+
+class ManifestEntrySummary(TypedDict):
+    """One collected destination and Harbor's recorded collection status."""
+
+    destination: str
+    status: str
+
+
+class ManifestSummary(TypedDict):
+    """Manifest validity and collection states without artifact contents."""
+
+    status: Literal["missing", "invalid", "failed", "ok"]
+    entries: list[ManifestEntrySummary]
+
+
+class TrialSummary(TypedDict):
+    """Diagnostic facts for one Trial, with its existing report outcome."""
+
+    job: str
+    trial: str
+    outcome: Outcome
+    reason: str | None
+    exception: str | None
+    phases: dict[str, PhaseSummary]
+    evaluation: Evaluation | None
+    errors: list[str]
+    tokens: dict[str, int | None]
+    artifact_manifest: ManifestSummary
+    paths: dict[str, str]
+
+
+class SummaryReport(TypedDict):
+    """Per-Trial diagnostics and incomplete Trials from the same comparison."""
+
+    trials: list[TrialSummary]
+    incomplete_trials: list[IncompleteTrial]
+
+
 @dataclass(frozen=True)
 class _Trial:
     task: str
@@ -175,6 +221,28 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
     return {"pairs": pairs, "incomplete_trials": incomplete}
 
 
+def summarize(job_dirs: Sequence[Path], report: ComparisonReport) -> SummaryReport:
+    """Return native Trial diagnostics using classifications from ``report``.
+
+    The caller supplies the report from ``compare`` over the same saved jobs.
+    This mode reads files but never writes or evaluates a Trial.
+    """
+    outcomes = {
+        (trial["job"], trial["trial"]): trial
+        for pair in report["pairs"]
+        for trial in pair["trials"]
+    }
+    summaries = []
+    for job_dir in job_dirs:
+        for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
+            outcome = outcomes.get((job_dir.name, trial_dir.name))
+            if outcome is None:
+                continue
+            result = _read_result(trial_dir)
+            summaries.append(_summarize_trial(trial_dir, outcome, result))
+    return {"trials": summaries, "incomplete_trials": report["incomplete_trials"]}
+
+
 def render_markdown(report: ComparisonReport) -> str:
     """Return the report as Markdown: one task table per configuration.
 
@@ -216,6 +284,79 @@ def read_evaluation(path: Path) -> Evaluation:
     document = read_json(path, "evaluation")
     validate_contract("evaluation", document)
     return cast(Evaluation, document)
+
+
+def _summarize_trial(
+    trial_dir: Path, outcome: TrialOutcome, result: TrialResult
+) -> TrialSummary:
+    evaluation_path = trial_dir / "verifier" / "evaluation.json"
+    try:
+        evaluation = read_evaluation(evaluation_path)
+    except (OSError, DataError):
+        evaluation = None
+    usage = result.agent_result
+    paths = {
+        "result": str(trial_dir / "result.json"),
+        "evaluation": str(evaluation_path),
+        "reward": str(trial_dir / "verifier" / "reward.json"),
+        "artifact_manifest": str(trial_dir / "artifacts" / "manifest.json"),
+        "trial_log": str(trial_dir / "trial.log"),
+        "verifier_stdout": str(trial_dir / "verifier" / "test-stdout.txt"),
+        "agent_logs": str(trial_dir / "agent"),
+    }
+    return {
+        **outcome,
+        "phases": {
+            "environment_setup": _phase_summary(result.environment_setup),
+            "agent_setup": _phase_summary(result.agent_setup),
+            "agent_execution": _phase_summary(result.agent_execution),
+            "verifier": _phase_summary(result.verifier),
+        },
+        "evaluation": evaluation,
+        "errors": ([outcome["reason"]] if outcome["reason"] is not None else [])
+        + ([] if evaluation is None else evaluation["errors"]),
+        "tokens": {
+            "input": None if usage is None else usage.n_input_tokens,
+            "cached": None if usage is None else usage.n_cache_tokens,
+            "output": None if usage is None else usage.n_output_tokens,
+        },
+        "artifact_manifest": _manifest_summary(trial_dir),
+        "paths": paths,
+    }
+
+
+def _phase_summary(timing: TimingInfo | None) -> PhaseSummary:
+    """Describe recorded timing; ``finished`` does not imply phase success."""
+    if timing is None or timing.started_at is None:
+        return {"started_at": None, "duration_seconds": None, "status": "not_started"}
+    started = timing.started_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if timing.finished_at is None:
+        return {"started_at": started, "duration_seconds": None, "status": "started"}
+    duration = (timing.finished_at - timing.started_at).total_seconds()
+    return {"started_at": started, "duration_seconds": duration, "status": "finished"}
+
+
+def _manifest_summary(trial_dir: Path) -> ManifestSummary:
+    """Report validity and native entry statuses without changing classification."""
+    path = trial_dir / "artifacts" / "manifest.json"
+    if not path.exists():
+        return {"status": "missing", "entries": []}
+    try:
+        manifest = ArtifactManifest.model_validate(
+            {"entries": read_json(path, "manifest")}
+        )
+    except (OSError, ValueError):
+        return {"status": "invalid", "entries": []}
+    entries: list[ManifestEntrySummary] = [
+        {"destination": entry.destination, "status": entry.status}
+        for entry in manifest.entries
+    ]
+    status = (
+        "failed"
+        if any(entry.status == "failed" for entry in manifest.entries)
+        else "ok"
+    )
+    return {"status": status, "entries": entries}
 
 
 def _check_job_dir(job_dir: Path) -> None:

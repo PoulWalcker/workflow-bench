@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TypedDict, override
@@ -29,6 +30,7 @@ from workflow_bench.data import (
     read_json,
 )
 from workflow_bench.harbor import DeadlineDockerEnvironment
+from workflow_bench.observability import format_phase_line
 
 MAX_SESSION_ENTRIES = 256
 MAX_SESSION_DEPTH = 8
@@ -169,9 +171,13 @@ class SessionSafeCodex(Codex):
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
         """Run native Codex, recovering bounded session logs after container stop."""
+        started = time.monotonic()
+        phase_result = "failed"
         try:
             await super().run(instruction, environment, context)
+            phase_result = "completed"
         except asyncio.CancelledError:
+            phase_result = "cancelled"
             # Native Codex's finally uses exec, unavailable after confirmed stop.
             # Bound the stopped container's archive before materializing any files.
             try:
@@ -196,6 +202,16 @@ class SessionSafeCodex(Codex):
             except (OSError, RuntimeError, TimeoutError, DataError, tarfile.TarError):
                 self.logger.warning("phase=agent session_recovery=unavailable")
             raise
+        finally:
+            self.logger.info(
+                format_phase_line(
+                    "agent_run",
+                    phase_result,
+                    time.monotonic() - started,
+                    datetime.now(UTC),
+                    trial=self.logs_dir.parent.name,
+                )
+            )
 
     @override
     def convert_trajectory(self, logs_dir: Path) -> Trajectory | None:
