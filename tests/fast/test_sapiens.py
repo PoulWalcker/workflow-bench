@@ -172,6 +172,41 @@ def test_sapiens_usage_sums_last_cumulative_event_of_every_session(
     }
 
 
+def test_sapiens_usage_rejects_invalid_counters_within_one_session(
+    tmp_path: Path,
+) -> None:
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    for name, input_tokens, cached_tokens in (
+        ("chief.jsonl", 1, 2),
+        ("specialist.jsonl", 9, 0),
+    ):
+        (sessions / name).write_text(
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {
+                                "input_tokens": input_tokens,
+                                "cached_input_tokens": cached_tokens,
+                                "output_tokens": 0,
+                            }
+                        },
+                    },
+                }
+            )
+            + "\n"
+        )
+    assert collect_sapiens_usage(tmp_path) == {
+        "input_tokens": None,
+        "cached_input_tokens": None,
+        "output_tokens": None,
+        "session_count": 2,
+    }
+
+
 @pytest.mark.parametrize("content,count", [("{broken\n", None), ("{}\n", 1)])
 def test_malformed_or_unmeasured_session_keeps_tokens_unknown(
     tmp_path: Path, content: str, count: int | None

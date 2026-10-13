@@ -363,13 +363,16 @@ def collect_sapiens_usage(logs: Path) -> SapiensUsage:
             last = candidate if isinstance(candidate, dict) else None
         if last is None:
             return unknown
+        session_totals: dict[str, int] = {}
         for name in totals:
             count = last.get(name)
             if not isinstance(count, int) or isinstance(count, bool) or count < 0:
                 return unknown
-            totals[name] += count
-    if totals["cached_input_tokens"] > totals["input_tokens"]:
-        return unknown
+            session_totals[name] = count
+        if session_totals["cached_input_tokens"] > session_totals["input_tokens"]:
+            return unknown
+        for name in totals:
+            totals[name] += session_totals[name]
     return {
         "input_tokens": totals["input_tokens"],
         "cached_input_tokens": totals["cached_input_tokens"],
