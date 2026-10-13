@@ -103,7 +103,8 @@ where a retained interface supports alternatives. Resolve user paths once at ent
 |---|---|
 | Task selection, output location, trial count, concurrency, agent selection | Native Harbor CLI/job configuration; record Harbor's resolved configuration. No Workflow Bench wrapper defaults. |
 | Task images, resources, network, timeouts, MCP servers and collected outputs | Native task/Compose configuration, resolved with explicit Harbor job overrides. No runtime-helper object automatically overrides these. |
-| Model, reasoning effort, Codex CLI version and effective config | Native Harbor agent configuration/options inherited by `SessionSafeCodex` and Sapiens. Sapiens derives its model/reasoning env from those values. |
+| Model, Codex CLI version and effective config | Native Harbor agent configuration/options inherited by `SessionSafeCodex` and Sapiens. Sapiens derives its model env from the native model selection. |
+| Reasoning effort | Sapiens requires `model_reasoning_effort` in native Harbor agent `config` (TOML file or inline mapping), copied to `SAPIENS_CODEX_REASONING_EFFORT`; a missing key raises `KeyError` before submission. `SessionSafeCodex` supports native Codex config and the separate `reasoning_effort` option; that option does not replace Sapiens' required config key. |
 | Native subscription credential file | Harbor's `CODEX_AUTH_JSON_PATH`; the inherited resolver also supports `CODEX_FORCE_AUTH_JSON` for the native home file. Use an explicit authorized path for benchmark execution. |
 | Native API authentication | Harbor's provider environment; Sapiens uses `OPENAI_API_KEY` only when no auth file resolves. This fallback does not authorize API-billed measurement. |
 | Preflight mode, image digest, CLI version, model, reasoning, exploration limit and authentication | Required caller-supplied `composer` mapping to `codex_preflight`; it validates a declaration, not the installed image or provider enforcement. |
