@@ -2,13 +2,20 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, cast, override
 
 from harbor.constants import MAIN_SERVICE_NAME
 from harbor.environments.base import BaseEnvironment, ExecResult, OutputCallback
-from harbor.environments.docker.docker import DockerEnvironment
+from harbor.environments.docker.docker import (
+    DockerEnvironment,
+    _sanitize_docker_compose_project_name,
+)
+
+from workflow_bench.observability import format_phase_line
 
 LOGGER = logging.getLogger(__name__)
 
@@ -24,15 +31,71 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         self._is_stopping_writer = False
 
     @override
+    async def start(self, force_build: bool) -> None:
+        """Start the native environment and log its observed phase result."""
+        started = time.monotonic()
+        phase_result = "failed"
+        try:
+            await super().start(force_build=force_build)
+            phase_result = "completed"
+        finally:
+            self.logger.info(
+                format_phase_line(
+                    "environment_start",
+                    phase_result,
+                    time.monotonic() - started,
+                    datetime.now(UTC),
+                    trial=self.trial_paths.trial_dir.name,
+                )
+            )
+
+    @override
     async def stop(self, delete: bool) -> None:
-        """Bound native teardown without starting another stop during its timeout."""
+        """Bound native teardown and report whether owned resources are gone."""
+        started = time.monotonic()
+        phase_result = "failed"
+        cleanup_result = "unconfirmed"
         was_stopping = self._is_stopping_writer
         self._is_stopping_writer = True
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.cleanup_timeout_sec
         try:
-            async with asyncio.timeout(self.cleanup_timeout_sec):
+            async with asyncio.timeout_at(deadline):
                 await super().stop(delete=delete)
+            phase_result = "completed"
+            if delete and loop.time() < deadline:
+                try:
+                    async with asyncio.timeout_at(deadline):
+                        await assert_stopped(
+                            _sanitize_docker_compose_project_name(self.session_id),
+                            deleted=True,
+                        )
+                    cleanup_result = "confirmed"
+                except Exception:
+                    # Harbor treats Compose teardown as best-effort. This read-only
+                    # check reports uncertainty without changing Trial outcomes.
+                    pass
         finally:
             self._is_stopping_writer = was_stopping
+            self.logger.info(
+                format_phase_line(
+                    "environment_stop",
+                    phase_result,
+                    time.monotonic() - started,
+                    datetime.now(UTC),
+                    trial=self.trial_paths.trial_dir.name,
+                )
+            )
+            if delete:
+                self.logger.info(
+                    format_phase_line(
+                        "cleanup",
+                        cleanup_result,
+                        time.monotonic() - started,
+                        datetime.now(UTC),
+                        trial=self.trial_paths.trial_dir.name,
+                    )
+                )
 
     async def read_file_archive(self, source_path: str, *, max_bytes: int) -> bytes:
         """Read a main-container path as a bounded, unextracted Docker tar archive.
@@ -109,15 +172,30 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         )
 
     async def _stop_writer(self) -> None:
-        """Kill the candidate container before collection; keep it for Docker copy."""
-        await self._run_docker_compose_command(
-            ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
-        )
-        running = await self._run_docker_compose_command(
-            ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
-        )
-        if running.stdout and running.stdout.strip():
-            raise RuntimeError("stop_unconfirmed")
+        """Stop the candidate within the cleanup deadline; keep it for Docker copy."""
+        was_stopping = self._is_stopping_writer
+        self._is_stopping_writer = True
+        try:
+            async with asyncio.timeout(self.cleanup_timeout_sec):
+                running = await self._run_docker_compose_command(
+                    ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
+                )
+                if not running.stdout or not running.stdout.strip():
+                    return
+                try:
+                    await self._run_docker_compose_command(
+                        ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
+                    )
+                except Exception:
+                    # Another cancellation path may have stopped it meanwhile.
+                    pass
+                remaining = await self._run_docker_compose_command(
+                    ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
+                )
+                if remaining.stdout and remaining.stdout.strip():
+                    raise RuntimeError("stop_unconfirmed")
+        finally:
+            self._is_stopping_writer = was_stopping
 
     async def _collect_with_stop(
         self,
@@ -131,12 +209,7 @@ class DeadlineDockerEnvironment(DockerEnvironment):
             return await asyncio.shield(pending)
         except asyncio.CancelledError:
             if self.cancel_writer is not None and not self._is_stopping_writer:
-                self._is_stopping_writer = True
-                try:
-                    async with asyncio.timeout(self.cleanup_timeout_sec):
-                        await self.cancel_writer()
-                finally:
-                    self._is_stopping_writer = False
+                await self.cancel_writer()
             raise
         finally:
             if process.returncode is None:

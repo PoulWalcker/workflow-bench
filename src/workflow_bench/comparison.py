@@ -3,15 +3,18 @@
 import logging
 import statistics
 import time
+from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
+from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
 from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.trial.artifact_manifest import ArtifactManifest
-from harbor.models.trial.result import TrialResult
+from harbor.models.trial.result import TimingInfo, TrialResult
 
 from workflow_bench.contracts import Evaluation
 from workflow_bench.data import DataError, read_bytes, read_json, validate_contract
@@ -97,6 +100,7 @@ class PairReport(TypedDict):
     input_tokens: Median
     cached_tokens: Median
     output_tokens: Median
+    session_count: Median
     trials: list[TrialOutcome]
 
 
@@ -115,6 +119,85 @@ class ComparisonReport(TypedDict):
     incomplete_trials: list[IncompleteTrial]
 
 
+class PhaseSummary(TypedDict):
+    """A native phase's UTC start, elapsed seconds and observed timing state."""
+
+    started_at: str | None
+    duration_seconds: float | None
+    status: Literal["not_started", "started", "finished"]
+
+
+class ManifestEntrySummary(TypedDict):
+    """One collected destination and Harbor's recorded collection status."""
+
+    destination: str
+    status: str
+
+
+class ManifestSummary(TypedDict):
+    """Manifest validity and collection states without artifact contents."""
+
+    status: Literal["missing", "invalid", "failed", "ok"]
+    entries: list[ManifestEntrySummary]
+
+
+class TrialPhases(TypedDict):
+    """The timing state of each native Harbor Trial phase."""
+
+    environment_setup: PhaseSummary
+    agent_setup: PhaseSummary
+    agent_execution: PhaseSummary
+    verifier: PhaseSummary
+
+
+class TrialTokens(TypedDict):
+    """Native agent token counts, or None when unrecorded."""
+
+    input: int | None
+    cached: int | None
+    output: int | None
+    sessions: int | None
+
+
+class TrialPaths(TypedDict):
+    """Locations of the native files and directories used to diagnose a Trial."""
+
+    result: str
+    evaluation: str
+    reward: str
+    artifact_manifest: str
+    trial_log: str
+    verifier_stdout: str
+    agent_logs: str
+
+
+class TrialSummary(TypedDict):
+    """Diagnostic facts with the report outcome and safe error codes/types.
+
+    Native exception messages remain in ``result.json`` because they can
+    contain private data.
+    """
+
+    job: str
+    trial: str
+    outcome: Outcome
+    reason: str | None
+    exception: str | None
+    phases: TrialPhases
+    evaluation: Evaluation | None
+    errors: list[str]
+    tokens: TrialTokens
+    artifact_manifest: ManifestSummary
+    paths: TrialPaths
+
+
+class SummaryReport(TypedDict):
+    """Per-Trial diagnostics and incomplete Trials from the same comparison."""
+
+    trials: list[TrialSummary]
+    incomplete_trials: list[IncompleteTrial]
+
+
 @dataclass(frozen=True)
 class _Trial:
     task: str
@@ -125,6 +208,7 @@ class _Trial:
     input_tokens: int | None
     cached_tokens: int | None
     output_tokens: int | None
+    session_count: int | None
 
 
 def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
@@ -175,6 +259,42 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
     return {"pairs": pairs, "incomplete_trials": incomplete}
 
 
+def summarize(job_dirs: Sequence[Path], report: ComparisonReport) -> SummaryReport:
+    """Return native Trial diagnostics using classifications from ``report``.
+
+    The caller supplies the report from ``compare`` over the same saved jobs.
+    This mode reads files but never writes or evaluates a Trial.
+    """
+    outcomes: dict[tuple[_Key, str, str], deque[TrialOutcome]] = {}
+    for pair in report["pairs"]:
+        pair_key = (
+            pair["task"],
+            pair["task_checksum"],
+            *_configuration_key(pair["configuration"]),
+        )
+        for trial in pair["trials"]:
+            key = (pair_key, trial["job"], trial["trial"])
+            outcomes.setdefault(key, deque()).append(trial)
+    summaries = []
+    for job_dir in job_dirs:
+        for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
+            try:
+                result = _read_result(trial_dir)
+            except DataError:
+                continue
+            pair_key = (
+                result.task_name,
+                result.task_checksum,
+                *_configuration_key(_configuration(result)),
+            )
+            matching_outcomes = outcomes.get((pair_key, job_dir.name, trial_dir.name))
+            if not matching_outcomes:
+                continue
+            outcome = matching_outcomes.popleft()
+            summaries.append(_summarize_trial(trial_dir, outcome, result))
+    return {"trials": summaries, "incomplete_trials": report["incomplete_trials"]}
+
+
 def render_markdown(report: ComparisonReport) -> str:
     """Return the report as Markdown: one task table per configuration.
 
@@ -192,8 +312,9 @@ def render_markdown(report: ComparisonReport) -> str:
             (
                 "| Task | Checksum | Trials | Pass | Fail | Unknown | Infra error "
                 "| Pass rate | Median agent s | Median tokens in / cached / out |"
+                " Median sessions |"
             ),
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         lines += [_markdown_row(pair) for pair in pairs]
     if report["incomplete_trials"]:
@@ -216,6 +337,81 @@ def read_evaluation(path: Path) -> Evaluation:
     document = read_json(path, "evaluation")
     validate_contract("evaluation", document)
     return cast(Evaluation, document)
+
+
+def _summarize_trial(
+    trial_dir: Path, outcome: TrialOutcome, result: TrialResult
+) -> TrialSummary:
+    evaluation_path = trial_dir / "verifier" / "evaluation.json"
+    try:
+        evaluation = read_evaluation(evaluation_path)
+    except (OSError, DataError):
+        evaluation = None
+    usage = result.agent_result
+    paths: TrialPaths = {
+        "result": str(trial_dir / "result.json"),
+        "evaluation": str(evaluation_path),
+        "reward": str(trial_dir / "verifier" / "reward.json"),
+        "artifact_manifest": str(trial_dir / "artifacts" / "manifest.json"),
+        "trial_log": str(trial_dir / "trial.log"),
+        "verifier_stdout": str(trial_dir / "verifier" / "test-stdout.txt"),
+        "agent_logs": str(trial_dir / "agent"),
+    }
+    return {
+        **outcome,
+        "phases": {
+            "environment_setup": _phase_summary(result.environment_setup),
+            "agent_setup": _phase_summary(result.agent_setup),
+            "agent_execution": _phase_summary(result.agent_execution),
+            "verifier": _phase_summary(result.verifier),
+        },
+        "evaluation": evaluation,
+        "errors": ([outcome["reason"]] if outcome["reason"] is not None else [])
+        + ([outcome["exception"]] if outcome["exception"] is not None else [])
+        + ([] if evaluation is None else evaluation["errors"]),
+        "tokens": {
+            "input": None if usage is None else usage.n_input_tokens,
+            "cached": None if usage is None else usage.n_cache_tokens,
+            "output": None if usage is None else usage.n_output_tokens,
+            "sessions": _reported_session_count(usage),
+        },
+        "artifact_manifest": _manifest_summary(trial_dir),
+        "paths": paths,
+    }
+
+
+def _phase_summary(timing: TimingInfo | None) -> PhaseSummary:
+    """Describe recorded timing; ``finished`` does not imply phase success."""
+    if timing is None or timing.started_at is None:
+        return {"started_at": None, "duration_seconds": None, "status": "not_started"}
+    started = timing.started_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if timing.finished_at is None:
+        return {"started_at": started, "duration_seconds": None, "status": "started"}
+    duration = (timing.finished_at - timing.started_at).total_seconds()
+    return {"started_at": started, "duration_seconds": duration, "status": "finished"}
+
+
+def _manifest_summary(trial_dir: Path) -> ManifestSummary:
+    """Report validity and native entry statuses without changing classification."""
+    path = trial_dir / "artifacts" / "manifest.json"
+    if not path.exists():
+        return {"status": "missing", "entries": []}
+    try:
+        manifest = ArtifactManifest.model_validate(
+            {"entries": read_json(path, "manifest")}
+        )
+    except (OSError, ValueError):
+        return {"status": "invalid", "entries": []}
+    entries: list[ManifestEntrySummary] = [
+        {"destination": entry.destination, "status": entry.status}
+        for entry in manifest.entries
+    ]
+    status = (
+        "failed"
+        if any(entry.status == "failed" for entry in manifest.entries)
+        else "ok"
+    )
+    return {"status": status, "entries": entries}
 
 
 def _check_job_dir(job_dir: Path) -> None:
@@ -273,7 +469,17 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
         input_tokens=None if usage is None else usage.n_input_tokens,
         cached_tokens=None if usage is None else usage.n_cache_tokens,
         output_tokens=None if usage is None else usage.n_output_tokens,
+        session_count=_reported_session_count(usage),
     )
+
+
+def _reported_session_count(context: AgentContext | None) -> int | None:
+    """Read the validated Sapiens session count from Harbor's agent result."""
+    metadata = None if context is None else context.metadata
+    count = metadata.get("sapiens_session_count") if metadata else None
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        return count
+    return None
 
 
 def _classify(trial_dir: Path, result: TrialResult) -> tuple[Outcome, str | None]:
@@ -400,6 +606,7 @@ def _pair_report(trials: Sequence[_Trial]) -> PairReport:
         "input_tokens": _median([trial.input_tokens for trial in trials]),
         "cached_tokens": _median([trial.cached_tokens for trial in trials]),
         "output_tokens": _median([trial.output_tokens for trial in trials]),
+        "session_count": _median([trial.session_count for trial in trials]),
         "trials": outcomes,
     }
 
@@ -447,6 +654,7 @@ def _markdown_row(pair: PairReport) -> str:
         "unknown" if pass_rate is None else f"{pass_rate:.2f}",
         "unknown" if agent_sec is None else f"{agent_sec:.1f}",
         tokens,
+        _format_count(pair["session_count"]["median"]),
     ]
     return f"| {' | '.join(cells)} |"
 

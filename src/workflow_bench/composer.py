@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TypedDict, override
@@ -29,6 +30,7 @@ from workflow_bench.data import (
     read_json,
 )
 from workflow_bench.harbor import DeadlineDockerEnvironment
+from workflow_bench.observability import format_phase_line
 
 MAX_SESSION_ENTRIES = 256
 MAX_SESSION_DEPTH = 8
@@ -66,6 +68,20 @@ class CodexAllowance(TypedDict):
 
     rateLimits: AllowanceWindows
     observed_at_unix: float
+
+
+class SapiensUsage(TypedDict):
+    """Totals over every validated native Codex session of one Sapiens Trial.
+
+    ``session_count`` is unknown when logs are missing or invalid, and counts
+    validated sessions even when their token totals cannot be measured.
+    Missing or invalid token measurements are unknown, never zero.
+    """
+
+    input_tokens: int | None
+    cached_input_tokens: int | None
+    output_tokens: int | None
+    session_count: int | None
 
 
 def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> CodexAllowance:
@@ -169,9 +185,13 @@ class SessionSafeCodex(Codex):
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
         """Run native Codex, recovering bounded session logs after container stop."""
+        started = time.monotonic()
+        phase_result = "failed"
         try:
             await super().run(instruction, environment, context)
+            phase_result = "completed"
         except asyncio.CancelledError:
+            phase_result = "cancelled"
             # Native Codex's finally uses exec, unavailable after confirmed stop.
             # Bound the stopped container's archive before materializing any files.
             try:
@@ -196,6 +216,16 @@ class SessionSafeCodex(Codex):
             except (OSError, RuntimeError, TimeoutError, DataError, tarfile.TarError):
                 self.logger.warning("phase=agent session_recovery=unavailable")
             raise
+        finally:
+            self.logger.info(
+                format_phase_line(
+                    "agent_run",
+                    phase_result,
+                    time.monotonic() - started,
+                    datetime.now(UTC),
+                    trial=self.logs_dir.parent.name,
+                )
+            )
 
     @override
     def convert_trajectory(self, logs_dir: Path) -> Trajectory | None:
@@ -299,6 +329,57 @@ def collect_codex_usage(
                 + usage["output_tokens"] * prices["output_per_million"]
             ) / 1_000_000
     return usage
+
+
+def collect_sapiens_usage(logs: Path) -> SapiensUsage:
+    """Sum each session's last cumulative token count; keep missing facts unknown."""
+    _, snapshots, has_invalid_session = _session_snapshot(logs)
+    unknown: SapiensUsage = {
+        "input_tokens": None,
+        "cached_input_tokens": None,
+        "output_tokens": None,
+        "session_count": len(snapshots)
+        if snapshots and not has_invalid_session
+        else None,
+    }
+    if has_invalid_session or not snapshots:
+        return unknown
+    totals = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
+    for _, content in snapshots:
+        last: dict[str, JsonValue] | None = None
+        for line in content.splitlines():
+            if not line.strip():
+                continue
+            event = decode_json(line, "sessions")
+            if not isinstance(event, dict) or event.get("type") != "event_msg":
+                continue
+            payload = event.get("payload")
+            if not isinstance(payload, dict) or payload.get("type") != "token_count":
+                continue
+            info = payload.get("info")
+            candidate = (
+                info.get("total_token_usage") if isinstance(info, dict) else None
+            )
+            if isinstance(candidate, dict):
+                last = candidate
+        if last is None:
+            return unknown
+        session_totals: dict[str, int] = {}
+        for name in totals:
+            count = last.get(name)
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                return unknown
+            session_totals[name] = count
+        if session_totals["cached_input_tokens"] > session_totals["input_tokens"]:
+            return unknown
+        for name in totals:
+            totals[name] += session_totals[name]
+    return {
+        "input_tokens": totals["input_tokens"],
+        "cached_input_tokens": totals["cached_input_tokens"],
+        "output_tokens": totals["output_tokens"],
+        "session_count": len(snapshots),
+    }
 
 
 def _write_session_snapshot(

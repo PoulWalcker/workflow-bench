@@ -43,17 +43,21 @@ requires `--run-integration`. `--run-model` remains unimplemented and is rejecte
 ## Agents image
 
 Task environment images build `FROM` the shared harness image; build it before
-using them. Building needs Docker and network access; the installed Codex CLI starts
-without network. Pins and the tag are listed in
+using them. Building needs Docker, network access and a local checkout of the pinned
+Sapiens revision. Pass its repository root as the sole source path argument; the
+build archives committed files, excluding local edits and untracked files. The
+installed Codex CLI starts without network. Pins and the tag are listed in
 [ARCHITECTURE](ARCHITECTURE.md#parameter-sources). Checked with Docker 29.4.0 on
 macOS arm64.
 
 ```sh
-docker compose -f environments/agents/compose.yaml build --pull
-docker run --rm --network none workflow-bench-agents:codex-0.162.1 codex --version
+environments/agents/build.sh /absolute/path/to/sapiens4 --no-cache
+docker run --rm --network none workflow-bench-agents:codex-0.162.1 sh -c 'cat /opt/sapiens/REVISION && python -m sapiens --help >/dev/null && codex --version'
+docker image inspect workflow-bench-agents:codex-0.162.1 --format '{{index .Config.Labels "org.workflow-bench.sapiens.revision"}}'
 ```
 
-The second command prints `codex-cli 0.162.1`. The image also carries the evaluation
+The second command prints the pinned Sapiens revision and `codex-cli 0.162.1`; the
+third prints the same revision from the image label. The image also carries the evaluation
 helper from `src/workflow_bench`, with dependencies at their `uv.lock` versions; rebuild
 it after changing that package or the lock. `wb check-task` reports
 `stale:agents_helper` and the integration preflight fails when the image's helper
@@ -66,7 +70,7 @@ needs Docker and the `agents` image, but no model or credentials; the native Har
 jobs of the controls stay under `--jobs-dir`.
 
 ```sh
-uv run --locked wb check-task tasks/l1-basket-total --jobs-dir runs/readiness
+uv run --locked wb check-task tasks/l1-basket-total --jobs-dir "$PWD/runs/readiness"
 uv run --locked pytest -q --run-integration tests/integration
 ```
 
@@ -79,13 +83,15 @@ or its helper is stale.
 
 [The native job example](examples/codex/job.yaml) runs the trivial task using
 `SessionSafeCodex` and `DeadlineDockerEnvironment`, with one attempt and no retry.
+Its absolute `jobs_dir` is `/tmp/workflow-bench-codex`, so Harbor's artifact copy
+uses the intended host directory regardless of the task's working directory.
 It explicitly disables ambient authentication and points Codex at an unused
 loopback port inside the container. These commands use Docker, with no credentials
 or model calls:
 
 ```sh
 uv run --locked harbor run -c examples/codex/job.yaml
-uv run --locked wb compare runs/codex/codex-empty-provider
+uv run --locked wb compare /tmp/workflow-bench-codex/codex-empty-provider
 uv run --locked pytest -q --run-integration tests/integration/test_codex_direct.py
 uv run --locked wb preflight --help
 ```
@@ -118,20 +124,78 @@ kept the task's no-network baseline. The ignored local evidence is in
 `runs/m1a-06-compare.json` and `runs/m1a-06-compare.md`. This is one smoke
 result, not a reliability estimate.
 
+## Direct Sapiens configuration
+
+[The Sapiens job example](examples/sapiens/job.yaml) uses the same pinned `agents`
+image and `DeadlineDockerEnvironment`, an absolute `jobs_dir`, one attempt and no
+retry. It supplies both Harbor's reasoning option and Sapiens' required
+`config.model_reasoning_effort` with `low`, plus `openai/gpt-6.1-sol` as the model.
+Its empty loopback provider and explicit empty credential settings make it a
+model-free configuration/control example. The fast configuration test verifies
+Harbor builds `SapiensInstalledAgent` with these settings; the Sapiens execution
+controls are a separate integration path.
+
+Run the opted-in Sapiens controls with:
+
+```sh
+uv run --locked pytest -q --run-integration tests/integration/test_sapiens_controls.py
+```
+
+Their real-Codex case uses a test-image loopback endpoint that rejects every
+request with HTTP 401 and has no model. Codex 0.162.1 keeps reconnecting to an
+unused loopback socket despite zero configured
+retries; a definite rejection lets the control verify Sapiens' model-failure outcome
+within the finite Trial limit. No provider credential is used.
+
+The adapter observes Sapiens' public state until all turns, workloads and run
+activity are quiet for two consecutive Pulse ticks. It reports the sum of last
+cumulative token counts over all validated Codex sessions and their session count
+in `wb compare`; absent or malformed usage remains unknown. Pinned Sapiens may
+raise reasoning effort to `xhigh` internally in deep mode, regardless of the
+job's configured base effort. The example uses normal mode.
+
+An authorized local smoke on 2026-10-14 ran one Sapiens Trial on `l1-basket-total`
+with Sapiens revision `71e93cb3de00183c263ec440919b313cf92ed8af`, Codex CLI
+0.162.1, `openai/gpt-6.1-sol`, low reasoning and ChatGPT subscription authentication.
+The separate verifier passed all three criteria, and `wb compare` reported one pass,
+75,971 input tokens (56,064 cached), 891 output tokens and three Codex sessions.
+The recorded sessions all used low effort; no delegation was observed. The terminal
+state was `Completed`, with no observed premature finish.
+The ignored local Harbor evidence is in
+`runs/m1b-05-sapiens/sapiens-live-smoke-20261014`, with reports at
+`runs/m1b-05-compare.json` and `runs/m1b-05-summary.txt`. This single smoke result
+does not estimate reliability or a per-Trial subscription charge.
+
 ## Report
 
 Reporting reads saved Harbor job directories offline and needs no Docker, model or
 credentials. Each argument is one job directory, `<jobs-dir>/<job-name>`.
 
 ```sh
-uv run --locked wb compare runs/readiness/check-*
-uv run --locked wb compare --format markdown runs/readiness/check-*
+uv run --locked wb compare "$PWD"/runs/readiness/check-*
+uv run --locked wb compare --format markdown "$PWD"/runs/readiness/check-*
+uv run --locked wb compare --format summary /tmp/workflow-bench-codex/codex-empty-provider
+uv run --locked wb compare --transcript "$PWD"/runs/m1a-06-codex/codex-live-smoke-20261013
+uv run --locked wb compare --transcript "$PWD"/runs/m1b-05-sapiens/sapiens-live-smoke-20261014
 ```
 
 The first command prints a JSON report and exits 0: one outcome per Trial and, per
 task and configuration, counts, pass rate and medians. With the readiness controls
 above it shows `oracle` with pass rate 1.0 and `nop` with 0.0. A directory that is not
-a Harbor job exits 2.
+a Harbor job exits 2. `--format summary` prints one JSON record per Trial with native
+phase timing, the same outcome class as the report, verifier criteria, token counts,
+artifact status and paths to diagnostic files.
+`--transcript` prints a read-only Markdown conversation for each saved Trial: the
+task, Sapiens decision nodes or Codex messages, tool calls and results, time and
+tokens when recorded, and the verifier result. Sapiens captures a bounded
+state snapshot in its Harbor agent log for speaker names,
+delegations and transitions. Older Trials without that snapshot show missing-data
+markers. Node prompts show a short excerpt by default; add `--full-prompts` to
+show their full text. The Sapiens state export masks every occurrence of each
+string value of at least 16 characters in the run's `auth.json`, plus
+`OPENAI_API_KEY` when set; export reads `$CODEX_HOME/auth.json` in the container.
+Transcripts use only best-effort pattern masking for credential and account-ID
+forms. Every transcript starts with a notice to check it before sharing.
 
 ## Navigation
 

@@ -1,21 +1,24 @@
 """Unmodified CORPORA host and CLI at Harbor's installed-agent seam."""
 
 import asyncio
-import logging
+import json
 import re
 import shlex
 import time
-from typing import TypedDict, cast, override
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Literal, TypedDict, cast, override
 
 from harbor.agents.capabilities import AgentCapabilities
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from workflow_bench.composer import SessionSafeCodex
+from workflow_bench.composer import SessionSafeCodex, collect_sapiens_usage
 from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
-
-LOGGER = logging.getLogger(__name__)
+from workflow_bench.harbor import DeadlineDockerEnvironment
+from workflow_bench.observability import format_phase_line
 
 SAPIENS_REVISION = "71e93cb3de00183c263ec440919b313cf92ed8af"
 HOST_PORT = 4174
@@ -30,15 +33,113 @@ class _CliResponse(TypedDict):
     data: dict[str, JsonValue]
 
 
+type CompletionDecision = Literal["working", "completed", "agent_outcome"]
+
+
+class SapiensCompletion:
+    """Decide when two observed Pulse ticks have no Sapiens work remaining."""
+
+    def __init__(self) -> None:
+        self._last_pulse: tuple[str, int] | None = None
+        self._quiet_ticks = 0
+
+    @property
+    def quiet_ticks(self) -> int:
+        """Return the consecutive quiet Pulse ticks in the latest observation."""
+        return self._quiet_ticks
+
+    def observe(self, snapshot: Mapping[str, object]) -> CompletionDecision:
+        """Return a terminal decision only after two distinct quiet Pulse ticks.
+
+        ``agent_outcome`` means Sapiens stopped without normal completion; the
+        adapter returns so the independent verifier can judge task results.
+        ``working`` keeps observation active. Invalid or incomplete public state
+        raises rather than proving completion.
+        """
+        pulse = snapshot.get("pulse")
+        turns = snapshot.get("turns")
+        workloads = snapshot.get("workloads")
+        run_activity = snapshot.get("run_activity")
+        if (
+            not isinstance(pulse, dict)
+            or not isinstance(turns, list)
+            or not isinstance(workloads, list)
+            or not isinstance(run_activity, dict)
+        ):
+            raise RuntimeError("sapiens_state_invalid")
+        numbers = pulse.get("numbers")
+        identity = pulse.get("id")
+        tick = numbers.get("bpm60") if isinstance(numbers, dict) else None
+        if (
+            not isinstance(identity, str)
+            or not isinstance(tick, int)
+            or isinstance(tick, bool)
+            or tick < 0
+            or any(
+                not isinstance(turn, dict) or not isinstance(turn.get("status"), str)
+                for turn in turns
+            )
+            or any(
+                not isinstance(work, dict) or not isinstance(work.get("state"), str)
+                for work in workloads
+            )
+        ):
+            raise RuntimeError("sapiens_state_invalid")
+        current_pulse = (identity, tick)
+        is_busy = (
+            any(
+                turn["status"] in {"queued", "running", "output_pending"}
+                for turn in turns
+            )
+            or any(
+                work["state"] in {"Running", "Queued", "Delegated"}
+                for work in workloads
+            )
+            or bool(run_activity)
+        )
+        if is_busy:
+            self._quiet_ticks = 0
+        if current_pulse == self._last_pulse:
+            return "working"
+        if self._last_pulse is not None and (
+            identity != self._last_pulse[0] or tick != self._last_pulse[1] + 1
+        ):
+            self._quiet_ticks = 0
+        self._last_pulse = current_pulse
+        self._quiet_ticks = 0 if is_busy else self._quiet_ticks + 1
+        if self._quiet_ticks < 2:
+            return "working"
+        is_agent_outcome = any(
+            work["state"] in {"WaitingForAdmin", "Failed", "Interrupted", "Unresolved"}
+            for work in workloads
+        ) or any(turn["status"] in {"failed", "interrupted"} for turn in turns)
+        return "agent_outcome" if is_agent_outcome else "completed"
+
+
 class SapiensInstalledAgent(SessionSafeCodex):
     """Use Harbor's Codex config/MCP/auth seams, with Sapiens owning planning."""
 
     capabilities = AgentCapabilities(native_config=True, mcp_servers=True)
+    _last_outcome: CompletionDecision | None = None
 
     @staticmethod
     def name() -> str:
         """Return the native Harbor agent name."""
         return "sapiens"
+
+    @override
+    def populate_context_post_run(self, context: AgentContext) -> None:
+        """Report all validated Codex sessions while blocking trajectory fallback."""
+        usage = collect_sapiens_usage(self.logs_dir)
+        context.n_input_tokens = usage["input_tokens"]
+        context.n_cache_tokens = usage["cached_input_tokens"]
+        context.n_output_tokens = usage["output_tokens"]
+        metadata = dict(context.metadata or {})
+        metadata["sapiens_session_count"] = usage["session_count"]
+        if self._last_outcome is not None:
+            metadata["sapiens_outcome"] = self._last_outcome
+        context.metadata = metadata
+        context.model_usage = {}
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
@@ -48,7 +149,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
             environment,
             command="test "
             + shlex.quote(SAPIENS_REVISION)
-            + ' = "$(cat /opt/sapiens/REVISION)" && codex --version && command -v ps',
+            + ' = "$(cat /opt/sapiens/REVISION)" && codex --version',
         )
         if result.return_code or not await self._installed_codex_satisfies_version(
             environment
@@ -59,7 +160,37 @@ class SapiensInstalledAgent(SessionSafeCodex):
     async def run(
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
-        """Submit one instruction to a fresh Sapiens host and await its completion."""
+        """Submit once, stop on cancellation, then let Harbor collect logs."""
+        started = time.monotonic()
+        phase_result = "failed"
+        self._last_outcome = None
+        try:
+            phase_result = await self._run_sapiens(instruction, environment)
+            self._last_outcome = phase_result
+        except asyncio.CancelledError:
+            phase_result = "cancelled"
+            if (
+                isinstance(environment, DeadlineDockerEnvironment)
+                and environment.cancel_writer is not None
+            ):
+                # Observation can be cancelled between Docker exec calls.
+                await environment.cancel_writer()
+            raise
+        finally:
+            self.logger.info(
+                format_phase_line(
+                    "agent_run",
+                    phase_result,
+                    time.monotonic() - started,
+                    datetime.now(UTC),
+                    trial=self.logs_dir.parent.name,
+                )
+            )
+
+    async def _run_sapiens(
+        self, instruction: str, environment: BaseEnvironment
+    ) -> CompletionDecision:
+        """Submit once to the host and return all Sapiens work's terminal state."""
         if self.model_name is None:
             raise RuntimeError("sapiens_model_required")
         home = self._REMOTE_CODEX_HOME.as_posix()
@@ -145,44 +276,144 @@ class SapiensInstalledAgent(SessionSafeCodex):
         if not isinstance(turn_id, str) or not re.fullmatch(r"[a-f0-9]{32}", turn_id):
             raise RuntimeError("sapiens_submission_unknown")
         started = time.monotonic()
-        LOGGER.info(
-            "phase=sapiens-observation sapiens_turn_id=%s result=started", turn_id
+        self.logger.info(
+            "%s sapiens_turn_id=%s",
+            format_phase_line(
+                "sapiens-observation",
+                "started",
+                0,
+                datetime.now(UTC),
+                trial=self.logs_dir.parent.name,
+            ),
+            turn_id,
         )
-        observer = asyncio.create_task(
-            environment.exec(
-                command=CLI + "conversation watch " + shlex.quote(turn_id), env=env
+        completion = SapiensCompletion()
+        state_command = "python -c " + shlex.quote(
+            "import sys,urllib.request; "
+            f"sys.stdout.buffer.write(urllib.request.urlopen('{HOST_URL}/api/state',"
+            f"timeout=5).read({MAX_JSON_BYTES + 1}))"
+        )
+        while True:
+            observed = await environment.exec(
+                command=state_command, env=env, timeout_sec=6
+            )
+            if observed.return_code:
+                raise RuntimeError("sapiens_state_unavailable")
+            raw_state = (observed.stdout or "").encode()
+            if len(raw_state) > MAX_JSON_BYTES:
+                raise RuntimeError("sapiens_state_too_large")
+            try:
+                snapshot = decode_json(raw_state, "sapiens_state")
+            except DataError:
+                raise RuntimeError("sapiens_state_invalid") from None
+            if not isinstance(snapshot, dict):
+                raise RuntimeError("sapiens_state_invalid")
+            decision = completion.observe(snapshot)
+            if decision != "working":
+                break
+            await asyncio.sleep(0.2)
+        # Record state names only; the public snapshot can include private requests.
+        turns = cast(list[dict[str, object]], snapshot["turns"])
+        workloads = cast(list[dict[str, object]], snapshot["workloads"])
+        workload_states = sorted({cast(str, work["state"]) for work in workloads})
+        (self.logs_dir / "sapiens-terminal.json").write_text(
+            json.dumps(
+                {
+                    "turn_id": turn_id,
+                    "outcome": decision,
+                    "workload_states": workload_states,
+                }
             )
         )
+        # Export only the transcript fields while the host database is still live.
+        # This is diagnostic: a failed export cannot change the Trial outcome.
         try:
-            while not observer.done():
-                done, _ = await asyncio.wait({observer}, timeout=30)
-                if not done:
-                    LOGGER.info(
-                        "phase=sapiens-observation sapiens_turn_id=%s elapsed=%.0fs",
-                        turn_id,
-                        time.monotonic() - started,
-                    )
-            observed = await observer
-        finally:
-            if not observer.done():
-                observer.cancel()
-                await asyncio.gather(observer, return_exceptions=True)
-        (self.logs_dir / "sapiens-terminal.json").write_text(observed.stdout or "")
-        terminal = self._response(observed.stdout)
-        has_completed = (
-            observed.return_code == 0
-            and terminal["ok"]
-            and terminal["data"].get("state") == "Completed"
+            snapshot_source = Path(__file__).with_name("sapiens_state.py").read_text()
+            copied = await environment.exec(
+                command="python -c "
+                + shlex.quote(snapshot_source)
+                + " "
+                + shlex.quote(DATA_DIR)
+                + " "
+                + shlex.quote(logs + "/sapiens-state.json"),
+                env=env,
+                timeout_sec=15,
+            )
+        except Exception:
+            self.logger.warning(
+                "phase=sapiens-state trial=%s result=unavailable",
+                self.logs_dir.parent.name,
+            )
+        else:
+            if copied.return_code:
+                self.logger.warning(
+                    "phase=sapiens-state trial=%s result=unavailable",
+                    self.logs_dir.parent.name,
+                )
+        # State names can be untrusted strings; log only the known vocabulary.
+        turn_states = sorted({cast(str, turn["status"]) for turn in turns})
+        turn_states_for_log = (
+            ",".join(
+                sorted(
+                    {
+                        status
+                        if status
+                        in {
+                            "queued",
+                            "running",
+                            "output_pending",
+                            "done",
+                            "failed",
+                            "interrupted",
+                        }
+                        else "other"
+                        for status in turn_states
+                    }
+                )
+            )
+            or "none"
         )
-        LOGGER.info(
-            "phase=sapiens-observation sapiens_turn_id=%s result=%s elapsed=%.2fs",
+        workload_states_for_log = (
+            ",".join(
+                sorted(
+                    {
+                        state
+                        if state
+                        in {
+                            "Running",
+                            "Queued",
+                            "Delegated",
+                            "Completed",
+                            "WaitingForAdmin",
+                            "Failed",
+                            "Interrupted",
+                            "Unresolved",
+                        }
+                        else "other"
+                        for state in workload_states
+                    }
+                )
+            )
+            or "none"
+        )
+        self.logger.info(
+            "%s sapiens_turn_id=%s elapsed=%.2fs turn_states=%s workload_states=%s "
+            "run_activity_empty=%s quiet_ticks=%s",
+            format_phase_line(
+                "sapiens-observation",
+                decision,
+                time.monotonic() - started,
+                datetime.now(UTC),
+                trial=self.logs_dir.parent.name,
+            ),
             turn_id,
-            "completed" if has_completed else "not_completed",
             time.monotonic() - started,
+            turn_states_for_log,
+            workload_states_for_log,
+            str(not snapshot["run_activity"]).lower(),
+            completion.quiet_ticks,
         )
-        if not has_completed:
-            raise RuntimeError("sapiens_terminal_not_completed")
-        context.model_usage = {}
+        return decision
 
     @staticmethod
     def _response(stdout: str | None) -> _CliResponse:

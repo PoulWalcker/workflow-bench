@@ -5,32 +5,37 @@ import json
 import logging
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
-from workflow_bench.comparison import compare, render_markdown
+from workflow_bench.comparison import compare, render_markdown, summarize
 from workflow_bench.composer import read_codex_limits
 from workflow_bench.data import DataError
 from workflow_bench.readiness import check_task
+from workflow_bench.transcript import render_transcripts
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run one `wb` command; return the process exit status.
 
     `check-task` prints its JSON report on stdout and returns 0 only when the
-    task is ready, 1 otherwise. `compare` prints its JSON or Markdown report
+    task is ready, 1 otherwise. `compare` prints JSON, Markdown or per-Trial summary
     on stdout and returns 0, or 2 when an argument is not a Harbor job
     directory or is repeated. `preflight` returns 0 only for available native
     subscription allowance, 1 for a safe rejection; it makes no model call.
     """
     parser = _parser()
     arguments = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO,
-        stream=sys.stderr,
-        format="%(levelname)s %(name)s %(message)s",
+    handler = logging.StreamHandler(sys.stderr)
+    formatter = logging.Formatter(
+        "%(asctime)sZ %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
     )
+    formatter.converter = time.gmtime
+    handler.setFormatter(formatter)
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
     if arguments.command == "compare":
         return _compare(parser, arguments)
     if arguments.command == "preflight":
@@ -60,6 +65,8 @@ def _check_task(arguments: argparse.Namespace) -> int:
 
 
 def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> int:
+    if arguments.should_show_full_prompts and not arguments.is_transcript_requested:
+        parser.error("--full-prompts requires --transcript")
     job_dirs = [path.resolve() for path in arguments.job_dirs]
     if len(set(job_dirs)) != len(job_dirs):
         parser.error("a job directory is given more than once")
@@ -67,8 +74,19 @@ def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         report = compare(job_dirs)
     except DataError as error:
         parser.error(f"not a Harbor job directory: {error.relative_path}")
-    if arguments.format == "markdown":
+    if arguments.is_transcript_requested:
+        if arguments.format != "json":
+            parser.error("--transcript cannot be combined with --format")
+        sys.stdout.write(
+            render_transcripts(
+                summarize(job_dirs, report),
+                should_show_full_prompts=arguments.should_show_full_prompts,
+            )
+        )
+    elif arguments.format == "markdown":
         sys.stdout.write(render_markdown(report))
+    elif arguments.format == "summary":
+        sys.stdout.write(json.dumps(summarize(job_dirs, report), indent=2) + "\n")
     else:
         sys.stdout.write(json.dumps(report, indent=2) + "\n")
     return 0
@@ -131,9 +149,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     compare_command.add_argument(
         "--format",
-        choices=("json", "markdown"),
+        choices=("json", "markdown", "summary"),
         default="json",
         help="Report format on stdout (default: json).",
+    )
+    compare_command.add_argument(
+        "--transcript",
+        action="store_true",
+        dest="is_transcript_requested",
+        help="Print read-only Markdown conversations for saved Trials.",
+    )
+    compare_command.add_argument(
+        "--full-prompts",
+        action="store_true",
+        dest="should_show_full_prompts",
+        help="Show full Sapiens node prompts in a transcript.",
     )
     preflight = commands.add_parser(
         "preflight",

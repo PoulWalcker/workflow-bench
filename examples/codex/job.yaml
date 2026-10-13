@@ -1,6 +1,6 @@
 # Safe model-free control: the provider is an unused loopback port inside the container.
 job_name: codex-empty-provider
-jobs_dir: runs/codex
+jobs_dir: /tmp/workflow-bench-codex
 n_attempts: 1
 n_concurrent_trials: 1
 retry:

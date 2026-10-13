@@ -9,3 +9,6 @@ services:
       # helper sources from it, and BuildKit transfers only those paths.
       additional_contexts:
         project: ../..
+        sapiens: ${SAPIENS_ARCHIVE_CONTEXT:?build with environments/agents/build.sh}
+      args:
+        SAPIENS_REVISION: ${SAPIENS_REVISION:?build with environments/agents/build.sh}
