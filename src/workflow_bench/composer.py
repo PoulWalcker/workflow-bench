@@ -199,6 +199,7 @@ class SessionSafeCodex(Codex):
 
     @override
     def convert_trajectory(self, logs_dir: Path) -> Trajectory | None:
+        """Parse validated sessions, returning None for invalid or absent logs."""
         _, snapshots, invalid = _session_snapshot(logs_dir)
         if invalid or not snapshots:
             return None
@@ -209,6 +210,12 @@ class SessionSafeCodex(Codex):
 
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
+        """Populate context from valid sessions and disable unsafe usage fallback.
+
+        Invalid or absent sessions leave native fields unchanged. Missing model usage
+        becomes an empty mapping so Harbor cannot read candidate trajectory.json;
+        missing token and cost measurements remain unknown.
+        """
         original = self.logs_dir
         _, snapshots, invalid = _session_snapshot(original)
         if not invalid and snapshots:
@@ -370,7 +377,13 @@ def _read_session(name: str, directory: int, limit: int) -> bytes:
 
 
 def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], bool]:
-    """Snapshot bounded native logs through directory handles, never follow links."""
+    """Snapshot bounded native logs through directory handles, never follow links.
+
+    Return sorted relative references, validated file snapshots and an invalid flag.
+    A true flag rejects the entire collection: references may describe partial
+    evidence, but callers must not consume the snapshots. Missing sessions return
+    empty collections with a false flag.
+    """
     references = []
     snapshots = []
     entries = 0
@@ -378,7 +391,7 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
     invalid = False
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
-    def visit(directory: int, relative: Path, depth: int) -> None:
+    def _visit(directory: int, relative: Path, depth: int) -> None:
         nonlocal entries, remaining, invalid
         if depth > MAX_SESSION_DEPTH:
             raise DataError("session_tree_too_large", "sessions")
@@ -402,7 +415,7 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
                 elif child.is_dir(follow_symlinks=False):
                     descriptor = os.open(child.name, flags, dir_fd=directory)
                     try:
-                        visit(descriptor, reference, depth + 1)
+                        _visit(descriptor, reference, depth + 1)
                     finally:
                         os.close(descriptor)
                 elif child.is_symlink():
@@ -417,7 +430,7 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
             except FileNotFoundError:
                 return [], [], False
             try:
-                visit(directory, Path("sessions"), 0)
+                _visit(directory, Path("sessions"), 0)
             finally:
                 os.close(directory)
         finally:
