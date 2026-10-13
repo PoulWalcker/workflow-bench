@@ -103,7 +103,10 @@ def resource_schema(name: str) -> dict[str, JsonValue]:
 
 
 def read_bytes(path: Path, label: str, *, limit: int = MAX_JSON_BYTES) -> bytes:
-    """Read a bounded regular file without following a symlink."""
+    """Read bounded bytes after checking for a regular, non-symlink path.
+
+    The check precedes opening the path and cannot prevent its replacement.
+    """
     if path.is_symlink() or not stat.S_ISREG(path.stat().st_mode):
         raise DataError("unsafe_file", label)
     with path.open("rb") as stream:

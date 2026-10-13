@@ -236,14 +236,14 @@ def collect_codex_usage(
     logs: Path, *, prices: dict[str, float] | None = None
 ) -> dict[str, JsonValue]:
     """Keep raw refs; one session's last totals take precedence over turn events."""
-    raw_refs, snapshots, has_invalid_event = _session_snapshot(logs)
+    raw_refs, snapshots, has_invalid_session = _session_snapshot(logs)
     totals = None
-    if len(snapshots) == 1 and not has_invalid_event:
+    if len(snapshots) == 1 and not has_invalid_session:
         try:
             lines = snapshots[0][1].decode("utf-8").splitlines()
         except (OSError, UnicodeError, DataError):
             lines = []
-            has_invalid_event = True
+            has_invalid_session = True
         for line in lines:
             try:
                 event = json.loads(line)
@@ -258,8 +258,8 @@ def collect_codex_usage(
                     ):
                         totals = info["total_token_usage"]
             except (ValueError, AttributeError, TypeError):
-                has_invalid_event = True
-    if has_invalid_event:
+                has_invalid_session = True
+    if has_invalid_session:
         totals = None
     usage = {
         "source": "native_session_last_cumulative",
