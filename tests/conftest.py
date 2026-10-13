@@ -4,6 +4,7 @@ from inspect import getfile
 from pathlib import Path
 
 import pytest
+from _pytest.fixtures import SubRequest
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -22,9 +23,7 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError("model mode is not implemented")
     execute = pytest.FixtureDef.execute
 
-    def gated_execute(
-        fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest
-    ) -> object:
+    def gated_execute(fixturedef: pytest.FixtureDef, request: SubRequest) -> object:
         _check_fixture_request(fixturedef, request)
         return execute(fixturedef, request=request)
 

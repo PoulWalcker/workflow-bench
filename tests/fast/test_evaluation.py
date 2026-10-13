@@ -5,9 +5,9 @@ from typing import Literal, cast
 
 import pytest
 
-from workflow_bench.contracts import Criterion
+from workflow_bench.contracts import Criterion, Evaluation
 from workflow_bench.data import DataError
-from workflow_bench.evaluation import write_evaluation
+from workflow_bench.evaluation import harbor_reward, write_evaluation
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -94,3 +94,30 @@ def test_invalid_criteria_are_rejected_without_output(
         write_evaluation(tmp_path, cast(Sequence[Criterion], criteria))
 
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("completeness", "criterion_status", "errors"),
+    [
+        ("partial", "pass", []),
+        ("complete", "unknown", []),
+        ("complete", "pass", ["verifier_unavailable"]),
+    ],
+)
+def test_harbor_reward_withholds_score_for_any_incomplete_fact(
+    completeness: Literal["complete", "partial"],
+    criterion_status: Literal["pass", "unknown"],
+    errors: list[str],
+) -> None:
+    evaluation = Evaluation(
+        verdict="pass",
+        completeness=completeness,
+        criteria=[
+            Criterion(
+                criterion_id="result", status=criterion_status, reason_code="observed"
+            )
+        ],
+        errors=errors,
+    )
+
+    assert harbor_reward(evaluation) is None
