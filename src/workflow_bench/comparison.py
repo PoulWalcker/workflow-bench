@@ -3,6 +3,7 @@
 import logging
 import statistics
 import time
+from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC
@@ -138,20 +139,53 @@ class ManifestSummary(TypedDict):
     entries: list[ManifestEntrySummary]
 
 
+class TrialPhases(TypedDict):
+    """The timing state of each native Harbor Trial phase."""
+
+    environment_setup: PhaseSummary
+    agent_setup: PhaseSummary
+    agent_execution: PhaseSummary
+    verifier: PhaseSummary
+
+
+class TrialTokens(TypedDict):
+    """Native agent token counts, or None when unrecorded."""
+
+    input: int | None
+    cached: int | None
+    output: int | None
+
+
+class TrialPaths(TypedDict):
+    """Locations of the native files and directories used to diagnose a Trial."""
+
+    result: str
+    evaluation: str
+    reward: str
+    artifact_manifest: str
+    trial_log: str
+    verifier_stdout: str
+    agent_logs: str
+
+
 class TrialSummary(TypedDict):
-    """Diagnostic facts for one Trial, with its existing report outcome."""
+    """Diagnostic facts with the report outcome and safe error codes/types.
+
+    Native exception messages remain in ``result.json`` because they can
+    contain private data.
+    """
 
     job: str
     trial: str
     outcome: Outcome
     reason: str | None
     exception: str | None
-    phases: dict[str, PhaseSummary]
+    phases: TrialPhases
     evaluation: Evaluation | None
     errors: list[str]
-    tokens: dict[str, int | None]
+    tokens: TrialTokens
     artifact_manifest: ManifestSummary
-    paths: dict[str, str]
+    paths: TrialPaths
 
 
 class SummaryReport(TypedDict):
@@ -227,18 +261,32 @@ def summarize(job_dirs: Sequence[Path], report: ComparisonReport) -> SummaryRepo
     The caller supplies the report from ``compare`` over the same saved jobs.
     This mode reads files but never writes or evaluates a Trial.
     """
-    outcomes = {
-        (trial["job"], trial["trial"]): trial
-        for pair in report["pairs"]
-        for trial in pair["trials"]
-    }
+    outcomes: dict[tuple[_Key, str, str], deque[TrialOutcome]] = {}
+    for pair in report["pairs"]:
+        pair_key = (
+            pair["task"],
+            pair["task_checksum"],
+            *_configuration_key(pair["configuration"]),
+        )
+        for trial in pair["trials"]:
+            key = (pair_key, trial["job"], trial["trial"])
+            outcomes.setdefault(key, deque()).append(trial)
     summaries = []
     for job_dir in job_dirs:
         for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
-            outcome = outcomes.get((job_dir.name, trial_dir.name))
-            if outcome is None:
+            try:
+                result = _read_result(trial_dir)
+            except DataError:
                 continue
-            result = _read_result(trial_dir)
+            pair_key = (
+                result.task_name,
+                result.task_checksum,
+                *_configuration_key(_configuration(result)),
+            )
+            matching_outcomes = outcomes.get((pair_key, job_dir.name, trial_dir.name))
+            if not matching_outcomes:
+                continue
+            outcome = matching_outcomes.popleft()
             summaries.append(_summarize_trial(trial_dir, outcome, result))
     return {"trials": summaries, "incomplete_trials": report["incomplete_trials"]}
 
@@ -295,7 +343,7 @@ def _summarize_trial(
     except (OSError, DataError):
         evaluation = None
     usage = result.agent_result
-    paths = {
+    paths: TrialPaths = {
         "result": str(trial_dir / "result.json"),
         "evaluation": str(evaluation_path),
         "reward": str(trial_dir / "verifier" / "reward.json"),
@@ -314,6 +362,7 @@ def _summarize_trial(
         },
         "evaluation": evaluation,
         "errors": ([outcome["reason"]] if outcome["reason"] is not None else [])
+        + ([outcome["exception"]] if outcome["exception"] is not None else [])
         + ([] if evaluation is None else evaluation["errors"]),
         "tokens": {
             "input": None if usage is None else usage.n_input_tokens,

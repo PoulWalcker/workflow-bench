@@ -57,13 +57,15 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         cleanup_result = "unconfirmed"
         was_stopping = self._is_stopping_writer
         self._is_stopping_writer = True
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.cleanup_timeout_sec
         try:
-            async with asyncio.timeout(self.cleanup_timeout_sec):
+            async with asyncio.timeout_at(deadline):
                 await super().stop(delete=delete)
             phase_result = "completed"
-            if delete:
+            if delete and loop.time() < deadline:
                 try:
-                    async with asyncio.timeout(self.cleanup_timeout_sec):
+                    async with asyncio.timeout_at(deadline):
                         await assert_stopped(
                             _sanitize_docker_compose_project_name(self.session_id),
                             deleted=True,

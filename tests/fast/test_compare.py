@@ -192,6 +192,45 @@ def test_summary_reads_trial_facts_and_reuses_report_outcomes(
     assert summary["trials"][3]["errors"] == ["artifacts_failed"]
 
 
+def test_summary_keeps_report_outcomes_for_replayed_trial_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first_job = _job(tmp_path / "first", "job-a")
+    second_job = _job(tmp_path / "second", "job-a")
+    _trial(first_job, "same-trial", criteria=_criteria("fail"))
+    _trial(second_job, "same-trial", criteria=_criteria("pass"))
+
+    _, report = _compare([first_job, second_job], capsys)
+    status = main(["compare", "--format", "summary", str(first_job), str(second_job)])
+    summary = json.loads(capsys.readouterr().out)
+
+    assert status == 0
+    report_outcomes = [
+        trial["outcome"] for pair in report["pairs"] for trial in pair["trials"]
+    ]
+    assert report_outcomes == ["fail", "pass"]
+    assert [trial["outcome"] for trial in summary["trials"]] == ["fail", "pass"]
+
+
+def test_summary_reports_agent_exception_as_safe_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "job-a")
+    _trial(
+        job,
+        "agent-timeout",
+        criteria=_criteria("fail"),
+        exception="AgentTimeoutError",
+    )
+
+    status = main(["compare", "--format", "summary", str(job)])
+    summary = json.loads(capsys.readouterr().out)
+
+    assert status == 0
+    assert summary["trials"][0]["errors"] == ["AgentTimeoutError"]
+    assert summary["trials"][0]["phases"]["agent_execution"]["status"] == "finished"
+
+
 def _trial_outcome(
     trial: str, outcome: str, reason: str | None = None, exception: str | None = None
 ) -> dict[str, str | None]:
