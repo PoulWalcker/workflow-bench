@@ -24,9 +24,11 @@ must be configured and checked for each environment, not assumed from a prompt.
 Service exports need protected provenance; candidate logs cannot prove effects.
 
 The shared harness image `agents` ([environments/agents](environments/agents)) holds
-a pinned Python base, procps, one pinned Codex CLI and the Workflow Bench evaluation
-helper (`contracts`, `data`, `evaluation` copied from this checkout, with runtime
-dependencies at their `uv.lock` versions), and no task content. Task environment images
+a pinned Python base, procps, one pinned Codex CLI, pinned Sapiens source and the
+Workflow Bench evaluation helper (`contracts`, `data`, `evaluation` copied from this
+checkout, with runtime dependencies at their `uv.lock` versions), and no task content.
+The Sapiens source is archived from its committed revision before the build, so local
+worktree changes do not enter the image. Task environment images
 build `FROM` it, so agents need no network to install a harness and separate verifiers
 can import the helper. The tag does not change with the helper, so the image must be
 rebuilt after changing those modules; `wb check-task` and the integration preflight
@@ -147,8 +149,9 @@ where a retained interface supports alternatives. Resolve user paths once at ent
 |---|---|
 | Task selection, output location, trial count, concurrency, agent selection | Native Harbor CLI/job configuration; record Harbor's resolved configuration. No Workflow Bench wrapper defaults. |
 | Task images, resources, network, timeouts, MCP servers and collected outputs | Native task/Compose configuration, resolved with explicit Harbor job overrides. No runtime-helper object automatically overrides these. |
-| `agents` image content: base image digests, Debian package version, installed Codex CLI version and evaluation helper dependency versions | [environments/agents/Dockerfile](environments/agents/Dockerfile) only; no build arguments. Codex CLI 0.162.1. Helper dependency versions are not repeated there: the build derives them from [uv.lock](uv.lock) with [lock_requirements.py](environments/agents/lock_requirements.py), starting from the helper's direct imports named in the Dockerfile. `uv.lock` and the helper sources come from the repository root through the compose `additional_contexts` entry `project`. |
-| `agents` image tag | [environments/agents/compose.yaml](environments/agents/compose.yaml) `image` (`workflow-bench-agents:codex-0.162.1`); task Dockerfiles reference it in `FROM`. The tag names the Codex version, so both change together. |
+| `agents` image content: base image digests, Debian package version, installed Codex CLI version and evaluation helper dependency versions | [environments/agents/Dockerfile](environments/agents/Dockerfile) pins these, with Codex CLI 0.162.1. Helper dependency versions come from [uv.lock](uv.lock) through [lock_requirements.py](environments/agents/lock_requirements.py); the lock and helper sources come through Compose's `project` context. |
+| Sapiens source path and revision in `agents` | The one source path argument to [environments/agents/build.sh](environments/agents/build.sh) resolves to a repository root. The script requires its HEAD to match [SAPIENS_REVISION](environments/agents/SAPIENS_REVISION), archives only the committed `sapiens`, `prompts`, `web`, `license` and `sapiens4` paths into a temporary Compose context, and writes `REVISION`. The Dockerfile checks that revision, places `/opt/sapiens` on Python's import path and records it in the `org.workflow-bench.sapiens.revision` image label. No source machine path is stored in the image. |
+| `agents` image tag | [environments/agents/compose.yaml](environments/agents/compose.yaml) `image` (`workflow-bench-agents:codex-0.162.1`); task Dockerfiles reference it in `FROM`. The tag names the Codex version; the label names the Sapiens revision. |
 | Model, Codex CLI version and effective config | Native Harbor agent configuration/options inherited by `SessionSafeCodex` and Sapiens. Sapiens derives its model env from the native model selection. A requested Codex version must equal the one installed in the `agents` image; otherwise Harbor attempts a networked install. |
 | Reasoning effort | Sapiens requires `model_reasoning_effort` in native Harbor agent `config` (TOML file or inline mapping), copied to `SAPIENS_CODEX_REASONING_EFFORT`; a missing key raises `KeyError` before submission. `SessionSafeCodex` supports native Codex config and the separate `reasoning_effort` option; that option does not replace Sapiens' required config key. |
 | Native subscription credential file | Harbor's `CODEX_AUTH_JSON_PATH`; the inherited resolver also supports `CODEX_FORCE_AUTH_JSON` for the native home file. Use an explicit authorized path for benchmark execution. |

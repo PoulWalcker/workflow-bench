@@ -15,6 +15,14 @@ COPY --from=codex /usr/local/bin/node /usr/local/bin/node
 COPY --from=codex /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version && ps --version
 
+# The named context is a git archive prepared by build.sh, never the source worktree.
+ARG SAPIENS_REVISION
+LABEL org.workflow-bench.sapiens.revision="${SAPIENS_REVISION}"
+COPY --from=sapiens / /opt/sapiens/
+RUN test "$(cat /opt/sapiens/REVISION)" = "${SAPIENS_REVISION}" \
+    && printf '/opt/sapiens\n' > /usr/local/lib/python3.12/site-packages/sapiens.pth \
+    && python -m sapiens --help > /dev/null
+
 # Task verifiers run in images built FROM this one and call the Workflow Bench
 # evaluation helper. Its direct imports, jsonschema and referencing, and their
 # dependencies are installed at the versions locked in uv.lock.

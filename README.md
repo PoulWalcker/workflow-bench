@@ -43,17 +43,21 @@ requires `--run-integration`. `--run-model` remains unimplemented and is rejecte
 ## Agents image
 
 Task environment images build `FROM` the shared harness image; build it before
-using them. Building needs Docker and network access; the installed Codex CLI starts
-without network. Pins and the tag are listed in
+using them. Building needs Docker, network access and a local checkout of the pinned
+Sapiens revision. Pass its repository root as the sole source path argument; the
+build archives committed files, excluding local edits and untracked files. The
+installed Codex CLI starts without network. Pins and the tag are listed in
 [ARCHITECTURE](ARCHITECTURE.md#parameter-sources). Checked with Docker 29.4.0 on
 macOS arm64.
 
 ```sh
-docker compose -f environments/agents/compose.yaml build --pull
-docker run --rm --network none workflow-bench-agents:codex-0.162.1 codex --version
+environments/agents/build.sh /absolute/path/to/sapiens4 --no-cache
+docker run --rm --network none workflow-bench-agents:codex-0.162.1 sh -c 'cat /opt/sapiens/REVISION && python -m sapiens --help >/dev/null && codex --version'
+docker image inspect workflow-bench-agents:codex-0.162.1 --format '{{index .Config.Labels "org.workflow-bench.sapiens.revision"}}'
 ```
 
-The second command prints `codex-cli 0.162.1`. The image also carries the evaluation
+The second command prints the pinned Sapiens revision and `codex-cli 0.162.1`; the
+third prints the same revision from the image label. The image also carries the evaluation
 helper from `src/workflow_bench`, with dependencies at their `uv.lock` versions; rebuild
 it after changing that package or the lock. `wb check-task` reports
 `stale:agents_helper` and the integration preflight fails when the image's helper
