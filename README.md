@@ -75,6 +75,21 @@ on the baseline host). The integration controls also check that a task whose no-
 passes is rejected; they fail, rather than skip, when Docker or the image is missing
 or its helper is stale.
 
+## Report
+
+Reporting reads saved Harbor job directories offline and needs no Docker, model or
+credentials. Each argument is one job directory, `<jobs-dir>/<job-name>`.
+
+```sh
+uv run --locked wb compare runs/readiness/check-*
+uv run --locked wb compare --format markdown runs/readiness/check-*
+```
+
+The first command prints a JSON report and exits 0: one outcome per Trial and, per
+task and configuration, counts, pass rate and medians. With the readiness controls
+above it shows `oracle` with pass rate 1.0 and `nop` with 0.0. A directory that is not
+a Harbor job exits 2.
+
 ## Navigation
 
 | Document | Owner |

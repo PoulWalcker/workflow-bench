@@ -19,9 +19,10 @@ The agent chooses its strategy; tools provide capabilities rather than business 
 <a id="task-first-and-rternarity"></a>
 
 Read [ARCHITECTURE](ARCHITECTURE.md) before changing an interface, dependency, environment
-or parameter source. Native Harbor is the execution entry point; there is no WB execution CLI,
-service implementation or report command. Tasks follow the
-[task authoring regulation](docs/agents/task-authoring.md), checked by `wb check-task`.
+or parameter source. Native Harbor is the execution entry point; there is no WB execution CLI
+or service implementation. Tasks follow the
+[task authoring regulation](docs/agents/task-authoring.md), checked by `wb check-task`;
+`wb compare` reports saved Harbor jobs.
 
 The product flow is Task Definition → Readiness → Environment → Execution → Evidence →
 Evaluation → Comparison; [SPEC](SPEC.md#3-flow-contract) assigns inputs, outputs and owners.

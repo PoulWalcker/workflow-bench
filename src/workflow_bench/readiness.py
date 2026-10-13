@@ -11,14 +11,13 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 
 from harbor.models.task.config import TaskConfig, VerifierEnvironmentMode
 from harbor.models.task.task import Task
 from harbor.models.task.verifier_mode import resolve_task_verifier_mode
 
-from workflow_bench.contracts import Evaluation
-from workflow_bench.data import DataError, read_json, validate_contract
+from workflow_bench.comparison import read_evaluation
+from workflow_bench.data import DataError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -223,11 +222,9 @@ def _read_verdict(job_dir: Path) -> str:
     if len(paths) != 1:
         return "missing"
     try:
-        document = read_json(paths[0], "evaluation")
-        validate_contract("evaluation", document)
+        return read_evaluation(paths[0])["verdict"]
     except (DataError, OSError):
         return "invalid_evaluation"
-    return cast(Evaluation, document)["verdict"]
 
 
 @dataclass(frozen=True)
