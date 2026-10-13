@@ -15,7 +15,12 @@ requires = ["uv_build==0.12.4"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = ["pytest>=9.1.1", "ruff>=0.17.0"]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+    # ty is pre-1.0: an exact pin keeps its diagnostics stable across hosts.
+    "ty==0.0.86",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -30,12 +35,35 @@ line-length = 88
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # Pyflakes
+    "W",    # pycodestyle warnings
+    "A",    # flake8-builtins
+    "EXE",  # flake8-executable
+    "ISC",  # flake8-implicit-str-concat
+    "G",    # flake8-logging-format
+    "I",    # import order
+    "T20",  # flake8-print
+    "TID",  # flake8-tidy-imports
+    "PGH",  # pygrep-hooks
+    "PLC",  # Pylint conventions
+    "PLE",  # Pylint errors
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The stdio MCP server speaks newline JSON-RPC: stdout is its protocol channel.
+"src/workflow_bench/mcp.py" = ["T201"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+
+[tool.ty.src]
+include = ["src"]
 
 [tool.uv.build-backend]
 module-name = ["workflow_bench", "workflow_bench_integrations"]

@@ -4,8 +4,9 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
-from workflow_bench.contracts import JsonValue
+from workflow_bench.contracts import Evaluation, Evidence, JsonValue
 from workflow_bench.data import (
     MAX_EVIDENCE_BYTES,
     DataError,
@@ -17,21 +18,24 @@ from workflow_bench.data import (
 
 @dataclass(frozen=True)
 class FrozenEvidence:
-    document: dict[str, JsonValue]
+    """Validated Evidence with the SHA-256 of the exact bytes it was read from."""
+
+    document: Evidence
     sha256: str
 
 
 def harbor_reward(evaluation: dict[str, JsonValue]) -> dict[str, float] | None:
     """Map an already evaluated score; this function defines no scoring policy."""
     validate_contract("evaluation", evaluation)
+    checked = cast(Evaluation, evaluation)
     if (
-        evaluation["completeness"] != "complete"
-        or evaluation["score"] is None
-        or evaluation["errors"]
-        or any(c["status"] == "unknown" for c in evaluation["criteria"])
+        checked["completeness"] != "complete"
+        or checked["score"] is None
+        or checked["errors"]
+        or any(c["status"] == "unknown" for c in checked["criteria"])
     ):
         return None
-    return {"reward": float(evaluation["score"])}
+    return {"reward": float(checked["score"])}
 
 
 def resolve_ref(document: JsonValue, reference: str) -> JsonValue:
@@ -58,16 +62,18 @@ def resolve_ref(document: JsonValue, reference: str) -> JsonValue:
 def read_evidence(
     path: Path, *, expected_identity: Mapping[str, str]
 ) -> FrozenEvidence:
+    """Read Evidence for the expected identity; inconsistencies raise DataError."""
     content = read_bytes(path, "evidence", limit=MAX_EVIDENCE_BYTES)
     document = decode_json(content, "evidence")
     validate_contract("evidence", document)
-    if document["identity"] != dict(expected_identity):
+    evidence = cast(Evidence, document)
+    if evidence["identity"] != dict(expected_identity):
         raise DataError("identity_mismatch", "evidence")
-    if document["after"]["revision"] < document["before"]["revision"]:
+    if evidence["after"]["revision"] < evidence["before"]["revision"]:
         raise DataError("invalid_revision", "evidence")
     stages: dict[str, list[str]] = {}
     calls: dict[str, tuple[str, JsonValue]] = {}
-    for seq, event in enumerate(document["events"], 1):
+    for seq, event in enumerate(evidence["events"], 1):
         if event["seq"] != seq or event["profile"] != expected_identity["profile"]:
             raise DataError("invalid_sequence", "evidence")
         call_stages = stages.setdefault(event["call_id"], [])
@@ -77,11 +83,12 @@ def read_evidence(
         call_stages.append(event["stage"])
         if call_stages != ["accepted", "effect", "response"][: len(call_stages)]:
             raise DataError("invalid_sequence", "evidence")
-        if event["details"].get("evidence_ref"):
-            resolve_ref(document, event["details"]["evidence_ref"])
-    if document["freeze_status"] == "complete" and (
-        document["pending_call_ids"]
+        evidence_ref = event["details"].get("evidence_ref")
+        if isinstance(evidence_ref, str):
+            resolve_ref(document, evidence_ref)
+    if evidence["freeze_status"] == "complete" and (
+        evidence["pending_call_ids"]
         or any(len(value) != 3 for value in stages.values())
     ):
         raise DataError("incomplete_freeze", "evidence")
-    return FrozenEvidence(document, hashlib.sha256(content).hexdigest())
+    return FrozenEvidence(evidence, hashlib.sha256(content).hexdigest())

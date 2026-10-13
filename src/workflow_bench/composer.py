@@ -10,14 +10,21 @@ import subprocess
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import override
+from typing import Any, override
 
 from harbor.agents.installed.codex import Codex
 from harbor.models.agent.context import AgentContext
 from harbor.models.trajectories import Trajectory
 
 from workflow_bench.contracts import JsonValue
-from workflow_bench.data import MAX_EVIDENCE_BYTES, DataError, decode_json, read_json
+from workflow_bench.data import (
+    MAX_EVIDENCE_BYTES,
+    DataError,
+    decode_json,
+    read_json,
+    resource_schema,
+    validate_json,
+)
 
 MAX_SESSION_ENTRIES = 256
 MAX_SESSION_DEPTH = 8
@@ -43,15 +50,18 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
             stderr=subprocess.DEVNULL,
             env=environment,
         )
+        stdin, stdout = process.stdin, process.stdout
+        # Both streams exist because Popen received PIPE for them.
+        assert stdin is not None and stdout is not None
         deadline = time.monotonic() + timeout_sec
         buffer = b""
         with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ)
+            selector.register(stdout, selectors.EVENT_READ)
 
-            def request(message):
+            def request(message: dict[str, JsonValue]) -> Any:
                 nonlocal buffer
-                process.stdin.write((json.dumps(message) + "\n").encode())
-                process.stdin.flush()
+                stdin.write((json.dumps(message) + "\n").encode())
+                stdin.flush()
                 while time.monotonic() < deadline:
                     while b"\n" in buffer:
                         line, buffer = buffer.split(b"\n", 1)
@@ -64,7 +74,7 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
                             return response.get("result")
                     if not selector.select(min(1, max(0, deadline - time.monotonic()))):
                         continue
-                    chunk = os.read(process.stdout.fileno(), 65536)
+                    chunk = os.read(stdout.fileno(), 65536)
                     if not chunk or len(buffer) + len(chunk) > MAX_EVIDENCE_BYTES:
                         raise DataError(
                             "subscription_status_unavailable", "codex_account"
@@ -82,8 +92,8 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
                         },
                     }
                 )
-                process.stdin.write(b'{"method":"initialized"}\n')
-                process.stdin.flush()
+                stdin.write(b'{"method":"initialized"}\n')
+                stdin.flush()
                 result = request(
                     {"id": 2, "method": "account/rateLimits/read", "params": {}}
                 )
@@ -94,8 +104,8 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=5)
-                process.stdin.close()
-                process.stdout.close()
+                stdin.close()
+                stdout.close()
     if not isinstance(result, dict) or result.get("ordinaryUsageAllowed") is not True:
         raise DataError("subscription_status_unavailable", "codex_account")
     bucket = (result.get("rateLimitsByLimitId") or {}).get(
@@ -205,8 +215,6 @@ def codex_preflight(
             "provider": "isolated_stub",
         }
     if composer.get("authentication") == "chatgpt":
-        from workflow_bench.data import resource_schema, validate_json
-
         validate_json(runtime, resource_schema("e1.schema.json"), "e1_config")
         if not authorized:
             raise DataError("model_not_authorized", "composer")

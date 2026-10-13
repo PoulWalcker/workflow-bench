@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any, TypedDict, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
@@ -12,19 +13,41 @@ from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, decode_json, read_json
 
 
+class PublicTool(TypedDict):
+    """The fields of one installed public tool that this transport exports."""
+
+    name: str
+    description: str
+    arguments_schema: dict[str, JsonValue]
+
+
+class ToolContract(TypedDict):
+    """Installed public tool contract."""
+
+    tools: list[PublicTool]
+
+
+class _Connection(TypedDict):
+    tool_url: str
+    capability: str
+
+
 def serve(
-    contract: dict[str, JsonValue],
+    contract: ToolContract,
     *,
     tool_url: str,
     capability: str,
     timeout_sec: float,
 ) -> None:
+    """Answer MCP requests from stdin on stdout until stdin closes."""
     tools = {tool["name"]: tool for tool in contract["tools"]}
     # Ambient proxy settings must not redirect the capability outside the sandbox.
     opener = build_opener(ProxyHandler({}))
     while line := sys.stdin.buffer.readline(MAX_JSON_BYTES + 1):
         try:
-            request = decode_json(line, "mcp_request")
+            # Requests are unvalidated; a malformed shape raises below and is
+            # answered as an invalid request.
+            request: Any = decode_json(line, "mcp_request")
             if "id" not in request:
                 continue
             method = request.get("method")
@@ -86,7 +109,9 @@ def serve(
                             "text": json.dumps(payload, ensure_ascii=False),
                         }
                     ],
-                    "isError": "error" in payload,
+                    # Tool responses are relayed unvalidated; a scalar one raises
+                    # TypeError here and is answered as an invalid request.
+                    "isError": "error" in cast(Any, payload),
                 }
             else:
                 print(
@@ -121,13 +146,15 @@ def serve(
 
 
 def main() -> None:
+    """Serve the installed contract to one MCP client over stdio."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--contract", required=True)
     parser.add_argument("--connection")
     parser.add_argument("--timeout", type=float, default=5)
     args = parser.parse_args()
+    # Host-installed contract and connection files are not re-validated here.
     connection = (
-        read_json(Path(args.connection), "connection")
+        cast(_Connection, read_json(Path(args.connection), "connection"))
         if args.connection
         else {
             "tool_url": os.environ["WB_TOOL_URL"],
@@ -135,7 +162,7 @@ def main() -> None:
         }
     )
     serve(
-        read_json(Path(args.contract), "tools"),
+        cast(ToolContract, read_json(Path(args.contract), "tools")),
         tool_url=connection["tool_url"],
         capability=connection["capability"],
         timeout_sec=args.timeout,

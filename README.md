@@ -33,6 +33,7 @@ uv run --locked --offline pytest -q
 uv run --locked --offline pytest --collect-only -q
 uv run --locked --offline ruff check
 uv run --locked --offline ruff format --check
+uv run --locked --offline ty check
 uv build --force-pep517 --offline
 ```
 

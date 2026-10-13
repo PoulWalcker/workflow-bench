@@ -1,19 +1,19 @@
 import asyncio
 import os
+import signal
 from pathlib import Path
 
 import pytest
 from harbor.environments.docker.docker import DockerEnvironment
+from harbor.models.task.config import EnvironmentConfig
+from harbor.models.trial.paths import TrialPaths
+
+from workflow_bench.harbor import DeadlineDockerEnvironment
 
 
 def test_native_stop_has_a_deadline_even_inside_harbor_finalization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from harbor.models.task.config import EnvironmentConfig
-    from harbor.models.trial.paths import TrialPaths
-
-    from workflow_bench.harbor import DeadlineDockerEnvironment
-
     async def stalled_stop(self, delete):
         await asyncio.Event().wait()
 
@@ -33,13 +33,6 @@ def test_native_stop_has_a_deadline_even_inside_harbor_finalization(
 def test_native_stop_timeout_reaps_its_docker_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import signal
-
-    from harbor.models.task.config import EnvironmentConfig
-    from harbor.models.trial.paths import TrialPaths
-
-    from workflow_bench.harbor import DeadlineDockerEnvironment
-
     marker = tmp_path / "pid"
     command = tmp_path / "docker"
     command.write_text(f'#!/bin/sh\necho $$ > "{marker}"\nexec sleep 60\n')

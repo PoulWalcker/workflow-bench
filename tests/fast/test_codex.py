@@ -1,17 +1,25 @@
 """Codex wiring at the native Harbor process seam, without Docker or models."""
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from workflow_bench.composer import (
+    codex_preflight,
+    collect_codex_usage,
+    read_codex_limits,
+)
+from workflow_bench.contracts import JsonValue
+from workflow_bench.data import DataError
+
 
 def test_chatgpt_native_preflight_requires_authorization_not_api_spending_cap(
-    config_data,
-):
-    from workflow_bench.composer import codex_preflight
-    from workflow_bench.data import DataError
-
+    config_data: dict[str, JsonValue],
+) -> None:
     composer = {
         "mode": "model",
         "image": "sha256:" + "d" * 64,
@@ -37,10 +45,9 @@ def test_chatgpt_native_preflight_requires_authorization_not_api_spending_cap(
     assert plan["max_attempts"] == 2
 
 
-def test_model_free_label_cannot_enable_subscription_auth(config_data):
-    from workflow_bench.composer import codex_preflight
-    from workflow_bench.data import DataError
-
+def test_model_free_label_cannot_enable_subscription_auth(
+    config_data: dict[str, JsonValue],
+) -> None:
     with pytest.raises(DataError, match="invalid_model_free_config"):
         codex_preflight(
             {
@@ -61,13 +68,8 @@ def test_model_free_label_cannot_enable_subscription_auth(config_data):
 
 @pytest.mark.parametrize("used,expected", [(25, None), (100, "subscription_exhausted")])
 def test_subscription_limits_come_from_native_account_not_run_config(
-    tmp_path, monkeypatch, used, expected
-):
-    import os
-
-    from workflow_bench.composer import read_codex_limits
-    from workflow_bench.data import DataError
-
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, used: int, expected: str | None
+) -> None:
     auth = tmp_path / "auth.json"
     auth.write_text(
         json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": "test"}})
@@ -84,11 +86,14 @@ def test_subscription_limits_come_from_native_account_not_run_config(
     executable.write_text(
         "#!/usr/bin/env python3\nimport json, sys, os\n"
         "from pathlib import Path\n"
-        "assert json.loads((Path(os.environ['CODEX_HOME'])/'auth.json').read_text())['auth_mode'] == 'chatgpt'\n"
+        "assert json.loads((Path(os.environ['CODEX_HOME'])/'auth.json').read_text())"
+        "['auth_mode'] == 'chatgpt'\n"
         "for line in sys.stdin:\n"
         " d=json.loads(line)\n"
-        " if d.get('method') == 'initialize': print(json.dumps({'id':d['id'],'result':{}}),flush=True)\n"
-        f" elif d.get('method') == 'account/rateLimits/read': print(json.dumps({{'id':d['id'],'result':{limits!r}}}),flush=True)\n"
+        " if d.get('method') == 'initialize':"
+        " print(json.dumps({'id':d['id'],'result':{}}),flush=True)\n"
+        " elif d.get('method') == 'account/rateLimits/read':"
+        f" print(json.dumps({{'id':d['id'],'result':{limits!r}}}),flush=True)\n"
     )
     executable.chmod(0o700)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
@@ -109,11 +114,8 @@ def test_subscription_limits_come_from_native_account_not_run_config(
     [(False, "model_not_authorized"), (True, "provider_enforcement_unverified")],
 )
 def test_codex_preflight_never_trusts_declared_enforcement_or_opens_credentials(
-    config_data, authorized, expected
-):
-    from workflow_bench.composer import codex_preflight
-    from workflow_bench.data import DataError
-
+    config_data: dict[str, JsonValue], authorized: bool, expected: str
+) -> None:
     # A run config can declare a finalized cap and enforcement; it cannot attest them.
     budget = {
         "finalized": True,
@@ -134,9 +136,9 @@ def test_codex_preflight_never_trusts_declared_enforcement_or_opens_credentials(
         )
 
 
-def test_usage_reads_last_cumulative_event_preserving_missing_and_zero(tmp_path):
-    from workflow_bench.composer import collect_codex_usage
-
+def test_usage_reads_last_cumulative_event_preserving_missing_and_zero(
+    tmp_path: Path,
+) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     rollout = sessions / "rollout-synthetic.jsonl"
@@ -185,11 +187,7 @@ def test_usage_reads_last_cumulative_event_preserving_missing_and_zero(tmp_path)
     assert collect_codex_usage(tmp_path)["input_tokens"] is None
 
 
-def test_special_session_file_cannot_block_usage_collection(tmp_path):
-    import os
-    import subprocess
-    import sys
-
+def test_special_session_file_cannot_block_usage_collection(tmp_path: Path) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     os.mkfifo(sessions / "rollout.jsonl")
@@ -197,9 +195,11 @@ def test_special_session_file_cannot_block_usage_collection(tmp_path):
         [
             sys.executable,
             "-c",
-            "import json, sys; from pathlib import Path; "
-            "from workflow_bench.composer import collect_codex_usage; "
-            "print(json.dumps(collect_codex_usage(Path(sys.argv[1]))))",
+            (
+                "import json, sys; from pathlib import Path; "
+                "from workflow_bench.composer import collect_codex_usage; "
+                "print(json.dumps(collect_codex_usage(Path(sys.argv[1]))))"
+            ),
             str(tmp_path),
         ],
         capture_output=True,
@@ -216,12 +216,8 @@ def test_special_session_file_cannot_block_usage_collection(tmp_path):
     "kind", ["fifo", "symlink", "large", "linked_directory", "derived_directory"]
 )
 def test_native_session_ingestion_is_bounded_and_cannot_read_linked_data(
-    tmp_path, kind
-):
-    import os
-    import subprocess
-    import sys
-
+    tmp_path: Path, kind: str
+) -> None:
     sessions = tmp_path / "sessions/2026/10/12"
     sessions.mkdir(parents=True)
     path = sessions / "rollout.jsonl"
@@ -247,16 +243,20 @@ def test_native_session_ingestion_is_bounded_and_cannot_read_linked_data(
         [
             sys.executable,
             "-c",
-            "from pathlib import Path; import sys; "
-            "from harbor.agents.factory import AgentFactory; "
-            "from harbor.models.trial.config import AgentConfig; "
-            "from harbor.models.agent.context import AgentContext; "
-            "p=Path(sys.argv[1]); "
-            "a=AgentFactory.create_agent_from_config("
-            "AgentConfig(import_path='workflow_bench.composer:SessionSafeCodex'), logs_dir=p); "
-            "assert a.convert_trajectory(p) is None; "
-            "context=AgentContext(); a.populate_context_post_run(context); "
-            "assert context.n_input_tokens is None; assert context.model_usage == {}",
+            (
+                "from pathlib import Path; import sys; "
+                "from harbor.agents.factory import AgentFactory; "
+                "from harbor.models.trial.config import AgentConfig; "
+                "from harbor.models.agent.context import AgentContext; "
+                "p=Path(sys.argv[1]); "
+                "a=AgentFactory.create_agent_from_config("
+                "AgentConfig(import_path='workflow_bench.composer:SessionSafeCodex'),"
+                " logs_dir=p); "
+                "assert a.convert_trajectory(p) is None; "
+                "context=AgentContext(); a.populate_context_post_run(context); "
+                "assert context.n_input_tokens is None; "
+                "assert context.model_usage == {}"
+            ),
             str(tmp_path),
         ],
         capture_output=True,
@@ -267,10 +267,9 @@ def test_native_session_ingestion_is_bounded_and_cannot_read_linked_data(
 
 
 @pytest.mark.parametrize("field", ["mode", "reasoning_effort"])
-def test_invalid_composer_config_is_rejected_without_setup(config_data, field):
-    from workflow_bench.composer import codex_preflight
-    from workflow_bench.data import DataError
-
+def test_invalid_composer_config_is_rejected_without_setup(
+    config_data: dict[str, JsonValue], field: str
+) -> None:
     composer = {
         "mode": "model-free",
         "image": "sha256:" + "d" * 64,

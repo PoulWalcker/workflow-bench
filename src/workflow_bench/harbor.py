@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any, override
 
@@ -62,7 +62,7 @@ class DeadlineDockerEnvironment(DockerEnvironment):
 
     async def _collect_with_stop(
         self,
-        collection: Awaitable[ExecResult],
+        collection: Coroutine[object, object, ExecResult],
         process: asyncio.subprocess.Process,
     ) -> ExecResult:
         pending = asyncio.create_task(collection)
