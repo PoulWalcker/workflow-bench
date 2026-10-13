@@ -4,8 +4,9 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any, override
+from typing import Any, cast, override
 
+from harbor.constants import MAIN_SERVICE_NAME
 from harbor.environments.base import BaseEnvironment, ExecResult, OutputCallback
 from harbor.environments.docker.docker import DockerEnvironment
 
@@ -15,16 +16,23 @@ LOGGER = logging.getLogger(__name__)
 class DeadlineDockerEnvironment(DockerEnvironment):
     """Bound native teardown, including Harbor's shielded finalization calls."""
 
-    def __init__(self, *, cleanup_timeout_sec: float, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, *, cleanup_timeout_sec: float, **kwargs: object) -> None:
+        """Use native Docker options with a cleanup deadline in seconds."""
+        super().__init__(**cast(dict[str, Any], kwargs))
         self.cleanup_timeout_sec = cleanup_timeout_sec
-        self.cancel_writer: Callable[[], Awaitable[None]] | None = None
-        self._stopping_writer = False
+        self.cancel_writer: Callable[[], Awaitable[None]] | None = self._stop_writer
+        self._is_stopping_writer = False
 
     @override
     async def stop(self, delete: bool) -> None:
-        async with asyncio.timeout(self.cleanup_timeout_sec):
-            await super().stop(delete=delete)
+        """Bound native teardown without starting another stop during its timeout."""
+        was_stopping = self._is_stopping_writer
+        self._is_stopping_writer = True
+        try:
+            async with asyncio.timeout(self.cleanup_timeout_sec):
+                await super().stop(delete=delete)
+        finally:
+            self._is_stopping_writer = was_stopping
 
     @override
     async def _collect_buffered_output(
@@ -60,6 +68,17 @@ class DeadlineDockerEnvironment(DockerEnvironment):
             process,
         )
 
+    async def _stop_writer(self) -> None:
+        """Kill the candidate container before collection; keep it for Docker copy."""
+        await self._run_docker_compose_command(
+            ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
+        )
+        running = await self._run_docker_compose_command(
+            ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
+        )
+        if running.stdout and running.stdout.strip():
+            raise RuntimeError("stop_unconfirmed")
+
     async def _collect_with_stop(
         self,
         collection: Coroutine[object, object, ExecResult],
@@ -71,13 +90,13 @@ class DeadlineDockerEnvironment(DockerEnvironment):
             # installed agent's finally blocks. Both can otherwise leave children.
             return await asyncio.shield(pending)
         except asyncio.CancelledError:
-            if self.cancel_writer is not None and not self._stopping_writer:
-                self._stopping_writer = True
+            if self.cancel_writer is not None and not self._is_stopping_writer:
+                self._is_stopping_writer = True
                 try:
                     async with asyncio.timeout(self.cleanup_timeout_sec):
                         await self.cancel_writer()
                 finally:
-                    self._stopping_writer = False
+                    self._is_stopping_writer = False
             raise
         finally:
             if process.returncode is None:

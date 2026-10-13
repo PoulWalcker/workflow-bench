@@ -1,18 +1,20 @@
 """Codex composition at Harbor's installed-agent seam; no agent loop."""
 
+import asyncio
 import json
 import math
 import os
-import re
 import selectors
+import shutil
 import stat
 import subprocess
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, override
+from typing import TypedDict, override
 
 from harbor.agents.installed.codex import Codex
+from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.trajectories import Trajectory
 
@@ -22,16 +24,41 @@ from workflow_bench.data import (
     DataError,
     decode_json,
     read_json,
-    resource_schema,
-    validate_json,
 )
 
 MAX_SESSION_ENTRIES = 256
 MAX_SESSION_DEPTH = 8
 
 
-def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonValue]:
-    """Read the subscription's live limits in a clean, host-only native session."""
+class AllowanceWindow(TypedDict):
+    """Native included-usage window; absent duration/reset facts stay unknown."""
+
+    usedPercent: float
+    windowDurationMins: int | None
+    resetsAt: int | None
+
+
+class AllowanceWindows(TypedDict):
+    """Validated primary and optional secondary subscription windows."""
+
+    primary: AllowanceWindow
+    secondary: AllowanceWindow | None
+
+
+class CodexAllowance(TypedDict):
+    """Available included usage observed at Unix seconds, without account identity."""
+
+    rateLimits: AllowanceWindows
+    observed_at_unix: float
+
+
+def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> CodexAllowance:
+    """Read available subscription allowance in a clean host-only native session.
+
+    Reads the explicit ChatGPT credential file and queries account status only.
+    Raises DataError for unavailable, malformed or exhausted allowance; it does
+    not authorize or launch a model Trial. The query deadline is in seconds.
+    """
     auth = read_json(auth_path, "codex_auth")
     if not isinstance(auth, dict) or auth.get("auth_mode") != "chatgpt":
         raise DataError("chatgpt_auth_required", "codex_auth")
@@ -58,14 +85,23 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
         with selectors.DefaultSelector() as selector:
             selector.register(stdout, selectors.EVENT_READ)
 
-            def request(message: dict[str, JsonValue]) -> Any:
+            def _request(message: dict[str, JsonValue]) -> JsonValue:
                 nonlocal buffer
                 stdin.write((json.dumps(message) + "\n").encode())
                 stdin.flush()
                 while time.monotonic() < deadline:
                     while b"\n" in buffer:
                         line, buffer = buffer.split(b"\n", 1)
-                        response = json.loads(line)
+                        try:
+                            response = decode_json(line, "codex_account")
+                        except DataError as error:
+                            raise DataError(
+                                "subscription_status_unavailable", "codex_account"
+                            ) from error
+                        if not isinstance(response, dict):
+                            raise DataError(
+                                "subscription_status_unavailable", "codex_account"
+                            )
                         if response.get("id") == message["id"]:
                             if "error" in response:
                                 raise DataError(
@@ -83,7 +119,7 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
                 raise DataError("subscription_status_timeout", "codex_account")
 
             try:
-                request(
+                _request(
                     {
                         "id": 1,
                         "method": "initialize",
@@ -94,7 +130,7 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
                 )
                 stdin.write(b'{"method":"initialized"}\n')
                 stdin.flush()
-                result = request(
+                allowance_response = _request(
                     {"id": 2, "method": "account/rateLimits/read", "params": {}}
                 )
             finally:
@@ -106,31 +142,44 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> dict[str, JsonV
                     process.wait(timeout=5)
                 stdin.close()
                 stdout.close()
-    if not isinstance(result, dict) or result.get("ordinaryUsageAllowed") is not True:
-        raise DataError("subscription_status_unavailable", "codex_account")
-    bucket = (result.get("rateLimitsByLimitId") or {}).get(
-        "codex", result.get("rateLimits")
-    )
-    if not isinstance(bucket, dict) or not isinstance(bucket.get("primary"), dict):
-        raise DataError("subscription_status_unavailable", "codex_account")
-    for window in (bucket["primary"], bucket.get("secondary")):
-        if window is None:
-            continue
-        used = window.get("usedPercent")
-        if (
-            isinstance(used, bool)
-            or not isinstance(used, (int, float))
-            or not 0 <= used <= 100
-        ):
-            raise DataError("subscription_status_unavailable", "codex_account")
-        if used >= 100 or bucket.get("rateLimitReachedType") is not None:
-            raise DataError("subscription_exhausted", "codex_account")
-    # Preserve quota facts without account identifiers or auth material.
-    return {"rateLimits": bucket, "observed_at_unix": time.time()}
+    return _allowance_report(allowance_response)
 
 
 class SessionSafeCodex(Codex):
     """Keep the stock agent loop; bound its candidate-controlled log ingestion."""
+
+    @override
+    async def run(
+        self, instruction: str, environment: BaseEnvironment, context: AgentContext
+    ) -> None:
+        """Run native Codex, recovering bounded session logs after container stop."""
+        try:
+            await super().run(instruction, environment, context)
+        except asyncio.CancelledError:
+            # Native Codex's finally uses exec, unavailable after confirmed stop.
+            # Docker copy can still read the stopped container, without credentials.
+            try:
+                async with asyncio.timeout(10):
+                    with TemporaryDirectory(prefix="wb-interrupted-") as directory:
+                        recovered = Path(directory)
+                        await environment.download_dir(
+                            str(self._REMOTE_CODEX_HOME / "sessions"),
+                            recovered / "sessions",
+                        )
+                        _, snapshots, invalid = _session_snapshot(recovered)
+                        if not invalid and snapshots:
+                            sessions = self.logs_dir / "sessions"
+                            if sessions.is_symlink() or sessions.is_file():
+                                sessions.unlink()
+                            elif sessions.exists():
+                                shutil.rmtree(sessions)
+                            for reference, content in snapshots:
+                                target = self.logs_dir / reference
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                target.write_bytes(content)
+            except (OSError, RuntimeError, TimeoutError):
+                self.logger.warning("phase=agent session_recovery=unavailable")
+            raise
 
     @override
     def convert_trajectory(self, logs_dir: Path) -> Trajectory | None:
@@ -164,74 +213,6 @@ class SessionSafeCodex(Codex):
         # no observed per-model records; missing token/cost fields remain unknown.
         if context.model_usage is None:
             context.model_usage = {}
-
-
-def codex_preflight(
-    composer: dict[str, JsonValue],
-    *,
-    budget: dict[str, JsonValue] | None,
-    runtime: dict[str, JsonValue],
-    authorized: bool,
-    auth_path: Path | None = None,
-) -> dict[str, JsonValue]:
-    """Reject execution before credential access or resource creation."""
-    required = {
-        "mode",
-        "image",
-        "cli_version",
-        "model",
-        "reasoning_effort",
-        "exploration_max_calls",
-    }
-    if (
-        not isinstance(composer, dict)
-        or set(composer) not in (required, required | {"authentication"})
-        or not isinstance(composer["mode"], str)
-        or composer["mode"] not in {"model-free", "model"}
-        or not isinstance(composer["image"], str)
-        or not re.fullmatch(r"sha256:[a-f0-9]{64}", composer["image"])
-        or not isinstance(composer["cli_version"], str)
-        or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", composer["cli_version"])
-        or not isinstance(composer["model"], str)
-        or not re.fullmatch(r"[A-Za-z0-9_.-]+", composer["model"])
-        or not isinstance(composer["reasoning_effort"], str)
-        or composer["reasoning_effort"]
-        not in {"none", "minimal", "low", "medium", "high", "xhigh"}
-        or isinstance(composer["exploration_max_calls"], bool)
-        or not isinstance(composer["exploration_max_calls"], int)
-        or not 1 <= composer["exploration_max_calls"] <= 100
-    ):
-        raise DataError("invalid_composer_config", "composer")
-    if composer["mode"] == "model-free":
-        if (
-            budget is not None
-            or composer["model"] != "synthetic"
-            or "authentication" in composer
-        ):
-            raise DataError("invalid_model_free_config", "composer")
-        return {
-            "execution_enabled": True,
-            "model_calls": 0,
-            "provider": "isolated_stub",
-        }
-    if composer.get("authentication") == "chatgpt":
-        validate_json(runtime, resource_schema("e1.schema.json"), "e1_config")
-        if not authorized:
-            raise DataError("model_not_authorized", "composer")
-        if auth_path is None:
-            raise DataError("codex_auth_required", "composer")
-        if budget is not None or composer["model"] == "synthetic":
-            raise DataError("invalid_subscription_config", "composer")
-        return {
-            "execution_enabled": True,
-            "provider": "chatgpt_subscription",
-            "max_attempts": 2,
-        }
-    if not authorized:
-        raise DataError("model_not_authorized", "composer")
-    # The API-billed mode is closed: no trusted API project spending constraint is
-    # verified, and a declaration in a run config cannot attest to enforcement.
-    raise DataError("provider_enforcement_unverified", "model_budget")
 
 
 def collect_codex_usage(
@@ -381,3 +362,70 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
     except (OSError, DataError):
         invalid = True
     return sorted(references), sorted(snapshots), invalid
+
+
+def _allowance_report(account_response: JsonValue) -> CodexAllowance:
+    if (
+        isinstance(account_response, dict)
+        and account_response.get("ordinaryUsageAllowed") is False
+    ):
+        raise DataError("subscription_exhausted", "codex_account")
+    if (
+        not isinstance(account_response, dict)
+        or account_response.get("ordinaryUsageAllowed") is not True
+    ):
+        raise DataError("subscription_status_unavailable", "codex_account")
+    buckets = account_response.get("rateLimitsByLimitId")
+    if buckets is not None and not isinstance(buckets, dict):
+        raise DataError("subscription_status_unavailable", "codex_account")
+    bucket = (
+        buckets.get("codex", account_response.get("rateLimits"))
+        if buckets
+        else account_response.get("rateLimits")
+    )
+    if not isinstance(bucket, dict) or not isinstance(bucket.get("primary"), dict):
+        raise DataError("subscription_status_unavailable", "codex_account")
+    if bucket.get("spendControlReached") is True:
+        raise DataError("subscription_exhausted", "codex_account")
+    if bucket.get("rateLimitReachedType") is not None:
+        raise DataError("subscription_exhausted", "codex_account")
+    primary = _allowance_window(bucket["primary"])
+    if primary is None:
+        raise DataError("subscription_status_unavailable", "codex_account")
+    return {
+        "rateLimits": {
+            "primary": primary,
+            "secondary": _allowance_window(bucket.get("secondary")),
+        },
+        "observed_at_unix": time.time(),
+    }
+
+
+def _allowance_window(window: JsonValue) -> AllowanceWindow | None:
+    if window is None:
+        return None
+    if not isinstance(window, dict):
+        raise DataError("subscription_status_unavailable", "codex_account")
+    used_percent = window.get("usedPercent")
+    if (
+        isinstance(used_percent, bool)
+        or not isinstance(used_percent, (int, float))
+        or not 0 <= used_percent <= 100
+    ):
+        raise DataError("subscription_status_unavailable", "codex_account")
+    if used_percent >= 100:
+        raise DataError("subscription_exhausted", "codex_account")
+    window_duration_minutes = window.get("windowDurationMins")
+    resets_at_unix = window.get("resetsAt")
+    for value in (window_duration_minutes, resets_at_unix):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            raise DataError("subscription_status_unavailable", "codex_account")
+    return {
+        "usedPercent": used_percent,
+        "windowDurationMins": window_duration_minutes
+        if isinstance(window_duration_minutes, int)
+        else None,
+        "resetsAt": resets_at_unix if isinstance(resets_at_unix, int) else None,
+    }

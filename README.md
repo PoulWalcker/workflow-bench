@@ -75,6 +75,39 @@ on the baseline host). The integration controls also check that a task whose no-
 passes is rejected; they fail, rather than skip, when Docker or the image is missing
 or its helper is stale.
 
+## Direct Codex controls
+
+[The native job example](examples/codex/job.yaml) runs the trivial task using
+`SessionSafeCodex` and `DeadlineDockerEnvironment`, with one attempt and no retry.
+It explicitly disables ambient authentication and points Codex at an unused
+loopback port inside the container. These commands use Docker, with no credentials
+or model calls:
+
+```sh
+uv run --locked harbor run -c examples/codex/job.yaml
+uv run --locked wb compare runs/codex/codex-empty-provider
+uv run --locked pytest -q --run-integration tests/integration/test_codex_direct.py
+uv run --locked wb preflight --help
+```
+
+The empty-provider control produces a task `fail`, judged from its missing answer,
+including when Codex reaches its finite timeout; it is not an infrastructure error.
+The integration suite also proves fake-Codex wiring/isolation and stops a detached
+late writer on timeout and cancellation. Repeat the native job with a fresh
+`--job-name` because Harbor resumes existing job directories.
+
+Native Harbor owns configuration: agent `model_name`, `kwargs.version`,
+`kwargs.reasoning_effort` (CLI `-k reasoning_effort=low`) and `kwargs.config`
+(Codex TOML mapping); MCP servers belong to the task. The example deliberately has
+no live credentials. An authorized subscription job must replace its empty-provider
+config, select permitted provider networking, set an explicit
+`agents[].env.CODEX_AUTH_JSON_PATH` in the job,
+and keep finite Trial limits. It must first pass readiness and a fresh
+`wb preflight --auth-path <authorized-auth.json>` check. Preflight exits 0 with
+`allowed: true`, or 1 with a safe rejection reason; it does not launch a model or
+authorize a Trial. Protocol/decision checks are verified with fixtures; a live
+subscription read and model smoke require separate owner authorization.
+
 ## Report
 
 Reporting reads saved Harbor job directories offline and needs no Docker, model or

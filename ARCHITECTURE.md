@@ -53,7 +53,7 @@ remain the source facts; reporting one configuration needs no comparison baselin
 
 Dependency direction: Sapiens integration → composer/data/contracts and Harbor;
 composer → data/contracts and Harbor; evaluation → data/contracts; mcp → data/contracts;
-cli → readiness and comparison; readiness → comparison (evaluation reader);
+cli → readiness, comparison and composer; readiness → comparison (evaluation reader);
 both → data/contracts and Harbor.
 Core modules do not import the Sapiens integration or application business rules.
 
@@ -70,14 +70,31 @@ schema validation. The service must enforce authorization, business semantics an
 limits. HTTP status and successful transport do not establish committed effects.
 Protocol responses alone belong on the MCP process's stdout.
 
-Codex preflight is a callable helper: isolated model-free mode returns zero calls;
-subscription mode requires explicit authorization, an auth path and a runtime
-object checked against the retained [runtime schema](src/workflow_bench/resources/e1.schema.json).
-That schema still contains legacy runtime fields; no current launcher applies them
-to Harbor. API-billed mode is closed by preflight without verified external spending
-limits. `read_codex_limits` reads live native account allowance in a temporary host
-Codex home; callers must enforce the authorization and continuation rules in SPEC.
-These helpers are not automatically wired into `harbor run`.
+`wb preflight --auth-path <path>` reads live ChatGPT subscription allowance through
+`read_codex_limits` in a temporary host Codex home. It returns JSON with `allowed`,
+validated quota windows and observation time, or a safe rejection reason; it never
+launches a model. Unknown/malformed allowance, exhausted windows and native spend
+control denial block admission. Account ids, credentials and unrecognized response
+fields are omitted. The pinned Codex 0.162.1 account protocol is verified from its
+local generated schema and fixture responses; live allowance still requires an
+authorized credential read. Native `harbor run` does not enforce this check or owner
+authorization automatically; apply SPEC's readiness, allowance and limits gates
+before every live Trial. API-billed measurement remains unauthorized without the
+required external spending constraint.
+
+[The direct job example](examples/codex/job.yaml) uses native Harbor agent options:
+`SessionSafeCodex`, pinned version, model, reasoning effort and inline Codex config.
+Its default provider is an unused container loopback port with no authentication,
+so the command is a model-free startup/failure control. Explicit empty credential
+paths/keys and `CODEX_FORCE_AUTH_JSON=FALSE` override ambient credentials. Uppercase
+`FALSE` avoids Harbor 0.24.0's text scrubber replacing JSON's lowercase `false`.
+MCP servers come from the task's native configuration; the trivial task needs none.
+On cancellation, `SessionSafeCodex` recovers only validated, bounded session files
+from the stopped container through Docker copy (10-second recovery deadline),
+because native Codex's final in-container copy can no longer execute. The Docker
+controls cover a fake executable's answer and private-file isolation,
+real pinned Codex's native session parsing and state-based failure, and cessation
+of a detached late writer on timeout and SIGINT.
 
 `collect_codex_usage` uses one session's last cumulative totals, preserving missing,
 ambiguous or malformed values as unknown; optional supplied prices give an estimate.
@@ -87,15 +104,17 @@ state and raises on another terminal state; this neither proves all delegated wo
 stopped nor supplies an outcome verdict. SPEC requires assessment from resulting
 state; that lifecycle integration is not established by the retained adapter.
 
-`DeadlineDockerEnvironment` can invoke an optional caller-installed `cancel_writer`
-callback before collector cancellation; killing a host Docker client alone does
-not confirm container children stopped. Select this class explicitly through
-Harbor's `--env workflow_bench.harbor:DeadlineDockerEnvironment` (Harbor 0.24.0
-deprecates `--environment-import-path`) and supply `cleanup_timeout_sec` through
-`--ek`. No callback is installed
-by the class itself. Native lifecycle remains Harbor-owned; private-method coupling
-requires renewed checks when Harbor changes. Fast checks do not prove real Docker
-isolation, delegated cessation or provider billing stopped.
+`DeadlineDockerEnvironment` installs a cancellation callback that kills the main
+candidate container and confirms it is no longer running before cancelling the
+Docker output collector. The stopped container remains available for native artifact
+copy and Harbor-owned teardown; candidate children cannot mutate it during collection.
+A caller can replace `cancel_writer` for a different writer boundary. Native `stop`
+and collection cleanup have finite deadlines. Select the class through Harbor's
+`--env workflow_bench.harbor:DeadlineDockerEnvironment` (or native job config) and
+supply `cleanup_timeout_sec` through `--ek`/environment kwargs. The integration
+controls exercise Harbor 0.24.0's private collector/Compose interfaces; recheck on
+upgrade. This proves local container cessation, not remote provider computation
+or billing stopped.
 
 ## Extension rules
 
@@ -126,8 +145,7 @@ where a retained interface supports alternatives. Resolve user paths once at ent
 | Reasoning effort | Sapiens requires `model_reasoning_effort` in native Harbor agent `config` (TOML file or inline mapping), copied to `SAPIENS_CODEX_REASONING_EFFORT`; a missing key raises `KeyError` before submission. `SessionSafeCodex` supports native Codex config and the separate `reasoning_effort` option; that option does not replace Sapiens' required config key. |
 | Native subscription credential file | Harbor's `CODEX_AUTH_JSON_PATH`; the inherited resolver also supports `CODEX_FORCE_AUTH_JSON` for the native home file. Use an explicit authorized path for benchmark execution. |
 | Native API authentication | Harbor's provider environment; Sapiens uses `OPENAI_API_KEY` only when no auth file resolves. This fallback does not authorize API-billed measurement. |
-| Preflight mode, image digest, CLI version, model, reasoning, exploration limit and authentication | Required caller-supplied `composer` mapping to `codex_preflight`; it validates a declaration, not the installed image or provider enforcement. |
-| Preflight authorization, auth path, budget and runtime fields | Explicit `authorized`, `auth_path`, `budget`, `runtime` arguments; subscription requires no API budget object. No corresponding Workflow Bench CLI exists. |
+| Subscription preflight credential and deadline | `wb preflight --auth-path <path>` (required, resolved once at CLI entry) and `--timeout-sec` (positive finite seconds, default 30). Reads allowance only; authorization and live-run limits remain separate owner gates. |
 | Subscription allowance and account-query deadline | Native account response; `timeout_sec` supplied to `read_codex_limits`. Quota is not inferred from configuration. |
 | Usage log path and optional prices | Explicit `logs` and `prices` arguments to `collect_codex_usage`; prices are per million input/cached-input/output tokens. |
 | MCP public contract | Required `--contract` file; `serve` receives the installed contract directly. |

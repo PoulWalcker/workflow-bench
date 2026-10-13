@@ -3,12 +3,14 @@
 import argparse
 import json
 import logging
+import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
 from workflow_bench.comparison import compare, render_markdown
+from workflow_bench.composer import read_codex_limits
 from workflow_bench.data import DataError
 from workflow_bench.readiness import check_task
 
@@ -19,7 +21,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     `check-task` prints its JSON report on stdout and returns 0 only when the
     task is ready, 1 otherwise. `compare` prints its JSON or Markdown report
     on stdout and returns 0, or 2 when an argument is not a Harbor job
-    directory or is repeated.
+    directory or is repeated. `preflight` returns 0 only for available native
+    subscription allowance, 1 for a safe rejection; it makes no model call.
     """
     parser = _parser()
     arguments = parser.parse_args(argv)
@@ -30,6 +33,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if arguments.command == "compare":
         return _compare(parser, arguments)
+    if arguments.command == "preflight":
+        return _preflight(arguments)
     return _check_task(arguments)
 
 
@@ -66,6 +71,24 @@ def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         sys.stdout.write(render_markdown(report))
     else:
         sys.stdout.write(json.dumps(report, indent=2) + "\n")
+    return 0
+
+
+def _preflight(arguments: argparse.Namespace) -> int:
+    try:
+        allowance = read_codex_limits(
+            arguments.auth_path.expanduser().resolve(),
+            timeout_sec=arguments.timeout_sec,
+        )
+    except (DataError, OSError, subprocess.TimeoutExpired) as error:
+        reason = (
+            error.code
+            if isinstance(error, DataError)
+            else "subscription_status_unavailable"
+        )
+        sys.stdout.write(json.dumps({"allowed": False, "reason": reason}) + "\n")
+        return 1
+    sys.stdout.write(json.dumps({"allowed": True, **allowance}) + "\n")
     return 0
 
 
@@ -112,6 +135,12 @@ def _parser() -> argparse.ArgumentParser:
         default="json",
         help="Report format on stdout (default: json).",
     )
+    preflight = commands.add_parser(
+        "preflight",
+        help="Read live ChatGPT subscription allowance; does not run a model.",
+    )
+    preflight.add_argument("--auth-path", type=Path, required=True)
+    preflight.add_argument("--timeout-sec", type=_positive_seconds, default=30.0)
     return parser
 
 
