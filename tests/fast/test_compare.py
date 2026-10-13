@@ -154,6 +154,355 @@ def _compare(
     return status, json.loads(capsys.readouterr().out)
 
 
+def _session(agent_dir: Path, name: str, rows: list[dict[str, object]]) -> None:
+    sessions = agent_dir / "sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    (sessions / name).write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
+
+def _message(
+    at: str, role: str, text: str, *, phase: str | None = None
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "type": "message",
+        "role": role,
+        "content": [
+            {"type": "input_text" if role == "user" else "output_text", "text": text}
+        ],
+    }
+    if phase is not None:
+        payload["phase"] = phase
+    return {"timestamp": at, "type": "response_item", "payload": payload}
+
+
+def test_transcript_renders_codex_conversation_and_redacts_identifiers(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "codex-job")
+    _trial(job, "conversation", criteria=_criteria("pass"), tokens=(12, 2, 3))
+    agent = job / "conversation" / "agent"
+    _session(
+        agent,
+        "rollout.jsonl",
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "type": "session_meta",
+                "payload": {"creator_account_id": "acct_SECRET"},
+            },
+            _message(
+                "2026-01-01T00:00:01Z",
+                "user",
+                "Write basket total. OPENAI_API_KEY=sk-secret123456 person@example.com",
+            ),
+            _message(
+                "2026-01-01T00:00:02Z",
+                "assistant",
+                "I will calculate it.",
+                phase="commentary",
+            ),
+            {
+                "timestamp": "2026-01-01T00:00:03Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call",
+                    "name": "exec",
+                    "call_id": "call1",
+                    "input": "python sum.py",
+                },
+            },
+            {
+                "timestamp": "2026-01-01T00:00:04Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call_output",
+                    "call_id": "call1",
+                    "output": [
+                        {
+                            "type": "text",
+                            "text": '{"account_id":"accSensitive","total":1178}',
+                        }
+                    ],
+                },
+            },
+            _message(
+                "2026-01-01T00:00:05Z", "assistant", "Total 1178.", phase="final_answer"
+            ),
+            {
+                "timestamp": "2026-01-01T00:00:06Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "total_token_usage": {
+                            "input_tokens": 12,
+                            "cached_input_tokens": 2,
+                            "output_tokens": 3,
+                        }
+                    },
+                },
+            },
+        ],
+    )
+    status = main(["compare", "--transcript", str(job)])
+    output = capsys.readouterr().out
+    assert status == 0
+    assert "Write basket total" in output
+    assert "I will calculate it" in output
+    assert "exec" in output and "python sum.py" in output and "1178" in output
+    assert "Final reply" in output and "Total 1178" in output
+    assert "00:00:01" in output and "6s" in output
+    assert "12 input" in output and "3 output" in output
+    assert "Verdict: pass" in output and "c0: pass" in output
+    assert all(
+        secret not in output
+        for secret in (
+            "acct_SECRET",
+            "sk-secret123456",
+            "accSensitive",
+            "person@example.com",
+        )
+    )
+
+
+def test_transcript_renders_sapiens_delegation_under_specialist_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "delegated", criteria=_criteria("pass"), harness="sapiens", sessions=2)
+    agent = job / "delegated" / "agent"
+    agent.mkdir()
+    state = {
+        "agents": [
+            {"id": "chief", "name": "Chief"},
+            {"id": "sapi_a", "name": "BasketExpert"},
+        ],
+        "turns": [{"input": "Calculate basket total", "output": "Basket done"}],
+        "workloads": [
+            {
+                "calls": [
+                    {"callId": "first", "addressedTo": "chief", "state": "Delegated"},
+                    {
+                        "callId": "second",
+                        "addressedTo": "sapi_a",
+                        "causedBy": "first",
+                        "state": "Completed",
+                        "request": "Calculate the basket",
+                    },
+                ],
+                "decisions": [
+                    {
+                        "node": "ChiefTriage",
+                        "transition": {
+                            "before": "ChiefTriage",
+                            "after": "CreatingSapi",
+                        },
+                    },
+                    {
+                        "node": "Execution",
+                        "transition": {"before": "Execution", "after": "Outcome"},
+                    },
+                ],
+            }
+        ],
+    }
+    (agent / "sapiens-state.json").write_text(json.dumps(state))
+    for index, (node, actor, event, reason) in enumerate(
+        [
+            ("ChiefTriage", "chief", "NewSpecialistNeeded", "Outside my scope"),
+            ("Execution", "sapi_a", "Outcome", "I wrote the answer"),
+        ]
+    ):
+        prompt = (
+            f"You are handling a Sapiens4 decision at node {node}.\nContext:\n"
+            + json.dumps(
+                {
+                    "selfId": actor,
+                    "chiefId": "chief",
+                    "originalIntent": "Calculate basket total",
+                }
+            )
+        )
+        _session(
+            agent,
+            f"{index}.jsonl",
+            [
+                {
+                    "timestamp": f"2026-01-01T00:00:0{index}Z",
+                    "type": "session_meta",
+                    "payload": {},
+                },
+                _message(f"2026-01-01T00:00:0{index}Z", "user", prompt),
+                _message(
+                    f"2026-01-01T00:00:0{index + 1}Z",
+                    "assistant",
+                    json.dumps(
+                        {
+                            "event": event,
+                            "reason": reason,
+                            "evidence": ["Fixture request"],
+                            "reply": "Basket done" if index else "",
+                        }
+                    ),
+                    phase="final_answer",
+                ),
+                {
+                    "timestamp": f"2026-01-01T00:00:0{index + 1}Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {
+                                "input_tokens": 20,
+                                "cached_input_tokens": 0,
+                                "output_tokens": 4,
+                            }
+                        },
+                    },
+                },
+            ],
+        )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "Chief — ChiefTriage" in output
+    assert "BasketExpert — Execution" in output
+    assert "NewSpecialistNeeded" in output and "Outside my scope" in output
+    assert "Delegation to BasketExpert: Calculate the basket" in output
+    assert "Transition: ChiefTriage → CreatingSapi" in output
+    assert "Final reply: Basket done" in output
+    assert "20 input" in output
+    assert "[missing: Sapiens state" not in output
+
+
+def test_transcript_marks_waiting_for_admin_and_missing_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "waiting", criteria=_criteria("fail"), harness="sapiens")
+    agent = job / "waiting" / "agent"
+    agent.mkdir()
+    prompt = (
+        "You are handling a Sapiens4 decision at node ChiefTriage.\nContext:\n"
+        + json.dumps(
+            {
+                "selfId": "chief",
+                "chiefId": "chief",
+                "originalIntent": "Ambiguous basket",
+            }
+        )
+    )
+    _session(
+        agent,
+        "node.jsonl",
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "type": "session_meta",
+                "payload": {},
+            },
+            _message("2026-01-01T00:00:00Z", "user", prompt),
+            _message(
+                "2026-01-01T00:00:01Z",
+                "assistant",
+                json.dumps(
+                    {
+                        "event": "RequestUnclear",
+                        "reason": "Need basket",
+                        "evidence": [],
+                        "question": "Which basket?",
+                    }
+                ),
+            ),
+        ],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    missing = capsys.readouterr().out
+    assert "[missing: Sapiens state" in missing
+    assert "Question to Admin: Which basket?" in missing
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [{"id": "chief", "name": "Chief"}],
+                "turns": [{"input": "Ambiguous basket"}],
+                "workloads": [
+                    {"calls": [{"state": "WaitingForAdmin"}], "decisions": []}
+                ],
+            }
+        )
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "WaitingForAdmin: awaiting Admin clarification" in output
+    assert "[missing: Sapiens state" not in output
+
+
+def test_transcript_renders_direct_chief_decision_without_delegation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "direct", criteria=_criteria("pass"), harness="sapiens", sessions=1)
+    agent = job / "direct" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [{"id": "chief", "name": "Chief"}],
+                "turns": [{"input": "Compute basket", "output": "Completed basket"}],
+                "workloads": [
+                    {
+                        "calls": [{"addressedTo": "chief", "state": "Completed"}],
+                        "decisions": [
+                            {
+                                "agent": "chief",
+                                "node": "Execution",
+                                "transition": {
+                                    "before": "Execution",
+                                    "after": "Outcome",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    prompt = (
+        "You are handling a Sapiens4 decision at node Execution. "
+        + "X" * 200
+        + " FULL_PROMPT_MARKER\nContext:\n"
+        + json.dumps(
+            {"selfId": "chief", "chiefId": "chief", "originalIntent": "Compute basket"}
+        )
+    )
+    _session(
+        agent,
+        "direct.jsonl",
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "type": "session_meta",
+                "payload": {},
+            },
+            _message("2026-01-01T00:00:00Z", "user", prompt),
+            _message(
+                "2026-01-01T00:00:01Z",
+                "assistant",
+                json.dumps(
+                    {"event": "Outcome", "reason": "Done", "evidence": ["answer file"]}
+                ),
+            ),
+        ],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    brief = capsys.readouterr().out
+    assert "Chief — Execution" in brief and "Decision: Outcome" in brief
+    assert "Final reply: Completed basket" in brief
+    assert "Delegation to" not in brief
+    assert "FULL_PROMPT_MARKER" not in brief
+    assert main(["compare", "--transcript", "--full-prompts", str(job)]) == 0
+    assert "FULL_PROMPT_MARKER" in capsys.readouterr().out
+
+
 def test_summary_reads_trial_facts_and_reuses_report_outcomes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

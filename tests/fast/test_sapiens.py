@@ -287,10 +287,12 @@ def test_sapiens_example_builds_agent_with_native_model_and_reasoning(
     )
 
 
+@pytest.mark.parametrize("export_failure", [False, True])
 def test_sapiens_agent_populates_harbor_context_from_native_sessions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    export_failure: bool,
 ) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()
@@ -352,6 +354,9 @@ def test_sapiens_agent_populates_harbor_context_from_native_sessions(
                     ),
                     SimpleNamespace(return_code=0, stdout=state(1)),
                     SimpleNamespace(return_code=0, stdout=state(2)),
+                    RuntimeError("export unavailable")
+                    if export_failure
+                    else SimpleNamespace(return_code=0, stdout=""),
                 ]
             )
         ),
@@ -365,6 +370,7 @@ def test_sapiens_agent_populates_harbor_context_from_native_sessions(
         if "phase=sapiens-observation" in record.message
     ]
     assert len(observation_lines) == 2
+    assert all(line.startswith("at=202") for line in observation_lines)
     assert f"trial={tmp_path.parent.name}" in observation_lines[0]
     assert "result=started" in observation_lines[0]
     assert "result=completed" in observation_lines[1]

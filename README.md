@@ -175,6 +175,8 @@ credentials. Each argument is one job directory, `<jobs-dir>/<job-name>`.
 uv run --locked wb compare "$PWD"/runs/readiness/check-*
 uv run --locked wb compare --format markdown "$PWD"/runs/readiness/check-*
 uv run --locked wb compare --format summary /tmp/workflow-bench-codex/codex-empty-provider
+uv run --locked wb compare --transcript "$PWD"/runs/m1a-06-codex/codex-live-smoke-20261013
+uv run --locked wb compare --transcript "$PWD"/runs/m1b-05-sapiens/sapiens-live-smoke-20261014
 ```
 
 The first command prints a JSON report and exits 0: one outcome per Trial and, per
@@ -183,6 +185,15 @@ above it shows `oracle` with pass rate 1.0 and `nop` with 0.0. A directory that 
 a Harbor job exits 2. `--format summary` prints one JSON record per Trial with native
 phase timing, the same outcome class as the report, verifier criteria, token counts,
 artifact status and paths to diagnostic files.
+`--transcript` prints a read-only Markdown conversation for each saved Trial: the
+task, Sapiens decision nodes or Codex messages, tool calls and results, time and
+tokens when recorded, and the verifier result. Sapiens captures a bounded,
+credential-filtered state snapshot in its Harbor agent log for speaker names,
+delegations and transitions. Older Trials without that snapshot show missing-data
+markers. Node prompts show a short excerpt by default; add `--full-prompts` to
+show their full text. The transcript redacts recognized credential and account-ID
+patterns, so review it before sharing when task or tool text may contain other
+sensitive material.
 
 ## Navigation
 

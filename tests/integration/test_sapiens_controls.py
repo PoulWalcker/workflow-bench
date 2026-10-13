@@ -13,6 +13,7 @@ import pytest
 import yaml
 
 from workflow_bench.comparison import TrialSummary, compare, summarize
+from workflow_bench.transcript import render_trial_transcript
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "examples/sapiens/job.yaml"
 FAKE_CODEX = Path(__file__).parent / "assets/fake_sapiens_codex.py"
@@ -35,6 +36,14 @@ def test_chief_waits_for_new_specialist_to_complete(
     assert _summary(job)["outcome"] == "pass"
     marker = json.loads(next(job.glob("*/agent/specialist-executed.json")).read_text())
     assert marker["self"] != marker["chief"]
+    trial_dir = next(job.glob("*/result.json")).parent
+    state = json.loads((trial_dir / "agent/sapiens-state.json").read_text())
+    assert any(agent["id"] == marker["self"] for agent in state["agents"])
+    transcript = render_trial_transcript(trial_dir, _summary(job))
+    assert "Chief —" in transcript
+    assert "BasketExpert —" in transcript
+    assert "Delegation to BasketExpert" in transcript
+    assert "[missing: Sapiens state" not in transcript
     _assert_observation(job, "completed")
 
 
@@ -125,6 +134,7 @@ def _assert_observation(
         if "phase=sapiens-observation" in line
     ]
     assert len(lines) == 2
+    assert all("at=" in line for line in lines)
     assert all(f"trial={trial_log.parent.name}" in line for line in lines)
     assert all("sapiens_turn_id=" in line for line in lines)
     assert "result=started" in lines[0]

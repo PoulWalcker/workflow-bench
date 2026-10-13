@@ -7,6 +7,7 @@ import shlex
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal, TypedDict, cast, override
 
 from harbor.agents.capabilities import AgentCapabilities
@@ -276,8 +277,14 @@ class SapiensInstalledAgent(SessionSafeCodex):
             raise RuntimeError("sapiens_submission_unknown")
         started = time.monotonic()
         self.logger.info(
-            "phase=sapiens-observation trial=%s sapiens_turn_id=%s result=started",
-            self.logs_dir.parent.name,
+            "%s sapiens_turn_id=%s",
+            format_phase_line(
+                "sapiens-observation",
+                "started",
+                0,
+                datetime.now(UTC),
+                trial=self.logs_dir.parent.name,
+            ),
             turn_id,
         )
         completion = SapiensCompletion()
@@ -318,6 +325,31 @@ class SapiensInstalledAgent(SessionSafeCodex):
                 }
             )
         )
+        # Export only the transcript fields while the host database is still live.
+        # This is diagnostic: a failed export cannot change the Trial outcome.
+        try:
+            snapshot_source = Path(__file__).with_name("sapiens_state.py").read_text()
+            copied = await environment.exec(
+                command="python -c "
+                + shlex.quote(snapshot_source)
+                + " "
+                + shlex.quote(DATA_DIR)
+                + " "
+                + shlex.quote(logs + "/sapiens-state.json"),
+                env=env,
+                timeout_sec=15,
+            )
+        except Exception:  # Agent-environment diagnostics must not change the outcome.
+            self.logger.warning(
+                "phase=sapiens-state trial=%s result=unavailable",
+                self.logs_dir.parent.name,
+            )
+        else:
+            if copied.return_code:
+                self.logger.warning(
+                    "phase=sapiens-state trial=%s result=unavailable",
+                    self.logs_dir.parent.name,
+                )
         # State names can be untrusted strings; log only the known vocabulary.
         turn_states = sorted({cast(str, turn["status"]) for turn in turns})
         turn_states_for_log = (
@@ -365,12 +397,16 @@ class SapiensInstalledAgent(SessionSafeCodex):
             or "none"
         )
         self.logger.info(
-            "phase=sapiens-observation trial=%s sapiens_turn_id=%s "
-            "result=%s elapsed=%.2fs turn_states=%s workload_states=%s "
+            "%s sapiens_turn_id=%s elapsed=%.2fs turn_states=%s workload_states=%s "
             "run_activity_empty=%s quiet_ticks=%s",
-            self.logs_dir.parent.name,
+            format_phase_line(
+                "sapiens-observation",
+                decision,
+                time.monotonic() - started,
+                datetime.now(UTC),
+                trial=self.logs_dir.parent.name,
+            ),
             turn_id,
-            decision,
             time.monotonic() - started,
             turn_states_for_log,
             workload_states_for_log,

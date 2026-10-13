@@ -14,6 +14,7 @@ from workflow_bench.comparison import compare, render_markdown, summarize
 from workflow_bench.composer import read_codex_limits
 from workflow_bench.data import DataError
 from workflow_bench.readiness import check_task
+from workflow_bench.transcript import render_transcripts
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -64,6 +65,8 @@ def _check_task(arguments: argparse.Namespace) -> int:
 
 
 def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> int:
+    if arguments.full_prompts and not arguments.transcript:
+        parser.error("--full-prompts requires --transcript")
     job_dirs = [path.resolve() for path in arguments.job_dirs]
     if len(set(job_dirs)) != len(job_dirs):
         parser.error("a job directory is given more than once")
@@ -71,7 +74,15 @@ def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         report = compare(job_dirs)
     except DataError as error:
         parser.error(f"not a Harbor job directory: {error.relative_path}")
-    if arguments.format == "markdown":
+    if arguments.transcript:
+        if arguments.format != "json":
+            parser.error("--transcript cannot be combined with --format")
+        sys.stdout.write(
+            render_transcripts(
+                summarize(job_dirs, report), full_prompts=arguments.full_prompts
+            )
+        )
+    elif arguments.format == "markdown":
         sys.stdout.write(render_markdown(report))
     elif arguments.format == "summary":
         sys.stdout.write(json.dumps(summarize(job_dirs, report), indent=2) + "\n")
@@ -140,6 +151,16 @@ def _parser() -> argparse.ArgumentParser:
         choices=("json", "markdown", "summary"),
         default="json",
         help="Report format on stdout (default: json).",
+    )
+    compare_command.add_argument(
+        "--transcript",
+        action="store_true",
+        help="Print read-only Markdown conversations for saved Trials.",
+    )
+    compare_command.add_argument(
+        "--full-prompts",
+        action="store_true",
+        help="Show full Sapiens node prompts in a transcript.",
     )
     preflight = commands.add_parser(
         "preflight",
