@@ -1,8 +1,8 @@
 # Workflow Bench
 
 A small research tool for testing AI on business tasks with simulated tools and
-independent checks. Product requirements and terms are in [SPEC](SPEC.md); current
-capabilities and milestone status are in [ROADMAP](ROADMAP.md).
+independent checks. Product requirements are in [SPEC](SPEC.md), terms in [GLOSSARY](GLOSSARY.md),
+and current technical capabilities in [ARCHITECTURE](ARCHITECTURE.md).
 This checkout keeps only the components that work without the previous
 n8n-workflow replay path; that path, its Task, simulator, image builders and
 Docker controls are preserved at tag `n8n-replay-final`.
@@ -45,11 +45,11 @@ This checkout contains no integration tests.
 
 | Document | Owner |
 |---|---|
-| [SPEC](SPEC.md) | Product requirements, terms, accepted decisions and open approvals |
-| [ARCHITECTURE](ARCHITECTURE.md) | Responsibilities, current interfaces, dependencies and trust topology |
-| [AGENTS](AGENTS.md) | Engineering rules and task-first development workflow |
-| [ROADMAP](ROADMAP.md) | Milestones, dependencies, status and acceptance gates |
-| Implementation tickets (`docs/implementation/` at tag `n8n-replay-final`) | Task-specific design/approvals and historical evidence |
-
-The historical WB-01 ticket (at tag `n8n-replay-final`) does not
-assign current work or override SPEC/ARCHITECTURE.
+| [SPEC](SPEC.md) | Product requirements, flow, outcomes and trust rules |
+| [GLOSSARY](GLOSSARY.md) | Canonical domain terms |
+| [ARCHITECTURE](ARCHITECTURE.md) | Current components, interfaces, dependencies and parameter sources |
+| [AGENTS](AGENTS.md) | Canonical engineering instructions and task workflow |
+| [CLAUDE](CLAUDE.md) | Pointer to AGENTS for Claude Code |
+| [Code style](docs/development/code-style.md) | Python conventions and review checklist |
+| [Issue tracker](docs/agents/issue-tracker.md) | Local task workspace conventions |
+| [Triage labels](docs/agents/triage-labels.md) | Skill triage roles |

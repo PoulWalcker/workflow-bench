@@ -1,157 +1,121 @@
-# Engineering instructions
+# Workflow Bench repository guide
 
-For agents developing this repository. This file is not a Composer prompt,
-a benchmark Task, or Judge material.
+This is the canonical repository instruction source for coding agents, not a benchmark
+Task or Judge prompt. [README](README.md) owns local setup and verified commands.
 
-## Start with the assigned task
+## Project boundaries
 
-1. Read [SPEC](SPEC.md) for requirements and terms, then [ARCHITECTURE](ARCHITECTURE.md)
-   for the relevant interfaces and trust boundaries.
-2. Find the assigned milestone and dependencies in [ROADMAP](ROADMAP.md); read its
-   current implementation ticket. WB-01 is historical, not the current design.
-3. Inspect the actual code and user changes. Implement only the assigned slice;
-   bootstrap does not authorize future modules or empty scaffolding.
+Workflow Bench measures Sapiens on autonomous tasks: outcomes, reliability, cost and
+failure points. Comparing configurations is optional when the question needs a baseline.
+Read [SPEC](SPEC.md) before changing product behavior and [GLOSSARY](GLOSSARY.md) before
+changing domain terms. Product requirements do not imply every stage is implemented.
 
-The user request assigns work. SPEC owns product requirements and definitions;
-ARCHITECTURE owns responsibilities, interfaces and dependency rules; this file
-owns engineering rules; ROADMAP owns milestones/status; [README](README.md) owns
-setup and verified commands. Tickets preserve task-specific decisions and evidence.
-Update the owner of a changed fact and link to it elsewhere. Surface conflicting
-requirements explicitly; label new technical decisions as decisions of the current
-work rather than previously accepted user wishes.
+Harbor owns scheduling, Trials, environments, agent invocation, collection and verification.
+Workflow Bench supplies integrations and shared helpers; Tasks own business criteria.
+The agent chooses its strategy; tools provide capabilities rather than business solutions.
 
-When a `.codegraph/` index exists, use CodeGraph before searching or reading code:
-`codegraph_explore` (pass projectPath) or `codegraph explore "<question or symbol>"`.
-Do not index an unindexed repository on your own.
+## Architecture and entry points
 
-## Task-first and rTernarity
+<a id="task-first-and-rternarity"></a>
 
-Organize responsibilities as **Definition → Experiment → Evaluation**, each with
-clear input, work and output. Decompose only when independent responsibilities
-appear; three is not a required count of files, classes, services or collection items.
+Read [ARCHITECTURE](ARCHITECTURE.md) before changing an interface, dependency, environment
+or parameter source. Native Harbor is the execution entry point; there is no WB execution CLI,
+benchmark Task, service implementation, image builder, readiness check or report command.
 
-Keep business rules in Task/application code. A new Task using supported contracts
-and existing app capabilities changes only its own directory. Core, common prompts,
-binder and evaluator must not branch on Task/app names or supply the solution.
-Keep one app state, one native workflow format, one execution path and one score
-calculation. Harbor owns sandbox lifecycle; Experiment owns research policy.
-Select Composer integrations at the entry point through Harbor's agent seam;
-core must not implement harness planning.
+The product flow is Task Definition → Readiness → Environment → Execution → Evidence →
+Evaluation → Comparison; [SPEC](SPEC.md#3-flow-contract) assigns inputs, outputs and owners.
+[ARCHITECTURE's component map](ARCHITECTURE.md#existing-components) locates retained helpers
+and integrations. Its [extension rules](ARCHITECTURE.md#extension-rules) keep business rules
+in Task directories and harnesses at Harbor's agent seam; core never branches on names.
+Follow its [parameter map](ARCHITECTURE.md#parameter-sources): one effective source per
+parameter, user paths resolved once at entry. Its [exclusions](ARCHITECTURE.md#not-doing)
+govern new abstractions and runtime responsibilities.
 
-Use helpers for repeated meaning, not similar syntax. Avoid plugin registries,
-universal backends, factory chains, DI frameworks, base classes for a single
-implementation, empty wrappers and speculative dependencies. Do not add a DSL,
-compiler, fallback runtime, global ledger/scheduler, daemon or hidden repair loop.
-AutoWFBench and old benchmarking are references, not required dependencies. Before
-transferring specific external code, check its license and retain attribution;
-unclear terms mean no import. Do not copy large subsystems.
+## Invariants
 
-## Code quality and portability
+<a id="operation-and-completion"></a>
+
+- Verdicts depend on independently checked task results, not agent declarations or process
+  success. A proven violation is fail; unknown measurements remain unknown, never zero.
+- Keep infrastructure failure distinct from agent failure. Early termination still requires
+  assessment from trustworthy resulting state; see [outcomes](SPEC.md#4-outcomes-and-evaluation).
+- Report one configuration without a baseline. Optional comparison requires equal conditions
+  or an incomparable label; follow [reporting](SPEC.md#5-reporting-and-optional-comparison).
+- Enforce [security and evidence](SPEC.md#7-security-and-evidence) outside candidate code:
+  isolate private verification, preserve protected provenance and keep secrets/private data
+  out of ordinary logs and feedback. Candidate artifacts cannot prove protected effects.
+- Enforce [lifecycle rules](SPEC.md#6-errors-and-lifecycle): finite limits, confirmed stop of
+  processes and children, bounded cleanup of owned resources and honest residual/unknown status.
+- Model runs require separate permission and finite limits before credential access; enforce
+  the spending/allowance gates in SPEC. Keep benchmark checks independent of candidate output.
+- Preserve native source facts once. Diagnostics use stderr; machine-readable stdout contains
+  only command results. Use stdlib logging configured at process entry, module loggers without
+  import-time handlers, available Trial/Step/phase context and safe codes/relative references.
+
+## Development and verification
+
+<a id="code-quality-and-portability"></a>
 
 Before changing Python code, read [Code style](docs/development/code-style.md).
 Before completing a Python change or review, check every new or modified definition
 against that document's applicable rules and agent checklist.
 
-Use Python, explicit names, small functions with one responsibility, and typed
-public interfaces/exchange values. Validate external arguments/JSON once at each
-trust boundary; avoid repeated checks of guaranteed internal values. Comments
-explain reasons or constraints; operational instructions belong in documentation.
-Catch exceptions where recovery or honest classification is possible. Broad catches
-belong only at process/server/cleanup boundaries, never to hide defects as success.
+Validate external arguments/JSON at trust boundaries; typed internal values rely on that
+validation. Catch exceptions where recovery or honest classification is possible; broad
+catches belong at process/server/cleanup boundaries. Ruff owns mechanics in `pyproject.toml`;
+fix violations with narrowly justified exceptions rather than blanket suppression.
 
-Ruff owns lint/format configuration in `pyproject.toml`. Fix violations first;
-no `ALL`, routine `# noqa`, blanket src/tests exclusions, or global rule suppression
-for one location. Necessary `lint.ignore`/`lint.per-file-ignores` must have a reason,
-the smallest practical scope, and an explicit explanation when widened. Do not add
-a second formatter/type checker without a concrete need.
+Run from the checkout root and record the commands and exact results:
 
-User paths, addresses, ports, model names, credentials, outputs and budgets have
-one explicit CLI/env/config source per parameter. Follow the actual parameter map
-in ARCHITECTURE; do not add competing overrides. Resolve user paths once at entry,
-use `pathlib`, packaged resources and configured container network names. No machine
-paths, required absolute executable paths, hidden cwd dependency, assumed free host
-port, or implicit container-localhost-as-host. Protocol paths, schema versions,
-fixtures and meaningful limits are legitimate constants. Pin environments for
-reproducibility; do not turn every literal into configuration.
+```sh
+uv run --locked ruff check
+uv run --locked ruff format --check
+uv run --locked ty check
+uv run --locked pytest -q
+```
 
-## Behavioral TDD
+Use installed domain-modeling for terms, codebase-design for Interfaces, tdd before behavioral
+implementation and writing-for-agents for agent instructions; resolve skills from the current
+environment's catalog. Agree test seams before behavioral code: Interface, observable behavior,
+failure detected and limits of proof. Test agreed interfaces with expected red → minimal green
+→ optional local refactoring; derive expectations from requirements. Design/doc-only work adds
+no tests. Mocks may cover external responses/errors but cannot prove isolation, stop or Judge
+quality: require a real end-to-end control for those claims.
 
-When changing terms, use the installed domain-modeling skill; when choosing an
-Interface, use codebase-design; before behavioral implementation, use tdd. When
-editing these instructions, use writing-for-agents. Resolve skills through the
-current environment's catalog, not the author's machine paths. Apply them to the
-assigned slice without an extra MVP redesign or new documentation layer.
+Default pytest is fast and needs no network, Docker or credentials. Gate integration/model
+paths before collection and resources before fixture setup, including indirect/cached access;
+collection is side-effect free. Integration requires `--run-integration`; unavailable Docker
+or images are an error, not a green skip. Integration opt-in does not authorize model calls;
+model mode remains closed. No tests is pytest exit 5, not successful verification.
 
-Before coding, agree any unapproved test seams with the user: Interface, observable
-behavior, failure detected and limits of proof. A proposal table is not approval.
-Design-only work produces no tests. For a business rule/regression, use pytest:
-one small test that fails for the expected reason → minimal implementation →
-optional local refactoring while green → next scenario. Do not prewrite a suite
-against an imagined API. Derive expectations independently from requirements,
-not the implementation's algorithm. Docker configuration/spikes may start with a
-minimal reproducible experiment, then retain a check for the confirmed behavior.
+## Documentation map
 
-Test agreed interfaces, not private helpers/getters/imports for coverage, file
-counts, arbitrary IDs, giant UI snapshots or exact timings. Frozen Evidence is the
-independent verifier's public Interface: checking state/history through it is
-required, not a side-channel violation. Run real loaders, validators/binder and
-evaluators; substitute only external process/transport, time or fault sources.
-Mocks can cover model responses/errors but cannot prove Harbor/n8n/isolation/stop
-or Judge quality. Require a real end-to-end control. Keep orchestration tests about
-behavior rather than the exact sequence of internal calls.
+- [SPEC](SPEC.md): product contract, flow, outcomes, reporting, lifecycle and trust rules.
+- [GLOSSARY](GLOSSARY.md): canonical domain terms; ADRs are not kept.
+- [ARCHITECTURE](ARCHITECTURE.md): current code, boundaries, extension rules and parameter sources.
+- [README](README.md): setup and verified local commands.
+- [Code style](docs/development/code-style.md): Python conventions and review checklist.
+- [Agent rules](docs/agents/issue-tracker.md) and [triage labels](docs/agents/triage-labels.md):
+  narrow tracker/skill conventions. [CLAUDE.md](CLAUDE.md) points to this file.
 
-### Executable test gates
+Update the document owning a changed fact and link to it elsewhere. Promote durable knowledge
+from tickets to that document. Task-authoring regulation/template/readiness arrive in M1.
 
-Default pytest runs fast tests without network, Docker or credentials. Gate
-integration/model directories before collection; reject explicit gated paths,
-node IDs and marked items without opt-in. Path classification cannot be weakened
-by markers or `-m`. Check resource fixtures before setup and cached-value access,
-including indirect requests from fast tests. Resources belong inside authorized
-fixtures, never import/collection, parametrization or root autouse setup.
-`--collect-only` is always side-effect free. Integration opt-in does not authorize
-models; model execution needs separate permission and finite limits before
-credential access. The current model test mode remains closed.
+## Tasks / agent workflow
 
-Requested integration without Docker/images is a preflight error, not a green skip.
-Gate probes must be harmless local files/processes. No tests means pytest exit 5,
-not a successful suite or an `assert True` placeholder. Test counts/coverage are
-not project goals. Use verified commands from README and the current configuration.
+The user request assigns work; implement only the assigned slice. When `AGENTS.override.md`
+is present, read it for private context and task workflow. The gitignored `.codex/` workspace
+is local execution context, not canonical project documentation; follow the override's entry
+points. Surface conflicting requirements explicitly and label new decisions as current work.
+Inspect actual code and user changes; preserve unrelated work. Before finishing, inspect the
+whole scoped diff and mark DONE only when acceptance is met; report unverified/blocked work.
 
-## Operation and completion
+## Git
 
-Enforce [SPEC's lifecycle/security rules](SPEC.md#9-errors-and-lifecycle) and
-[trust invariants](SPEC.md#10-security-and-evidence) through the environment.
-Paid model calls require explicit permission and finite limits. Never contact real
-Telegram or a physical desktop in this MVP. Do not weaken benchmark checks or
-adjust expected outputs to a candidate; controls use the same independent path.
-
-Every operation has a finite timeout and owned resources. Clean only the current
-run's resources. Preserve source facts once, reference native Harbor artifacts,
-and avoid a second log tree or hashing all documentation into execution identity.
-Use stdlib logging, configured once at each process entry point; modules use
-`getLogger(__name__)` and add no import-time handlers. Include available run,
-attempt, case/replay and phase context; missing IDs remain absent. INFO records
-phase start/end, monotonic duration/status and log refs; long waits report their
-phase about every 30 seconds without invented progress percentages. WARNING marks
-unknown metrics/effects/cleanup; ERROR marks infrastructure failures with safe
-codes; a known benchmark fail need not be an infrastructure ERROR.
-
-Diagnostics go to stderr; machine-readable stdout contains only command results.
-Keep credentials, capabilities, full prompts, private input/state/expected and raw
-exceptions out of ordinary logs/feedback. Use safe codes and relative refs; private
-source logs stay under the closed run root. Logs do not replace protected effects,
-Evaluation or confirmed stop.
-
-Before finishing, inspect the entire scoped diff for dependencies, unrelated edits,
-duplication, machine paths, secrets and scope growth. Report changes, commands
-actually run/results, and unverified/blocked work. Mark DONE only when acceptance
-criteria are met; unavailable Docker/credentials are not successful verification.
-Do not commit runs, user data, credentials or old evidence; delete others' resources;
-create/change remote repository visibility; or push without the user's instruction.
-Skill revision provenance for the original design is in the
-[WB-03 ticket](docs/implementation/WB-03-component-boundaries.md#design-skill-provenance).
-Project TDD permits local refactoring after green; Interface/Seam is not a synonym
-for the product's API/UI or trust boundary. A single runtime still requires its trust seam.
+Use the assigned milestone branch and Conventional Commits with English headers explaining
+the requirement without private context. Stage explicit paths; keep history append-only during
+phases and leave local private context, runs, data, credentials and old evidence uncommitted.
+Merge, push and repository visibility changes require the owner's explicit instruction.
 
 ## Agent skills
 
@@ -167,4 +131,4 @@ Default role names, used as ticket `Status:` values. See
 
 ### Domain docs
 
-Deferred to milestone M0: no `GLOSSARY.md` or `docs/adr/` yet; SPEC owns terms until then.
+Glossary = [GLOSSARY.md](GLOSSARY.md); ADRs are not kept.
