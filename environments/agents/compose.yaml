@@ -1,0 +1,6 @@
+# Single source of the local `agents` image tag; build only, no service is started.
+name: workflow-bench-agents
+services:
+  agents:
+    image: workflow-bench-agents:codex-0.162.1
+    build: .

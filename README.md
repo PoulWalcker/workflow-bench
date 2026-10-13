@@ -41,6 +41,21 @@ Default pytest excludes integration/model collection/setup; explicit integration
 requires `--run-integration`. `--run-model` remains unimplemented and is rejected.
 This checkout contains no integration tests.
 
+## Agents image
+
+Task environment images build `FROM` the shared harness image; build it before
+using them. Building needs Docker and network access; the installed Codex CLI starts
+without network. Pins and the tag are listed in
+[ARCHITECTURE](ARCHITECTURE.md#parameter-sources). Checked with Docker 29.4.0 on
+macOS arm64.
+
+```sh
+docker compose -f environments/agents/compose.yaml build --pull
+docker run --rm --network none workflow-bench-agents:codex-0.162.1 codex --version
+```
+
+The second command prints `codex-cli 0.162.1`.
+
 ## Navigation
 
 | Document | Owner |
