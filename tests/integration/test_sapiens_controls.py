@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -190,7 +191,25 @@ def _run_job(
         finally:
             if process.poll() is None:
                 process.send_signal(signal.SIGINT)
-                process.wait(timeout=70)
+                try:
+                    process.wait(timeout=70)
+                except subprocess.TimeoutExpired:
+                    log.write(
+                        "phase=control_cleanup result=unconfirmed "
+                        f"reason=harbor_sigint_timeout harbor_pid={process.pid}\n"
+                    )
+                    log.flush()
+                    with suppress(ProcessLookupError):
+                        process.kill()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        log.write(
+                            "phase=control_cleanup result=unconfirmed "
+                            f"reason=harbor_kill_timeout harbor_pid={process.pid}\n"
+                        )
+                        log.flush()
+                        raise
     assert process.returncode in ((0, 130) if is_cancelled else (0,)), (
         directory / "harbor.log"
     ).read_text()

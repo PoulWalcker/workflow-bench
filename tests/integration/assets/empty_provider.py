@@ -25,7 +25,8 @@ class EmptyProvider(BaseHTTPRequestHandler):
 
 def main() -> None:
     """Serve only the container loopback interface."""
-    HTTPServer(("127.0.0.1", 8765), EmptyProvider).serve_forever()
+    with HTTPServer(("127.0.0.1", 8765), EmptyProvider) as server:
+        server.serve_forever()
 
 
 if __name__ == "__main__":

@@ -172,24 +172,30 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         )
 
     async def _stop_writer(self) -> None:
-        """Stop the candidate before collection; keep it for Docker copy."""
-        running = await self._run_docker_compose_command(
-            ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
-        )
-        if not running.stdout or not running.stdout.strip():
-            return
+        """Stop the candidate within the cleanup deadline; keep it for Docker copy."""
+        was_stopping = self._is_stopping_writer
+        self._is_stopping_writer = True
         try:
-            await self._run_docker_compose_command(
-                ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
-            )
-        except Exception:
-            # Another cancellation path may have stopped it after the first query.
-            pass
-        remaining = await self._run_docker_compose_command(
-            ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
-        )
-        if remaining.stdout and remaining.stdout.strip():
-            raise RuntimeError("stop_unconfirmed")
+            async with asyncio.timeout(self.cleanup_timeout_sec):
+                running = await self._run_docker_compose_command(
+                    ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
+                )
+                if not running.stdout or not running.stdout.strip():
+                    return
+                try:
+                    await self._run_docker_compose_command(
+                        ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
+                    )
+                except Exception:
+                    # Another cancellation path may have stopped it meanwhile.
+                    pass
+                remaining = await self._run_docker_compose_command(
+                    ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
+                )
+                if remaining.stdout and remaining.stdout.strip():
+                    raise RuntimeError("stop_unconfirmed")
+        finally:
+            self._is_stopping_writer = was_stopping
 
     async def _collect_with_stop(
         self,
@@ -203,12 +209,7 @@ class DeadlineDockerEnvironment(DockerEnvironment):
             return await asyncio.shield(pending)
         except asyncio.CancelledError:
             if self.cancel_writer is not None and not self._is_stopping_writer:
-                self._is_stopping_writer = True
-                try:
-                    async with asyncio.timeout(self.cleanup_timeout_sec):
-                        await self.cancel_writer()
-                finally:
-                    self._is_stopping_writer = False
+                await self.cancel_writer()
             raise
         finally:
             if process.returncode is None:
