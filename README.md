@@ -108,6 +108,16 @@ and keep finite Trial limits. It must first pass readiness and a fresh
 authorize a Trial. Protocol/decision checks are verified with fixtures; a live
 subscription read and model smoke require separate owner authorization.
 
+An authorized local smoke on 2026-10-13 completed one real Codex Trial on
+`l1-basket-total`: the separate verifier returned `pass`, and `wb compare`
+reported one pass with no infrastructure error. It used Codex CLI 0.162.1,
+`openai/gpt-6.1-sol`, low reasoning, ChatGPT subscription authentication, and a
+task copy whose agent network policy allowed provider access while the verifier
+kept the task's no-network baseline. The ignored local evidence is in
+`runs/m1a-06-codex/codex-live-smoke-20261013`, with reports at
+`runs/m1a-06-compare.json` and `runs/m1a-06-compare.md`. This is one smoke
+result, not a reliability estimate.
+
 ## Report
 
 Reporting reads saved Harbor job directories offline and needs no Docker, model or
