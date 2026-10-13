@@ -26,8 +26,7 @@ uv lock --check --offline
 ## Verified local commands
 
 These run without Docker/models/credentials. Results and packaging limitations
-are preserved in the [WB-02](docs/implementation/WB-02-bootstrap.md) and
-[WB-03](docs/implementation/WB-03-component-boundaries.md) tickets.
+are preserved in the WB-02 and WB-03 tickets at tag `n8n-replay-final`.
 
 ```sh
 uv run --locked --offline pytest -q
@@ -58,8 +57,7 @@ recorded examples; choose unused names when repeating. Pytest deletes existing
 `--basetemp`: use only an owned disposable directory, preserving previous evidence.
 Do not rebuild tagged images while controls using them are running.
 
-Manual T1 and native boundary controls ([WB-04](docs/implementation/WB-04-e1-native-replay.md),
-[WB-05](docs/implementation/WB-05-e1-trust-and-failures.md)):
+Manual T1 and native boundary controls (WB-04 and WB-05 at tag `n8n-replay-final`):
 
 ```sh
 uv run --locked --offline python environments/build.py --simapp simapps/telegram --output runs/wb05-final/config.json
@@ -70,7 +68,7 @@ uv run --locked --offline pytest -q tests/integration/test_lifecycle.py tests/in
 
 T1 5+5 measurement requires a **pre-frozen private Task copy** with `wb_final_cases`
 metadata referencing its private final file; public examples are not holdout. See
-[WB-06](docs/implementation/WB-06-t1-measurement.md) for its preparation/evidence.
+WB-06 (tag `n8n-replay-final`) for its preparation/evidence.
 The confirmed manual measurement used an explicitly adjusted runtime total deadline
 of 1800 s; builder's technical E1 default of 360 s failed that full control.
 This is not an approved model budget.
@@ -80,7 +78,7 @@ uv run --locked --offline pytest -q tests/integration/test_measurement.py --run-
 ```
 
 Model-free stock Codex wiring uses synthetic credentials/internal provider stub;
-[WB-07](docs/implementation/WB-07-codex-e2.md) owns outcomes and paid-run blockers.
+WB-07 (tag `n8n-replay-final`) owns outcomes and paid-run blockers.
 The native CLI probe below records HTTP 501/agent failure, missing artifact and
 confirmed stop; it does not prove model reasoning. Successful inert submissions
 are separate integration controls.
@@ -124,7 +122,7 @@ explicit auth file, and `--authorize-model`.
 The following WB-07 command created one genuine model submission. Its old frozen
 Task launcher referenced an obsolete state-schema path; development was reassessed
 from saved Evidence with the current technical launcher. Results and limitations
-are in [WB-07](docs/implementation/WB-07-codex-e2.md). Use a new output directory
+are in WB-07 (tag `n8n-replay-final`). Use a new output directory
 when reproducing, and a frozen private Task with the current technical launcher.
 
 ```sh
@@ -135,7 +133,7 @@ uv run --locked --offline python -m workflow_bench.cli --codex --authorize-model
 ## WB-08 Sapiens spike
 
 The model-free Sapiens host/CLI path reuses Harbor and the existing T1 evaluation.
-[WB-08](docs/implementation/WB-08-sapiens-spike.md) records the upstream pin,
+WB-08 (tag `n8n-replay-final`) records the upstream pin,
 license, demonstrated capabilities and limits. Genuine generation remains a
 separate authorized model step. No desktop submodules or Sapiens modifications.
 
@@ -205,10 +203,10 @@ uv run --locked --offline python -m workflow_bench.cli --sapiens --authorize-mod
 | [ARCHITECTURE](ARCHITECTURE.md) | Responsibilities, current interfaces, dependencies and trust topology |
 | [AGENTS](AGENTS.md) | Engineering rules and task-first development workflow |
 | [ROADMAP](ROADMAP.md) | Milestones, dependencies, status and acceptance gates |
-| [Implementation tickets](docs/implementation/) | Task-specific design/approvals and historical evidence |
+| Implementation tickets (`docs/implementation/` at tag `n8n-replay-final`) | Task-specific design/approvals and historical evidence |
 
 [Public artifact contract](src/workflow_bench/resources/workflow.md),
 [T1 public input](tasks/t1-send-message/task.json) and
 [Telegram tools](simapps/telegram/tools.json) define the current executable profile.
-The historical [WB-01 ticket](docs/implementation/01-project-structure.md) does not
+The historical WB-01 ticket (at tag `n8n-replay-final`) does not
 assign current work or override SPEC/ARCHITECTURE.
