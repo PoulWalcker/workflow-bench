@@ -1,12 +1,13 @@
-"""Read frozen Evidence and map an evaluated case to a native Harbor reward."""
+"""Evaluate task criteria into Harbor verifier output and read frozen Evidence."""
 
 import hashlib
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from workflow_bench.contracts import Evaluation, Evidence, JsonValue
+from workflow_bench.contracts import Criterion, Evaluation, Evidence, JsonValue
 from workflow_bench.data import (
     MAX_EVIDENCE_BYTES,
     DataError,
@@ -14,6 +15,9 @@ from workflow_bench.data import (
     read_bytes,
     validate_contract,
 )
+
+EVALUATION_FILENAME = "evaluation.json"
+REWARD_FILENAME = "reward.json"
 
 
 @dataclass(frozen=True)
@@ -24,18 +28,67 @@ class FrozenEvidence:
     sha256: str
 
 
-def harbor_reward(evaluation: dict[str, JsonValue]) -> dict[str, float] | None:
-    """Map an already evaluated score; this function defines no scoring policy."""
-    validate_contract("evaluation", evaluation)
-    checked = cast(Evaluation, evaluation)
+def evaluate(
+    criteria: Sequence[Criterion], *, errors: Sequence[str] = ()
+) -> Evaluation:
+    """Derive the verdict and completeness from task-owned criterion results.
+
+    A proven violation is ``fail`` even when other criteria are unknown;
+    otherwise any unknown criterion or verifier error makes the verdict
+    ``unknown``. Completeness depends only on missing facts, never on the
+    candidate failing. Invalid or duplicate criteria raise ``DataError``.
+    """
+    # Read without indexing so malformed criteria reach schema validation below.
+    statuses = {criterion.get("status") for criterion in criteria}
+    if "fail" in statuses:
+        verdict = "fail"
+    elif "unknown" in statuses or errors:
+        verdict = "unknown"
+    else:
+        verdict = "pass"
+    is_complete = "unknown" not in statuses and not errors
+    evaluation: Evaluation = {
+        "verdict": verdict,
+        "completeness": "complete" if is_complete else "partial",
+        "criteria": list(criteria),
+        "errors": list(errors),
+    }
+    validate_contract("evaluation", cast(JsonValue, evaluation))
+    identifiers = [criterion["criterion_id"] for criterion in criteria]
+    if len(set(identifiers)) != len(identifiers):
+        raise DataError("duplicate_criterion", "evaluation")
+    return evaluation
+
+
+def harbor_reward(evaluation: Evaluation) -> dict[str, float] | None:
+    """Return Harbor's native reward, or None when assessment is incomplete.
+
+    Only a complete evaluation has a reward: 1.0 for ``pass``, 0.0 for
+    ``fail``. Missing reward must never be read as a measured zero.
+    """
     if (
-        checked["completeness"] != "complete"
-        or checked["score"] is None
-        or checked["errors"]
-        or any(c["status"] == "unknown" for c in checked["criteria"])
+        evaluation["completeness"] != "complete"
+        or evaluation["errors"]
+        or any(c["status"] == "unknown" for c in evaluation["criteria"])
     ):
         return None
-    return {"reward": float(checked["score"])}
+    return {"reward": 1.0 if evaluation["verdict"] == "pass" else 0.0}
+
+
+def write_evaluation(
+    verifier_dir: Path, criteria: Sequence[Criterion], *, errors: Sequence[str] = ()
+) -> Evaluation:
+    """Write ``evaluation.json`` and, only when complete, ``reward.json``.
+
+    Without ``reward.json`` Harbor records a verifier error, so an incomplete
+    assessment is never reported as a measured agent score.
+    """
+    evaluation = evaluate(criteria, errors=errors)
+    (verifier_dir / EVALUATION_FILENAME).write_text(json.dumps(evaluation) + "\n")
+    reward = harbor_reward(evaluation)
+    if reward is not None:
+        (verifier_dir / REWARD_FILENAME).write_text(json.dumps(reward) + "\n")
+    return evaluation
 
 
 def resolve_ref(document: JsonValue, reference: str) -> JsonValue:

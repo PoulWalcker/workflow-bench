@@ -39,7 +39,6 @@ uv build --force-pep517 --offline
 
 Default pytest excludes integration/model collection/setup; explicit integration
 requires `--run-integration`. `--run-model` remains unimplemented and is rejected.
-This checkout contains no integration tests.
 
 ## Agents image
 
@@ -54,7 +53,23 @@ docker compose -f environments/agents/compose.yaml build --pull
 docker run --rm --network none workflow-bench-agents:codex-0.162.1 codex --version
 ```
 
-The second command prints `codex-cli 0.162.1`.
+The second command prints `codex-cli 0.162.1`. The image also carries the evaluation
+helper from `src/workflow_bench`; rebuild it after changing that package.
+
+## Task readiness
+
+Tasks follow the [task authoring regulation](docs/agents/task-authoring.md). Checking one
+needs Docker and the `agents` image, but no model or credentials; the native Harbor
+jobs of the controls stay under `--jobs-dir`.
+
+```sh
+uv run --locked wb check-task tasks/l1-basket-total --jobs-dir runs/readiness
+uv run --locked pytest -q --run-integration tests/integration
+```
+
+The first command prints a JSON report with `"ready": true` and exits 0 (about 75 seconds
+on the baseline host). The integration controls also check that a task whose no-op run
+passes is rejected; they fail, rather than skip, when Docker or the image is missing.
 
 ## Navigation
 
@@ -66,5 +81,6 @@ The second command prints `codex-cli 0.162.1`.
 | [AGENTS](AGENTS.md) | Canonical engineering instructions and task workflow |
 | [CLAUDE](CLAUDE.md) | Pointer to AGENTS for Claude Code |
 | [Code style](docs/development/code-style.md) | Python conventions and review checklist |
+| [Task authoring](docs/agents/task-authoring.md) | Task layout, template and readiness rules |
 | [Issue tracker](docs/agents/issue-tracker.md) | Local task workspace conventions |
 | [Triage labels](docs/agents/triage-labels.md) | Skill triage roles |

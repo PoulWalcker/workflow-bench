@@ -3,4 +3,8 @@ name: workflow-bench-agents
 services:
   agents:
     image: workflow-bench-agents:codex-0.162.1
-    build: .
+    build:
+      context: .
+      # The evaluation helper is copied from this checkout's package sources.
+      additional_contexts:
+        workflow_bench: ../../src/workflow_bench

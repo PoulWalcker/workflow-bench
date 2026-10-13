@@ -1,0 +1,18 @@
+schema_version = "1.4"
+# The result directory is collected for the separate verifier.
+artifacts = ["/work/output"]
+
+[metadata]
+level = "L1"
+horizon = "single"
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 600.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0

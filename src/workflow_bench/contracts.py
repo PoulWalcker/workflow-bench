@@ -1,6 +1,6 @@
 """Checked host-side exchange values; nested JSON trees must not be mutated."""
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, TypedDict
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
@@ -8,7 +8,7 @@ type JsonValue = (
 
 
 class Identity(TypedDict):
-    """Coordinates that bind Evidence and Evaluation to one replayed case."""
+    """Coordinates that bind Evidence to one replayed case."""
 
     run_id: str
     attempt_id: str
@@ -59,28 +59,29 @@ class Evidence(TypedDict):
 
 
 class Criterion(TypedDict):
-    """Tri-state result of one evaluation criterion with its Evidence references."""
+    """Result of one task-owned criterion.
+
+    Attributes:
+        status: ``fail`` only for a proven violation; ``unknown`` when the
+            facts needed to decide are missing or untrusted.
+        reason_code: Safe code explaining the status, never candidate content.
+    """
 
     criterion_id: str
     status: Literal["pass", "fail", "unknown", "not_applicable"]
-    value: bool | None
     reason_code: str
-    evidence_refs: list[str]
 
 
 class Evaluation(TypedDict):
-    """Evaluated case after validation against the wire schema.
+    """Verdict and assessment completeness derived from criterion results.
 
     Attributes:
-        score: Value from 0 to 10, or None when no score could be established.
+        completeness: ``complete`` when no criterion is unknown and no
+            verifier error was recorded; otherwise ``partial``.
+        errors: Safe codes of verifier problems that limited the assessment.
     """
 
-    identity: Identity
-    score: float | None
     verdict: Literal["pass", "fail", "unknown"]
-    completeness: Literal["complete", "partial", "unavailable", "invalid"]
+    completeness: Literal["complete", "partial"]
     criteria: list[Criterion]
-    violations: list[str]
     errors: list[str]
-    evidence_hash: str | None
-    critical_violations: NotRequired[list[str]]

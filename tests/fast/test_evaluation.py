@@ -1,35 +1,89 @@
-from workflow_bench.evaluation import harbor_reward
+import json
+from pathlib import Path
+
+import pytest
+
+from workflow_bench.data import DataError
+from workflow_bench.evaluation import write_evaluation
 
 
-def test_reward_maps_only_a_complete_numeric_fixture() -> None:
-    result = {
-        "identity": {
-            "run_id": "run",
-            "attempt_id": "attempt",
-            "replay_id": "replay",
-            "artifact_hash": "a" * 64,
-            "case_id": "fresh",
-            "profile_hash": "b" * 64,
-            "profile": "reserve",
-        },
-        "score": None,
-        "verdict": "unknown",
+def _read(path: Path) -> object:
+    return json.loads(path.read_text())
+
+
+def test_proven_failure_with_complete_evidence_is_a_complete_fail(
+    tmp_path: Path,
+) -> None:
+    write_evaluation(
+        tmp_path,
+        [
+            {"criterion_id": "format", "status": "pass", "reason_code": "pass"},
+            {"criterion_id": "total", "status": "fail", "reason_code": "wrong_total"},
+        ],
+    )
+
+    assert _read(tmp_path / "evaluation.json") == {
+        "verdict": "fail",
         "completeness": "complete",
         "criteria": [
-            {
-                "criterion_id": "reservation",
-                "status": "pass",
-                "value": True,
-                "reason_code": "pass",
-                "evidence_refs": ["/after"],
-            }
+            {"criterion_id": "format", "status": "pass", "reason_code": "pass"},
+            {"criterion_id": "total", "status": "fail", "reason_code": "wrong_total"},
         ],
-        "violations": [],
         "errors": [],
-        "evidence_hash": "c" * 64,
     }
-    assert harbor_reward(result) is None
-    result.update(score=7.25, verdict="pass")
-    assert harbor_reward(result) == {"reward": 7.25}
-    result["completeness"] = "partial"
-    assert harbor_reward(result) is None
+    assert _read(tmp_path / "reward.json") == {"reward": 0.0}
+
+
+def test_complete_pass_has_full_reward(tmp_path: Path) -> None:
+    evaluation = write_evaluation(
+        tmp_path, [{"criterion_id": "total", "status": "pass", "reason_code": "pass"}]
+    )
+
+    assert (evaluation["verdict"], evaluation["completeness"]) == ("pass", "complete")
+    assert _read(tmp_path / "reward.json") == {"reward": 1.0}
+
+
+@pytest.mark.parametrize(
+    ("statuses", "errors", "verdict"),
+    [
+        (("pass", "unknown"), (), "unknown"),
+        (("pass", "pass"), ("expected_unreadable",), "unknown"),
+        # A known violation stays a failure while another criterion is unknown.
+        (("fail", "unknown"), (), "fail"),
+    ],
+)
+def test_missing_facts_leave_assessment_partial_without_reward(
+    tmp_path: Path, statuses: tuple[str, ...], errors: tuple[str, ...], verdict: str
+) -> None:
+    criteria = [
+        {"criterion_id": f"c{index}", "status": status, "reason_code": status}
+        for index, status in enumerate(statuses)
+    ]
+
+    write_evaluation(tmp_path, criteria, errors=errors)
+
+    evaluation = _read(tmp_path / "evaluation.json")
+    assert (evaluation["verdict"], evaluation["completeness"]) == (verdict, "partial")
+    assert not (tmp_path / "reward.json").exists()
+
+
+@pytest.mark.parametrize(
+    "criteria",
+    [
+        [],
+        [{"criterion_id": "total", "status": "passed", "reason_code": "pass"}],
+        [{"criterion_id": "total", "status": "pass"}],
+        [
+            {"criterion_id": "total", "status": "pass", "reason_code": "pass"},
+            {"criterion_id": "total", "status": "fail", "reason_code": "wrong"},
+        ],
+    ],
+    ids=["empty", "unknown-status", "missing-reason", "duplicate-id"],
+)
+def test_invalid_criteria_are_rejected_without_output(
+    tmp_path: Path, criteria: list[dict[str, str]]
+) -> None:
+    with pytest.raises(DataError):
+        write_evaluation(tmp_path, criteria)
+
+    assert list(tmp_path.iterdir()) == []

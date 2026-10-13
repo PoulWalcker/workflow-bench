@@ -12,7 +12,8 @@ agent invocation, artifact collection, verifier execution and native result file
 [pyproject.toml](pyproject.toml) pins Harbor to 0.24.0; [uv.lock](uv.lock) locks dependencies.
 Workflow Bench supplies harness integration and shared validation, evidence,
 reward and lifecycle helpers. Task authors own business criteria and checks.
-There is no Workflow Bench execution CLI or second trial engine in this checkout.
+There is no Workflow Bench execution CLI or second trial engine in this checkout;
+the `wb` command only checks tasks and launches native `harbor run` controls.
 
 Harbor's native task layout uses `task.toml`, public `instruction.md`,
 `environment/`, private `tests/` and oracle `solution/`. Compose sidecars, MCP
@@ -22,10 +23,14 @@ must be configured and checked for each environment, not assumed from a prompt.
 Service exports need protected provenance; candidate logs cannot prove effects.
 
 The shared harness image `agents` ([environments/agents](environments/agents)) holds
-a pinned Python base, procps and one pinned Codex CLI, and no task content; task
-environment images build `FROM` it, so agents need no network to install a harness.
-The checkout has no benchmark task, simulated service implementation,
-automated readiness check or offline report command. The retained helpers and
+a pinned Python base, procps, one pinned Codex CLI and the Workflow Bench evaluation
+helper (`contracts`, `data`, `evaluation` copied from this checkout with pinned runtime
+dependencies), and no task content. Task environment images build `FROM` it, so agents
+need no network to install a harness and separate verifiers can import the helper.
+Rebuild it after changing those modules. Tasks follow the
+[task authoring regulation](docs/agents/task-authoring.md); the checkout holds one
+trivial task, [tasks/l1-basket-total](tasks/l1-basket-total), and no simulated service
+implementation or offline report command. The retained helpers and
 schemas do not establish the complete flow required by SPEC. Native Harbor results
 remain the source facts; reporting one configuration needs no comparison baseline.
 
@@ -34,23 +39,26 @@ remain the source facts; reporting one configuration needs no comparison baselin
 | Component | Current responsibility |
 |---|---|
 | [data](src/workflow_bench/data.py) | Bounded regular-file reads, strict JSON decoding, packaged Draft 2020-12 schemas and local-only schema references. `DataError` exposes a safe code and relative label. |
-| [contracts](src/workflow_bench/contracts.py) and [wire schema](src/workflow_bench/resources/wire.schema.json) | Retained typed exchange values and JSON envelopes for evidence and evaluation; these still have legacy identity fields, rather than a new native Trial outcome schema. |
-| [evaluation](src/workflow_bench/evaluation.py) | `read_evidence` checks supplied identity, revisions, event sequences, call consistency, references and freeze completeness; returns `FrozenEvidence` with the exact byte hash. `resolve_ref` reads JSON pointers. `harbor_reward` maps an already evaluated numeric score only when complete, error-free and without unknown criteria. |
+| [contracts](src/workflow_bench/contracts.py) and [wire schema](src/workflow_bench/resources/wire.schema.json) | Typed exchange values and JSON envelopes. Criterion and Evaluation describe the verifier's `evaluation.json`; Evidence keeps its legacy identity fields until the evidence rework. |
+| [evaluation](src/workflow_bench/evaluation.py) | `evaluate` validates task-owned criterion results and derives the verdict (a proven violation is `fail` even beside unknowns) and completeness (`complete` only without unknown criteria or errors). `harbor_reward` gives `1.0`/`0.0` only for a complete evaluation; `write_evaluation` writes `evaluation.json` and, only then, `reward.json` into the verifier directory. `read_evidence` checks supplied identity, revisions, event sequences, call consistency, references and freeze completeness; returns `FrozenEvidence` with the exact byte hash. `resolve_ref` reads JSON pointers. |
+| [readiness](src/workflow_bench/readiness.py) and [cli](src/workflow_bench/cli.py) | `wb check-task` checks a task's layout and `task.toml` rules (via Harbor's task parser), then runs native `harbor run` with the `oracle` and `nop` agents through `DeadlineDockerEnvironment`, requiring verdicts `pass` and `fail` from the trial's `evaluation.json`. Prints a JSON report on stdout; Harbor's console output and progress logs go to stderr. |
 | [mcp](src/workflow_bench/mcp.py) | Newline JSON-RPC over stdio: initialize, ping, list public tools and forward permitted calls to HTTP with a bearer capability. Disables ambient HTTP proxies, does not retry writes or export admin tools, and reports transport uncertainty. |
 | [composer](src/workflow_bench/composer.py) | Codex preflight, live subscription allowance reads and usage extraction. `SessionSafeCodex` retains Harbor's agent loop while bounding native session ingestion and blocking candidate trajectory fallback. The filename is historical; no workflow composition engine remains. |
 | [Sapiens integration](src/workflow_bench_integrations/sapiens.py) | `SapiensInstalledAgent` uses Harbor's Codex configuration/auth/MCP seams. Checks a prepared image's Sapiens revision and Codex installation, creates fresh homes, starts the unmodified Sapiens host, submits once, then observes through its CLI; Sapiens owns planning and delegation. |
 | [harbor helpers](src/workflow_bench/harbor.py) | `DeadlineDockerEnvironment` bounds native stop and buffered/streamed collection cleanup. `_cleanup`, `LifecycleFacts`, `docker` and `assert_stopped` record or check Compose-project-scoped residual resources using bounded metadata queries. |
 
 Dependency direction: Sapiens integration → composer/data/contracts and Harbor;
-composer → data/contracts and Harbor; evaluation → data/contracts; mcp → data/contracts.
+composer → data/contracts and Harbor; evaluation → data/contracts; mcp → data/contracts;
+cli → readiness → data/contracts and Harbor.
 Core modules do not import the Sapiens integration or application business rules.
 
 Schemas load through `importlib.resources`, without checkout/cwd lookup or remote
 schema fetching. Nested JSON values remain mutable despite frozen outer containers.
 Evidence validation and a hash establish consistency and byte identity, not producer
 trust. The caller must supply protected facts and the expected identity.
-Evaluation helpers do not implement task business rules, assemble verdicts, perform
-semantic judging or classify every native Trial outcome.
+Evaluation helpers derive a verdict only from criterion results the task's verifier
+supplies; they do not implement task business rules, perform semantic judging or
+classify every native Trial outcome.
 
 MCP trusts host-installed tool/connection shapes and relays tool payloads without
 schema validation. The service must enforce authorization, business semantics and
@@ -77,8 +85,9 @@ state; that lifecycle integration is not established by the retained adapter.
 `DeadlineDockerEnvironment` can invoke an optional caller-installed `cancel_writer`
 callback before collector cancellation; killing a host Docker client alone does
 not confirm container children stopped. Select this class explicitly through
-Harbor's `--environment-import-path workflow_bench.harbor:DeadlineDockerEnvironment`
-and supply `cleanup_timeout_sec` as environment kwargs. No callback is installed
+Harbor's `--env workflow_bench.harbor:DeadlineDockerEnvironment` (Harbor 0.24.0
+deprecates `--environment-import-path`) and supply `cleanup_timeout_sec` through
+`--ek`. No callback is installed
 by the class itself. Native lifecycle remains Harbor-owned; private-method coupling
 requires renewed checks when Harbor changes. Fast checks do not prove real Docker
 isolation, delegated cessation or provider billing stopped.
@@ -106,7 +115,7 @@ where a retained interface supports alternatives. Resolve user paths once at ent
 |---|---|
 | Task selection, output location, trial count, concurrency, agent selection | Native Harbor CLI/job configuration; record Harbor's resolved configuration. No Workflow Bench wrapper defaults. |
 | Task images, resources, network, timeouts, MCP servers and collected outputs | Native task/Compose configuration, resolved with explicit Harbor job overrides. No runtime-helper object automatically overrides these. |
-| `agents` image content: base image digests, Debian package version and installed Codex CLI version | [environments/agents/Dockerfile](environments/agents/Dockerfile) only; no build arguments. Codex CLI 0.162.1. |
+| `agents` image content: base image digests, Debian package version, installed Codex CLI version and evaluation helper dependency versions | [environments/agents/Dockerfile](environments/agents/Dockerfile) only; no build arguments. Codex CLI 0.162.1; helper dependencies equal their [uv.lock](uv.lock) versions. Helper sources come from `src/workflow_bench` through the compose `additional_contexts` entry. |
 | `agents` image tag | [environments/agents/compose.yaml](environments/agents/compose.yaml) `image` (`workflow-bench-agents:codex-0.162.1`); task Dockerfiles reference it in `FROM`. The tag names the Codex version, so both change together. |
 | Model, Codex CLI version and effective config | Native Harbor agent configuration/options inherited by `SessionSafeCodex` and Sapiens. Sapiens derives its model env from the native model selection. A requested Codex version must equal the one installed in the `agents` image; otherwise Harbor attempts a networked install. |
 | Reasoning effort | Sapiens requires `model_reasoning_effort` in native Harbor agent `config` (TOML file or inline mapping), copied to `SAPIENS_CODEX_REASONING_EFFORT`; a missing key raises `KeyError` before submission. `SessionSafeCodex` supports native Codex config and the separate `reasoning_effort` option; that option does not replace Sapiens' required config key. |
@@ -119,7 +128,9 @@ where a retained interface supports alternatives. Resolve user paths once at ent
 | MCP public contract | Required `--contract` file; `serve` receives the installed contract directly. |
 | MCP tool URL and capability | `--connection` file fields `tool_url`/`capability`; only when absent, `WB_TOOL_URL`/`WB_CAPABILITY`. These modes are exclusive, with no per-field merging. |
 | MCP HTTP timeout | `--timeout` (default 5 seconds), passed as `timeout_sec` to `serve`. |
-| Evidence path, expected identity and JSON pointer | Explicit `read_evidence`/`resolve_ref` arguments; numeric score and criteria come from supplied evaluation, not the reward mapper. |
+| Evidence path, expected identity and JSON pointer | Explicit `read_evidence`/`resolve_ref` arguments. |
+| Criterion results and verifier output directory | Explicit `write_evaluation` arguments from the task's verifier; the reward follows from the evaluation, not a separate score. |
+| Readiness task directory, jobs directory and deadlines | `wb check-task <dir> --jobs-dir <path>` (required), `--run-timeout-sec` per control run (default 900) and `--cleanup-timeout-sec` for teardown and interruption (default 60, also passed to `DeadlineDockerEnvironment`). Paths resolve once at entry; Harbor's own trial timeouts come from `task.toml`. |
 | Cleanup deadline, resource ownership and stop subset | `cleanup_timeout_sec` constructor/helper argument; explicit Compose `project`, optional `services` and `deleted` arguments. Docker metadata queries have a fixed 10-second deadline. |
 | Sapiens revision, internal host address/port, data directory and startup polling | Adapter constants `SAPIENS_REVISION`, `HOST_URL`/`HOST_PORT`, `DATA_DIR` and fixed polling bounds; the loopback listener is inside the agent environment, not a required host port. |
 | JSON/evidence/session bounds and protocol/schema versions | Packaged schema and module constants in `data`, `composer`, `mcp`; protocol limits are not independent CLI settings. |

@@ -14,3 +14,15 @@ RUN apt-get update \
 COPY --from=codex /usr/local/bin/node /usr/local/bin/node
 COPY --from=codex /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version && ps --version
+
+# Task verifiers run in images built FROM this one and call the Workflow Bench
+# evaluation helper. Its runtime dependencies are pinned to the uv.lock versions.
+RUN PIP_ROOT_USER_ACTION=ignore pip install --no-cache-dir --no-deps \
+        --disable-pip-version-check \
+        attrs==26.1.0 jsonschema==4.26.0 jsonschema-specifications==2025.9.1 \
+        referencing==0.37.0 rpds-py==2026.9.1 typing-extensions==4.16.0
+COPY --from=workflow_bench __init__.py contracts.py data.py evaluation.py \
+    /usr/local/lib/python3.12/site-packages/workflow_bench/
+COPY --from=workflow_bench resources/wire.schema.json \
+    /usr/local/lib/python3.12/site-packages/workflow_bench/resources/
+RUN python -c "import workflow_bench.evaluation"
