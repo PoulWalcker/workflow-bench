@@ -50,7 +50,8 @@ of the current checkout.
 
 Every task follows the same flow. The table assigns responsibility; it does not
 introduce another execution engine or assert that every stage is implemented.
-Task-authoring regulation, its template and automated readiness check arrive in M1.
+The [task authoring regulation](docs/agents/task-authoring.md) fixes the task layout,
+template and automated readiness check.
 
 | Stage | Input → output | Owner |
 |---|---|---|

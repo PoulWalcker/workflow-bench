@@ -16,6 +16,8 @@ from referencing.jsonschema import DRAFT202012
 from workflow_bench.contracts import JsonValue
 
 _DRAFT_URI = "https://json-schema.org/draft/2020-12/schema"
+MAX_JSON_BYTES = 4 * 1024 * 1024
+MAX_EVIDENCE_BYTES = 32 * 1024 * 1024
 
 
 class DataError(ValueError):
@@ -27,27 +29,8 @@ class DataError(ValueError):
         super().__init__(f"{code}: {relative_path}")
 
 
-def _unique_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate_key")
-        result[key] = value
-    return result
-
-
-def _finite_float(value: str) -> float:
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError("nonfinite_number")
-    return number
-
-
-def _reject_constant(value: str) -> JsonValue:
-    raise ValueError("nonfinite_number")
-
-
 def decode_json(content: bytes, relative_path: str) -> JsonValue:
+    """Decode strict UTF-8 JSON, raising a safe DataError for invalid content."""
     try:
         return json.loads(
             content.decode("utf-8"),
@@ -59,13 +42,10 @@ def decode_json(content: bytes, relative_path: str) -> JsonValue:
         raise DataError("invalid_schema", relative_path) from None
 
 
-def _no_remote(uri: str) -> Resource:
-    raise NoSuchResource(ref=uri)
-
-
 def schema_validator(
     schema: dict[str, JsonValue] | bool, relative_path: str
 ) -> Validator:
+    """Return a Draft 2020-12 validator that resolves only local references."""
     try:
         Draft202012Validator.check_schema(schema)
         root = Resource.from_contents(schema, default_specification=DRAFT202012)
@@ -122,12 +102,11 @@ def resource_schema(name: str) -> dict[str, JsonValue]:
     return json.loads(files("workflow_bench").joinpath("resources", name).read_bytes())
 
 
-MAX_JSON_BYTES = 4 * 1024 * 1024
-MAX_EVIDENCE_BYTES = 32 * 1024 * 1024
-
-
 def read_bytes(path: Path, label: str, *, limit: int = MAX_JSON_BYTES) -> bytes:
-    """Read a bounded regular trusted input; reject symlinks and invalid JSON."""
+    """Read bounded bytes after checking for a regular, non-symlink path.
+
+    The check precedes opening the path and cannot prevent its replacement.
+    """
     if path.is_symlink() or not stat.S_ISREG(path.stat().st_mode):
         raise DataError("unsafe_file", label)
     with path.open("rb") as stream:
@@ -138,9 +117,35 @@ def read_bytes(path: Path, label: str, *, limit: int = MAX_JSON_BYTES) -> bytes:
 
 
 def read_json(path: Path, label: str) -> JsonValue:
+    """Read and strictly decode a bounded JSON file."""
     return decode_json(read_bytes(path, label), label)
 
 
 def validate_contract(name: str, data: JsonValue) -> None:
+    """Validate a JSON value against one named packaged wire contract."""
     schema = resource_schema("wire.schema.json")
     validate_json(data, {**schema, "$ref": f"#/$defs/{name}"}, name)
+
+
+def _unique_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_key")
+        result[key] = value
+    return result
+
+
+def _finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("nonfinite_number")
+    return number
+
+
+def _reject_constant(value: str) -> JsonValue:
+    raise ValueError("nonfinite_number")
+
+
+def _no_remote(uri: str) -> Resource:
+    raise NoSuchResource(ref=uri)

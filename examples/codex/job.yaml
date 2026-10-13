@@ -1,0 +1,35 @@
+# Safe model-free control: the provider is an unused loopback port inside the container.
+job_name: codex-empty-provider
+jobs_dir: runs/codex
+n_attempts: 1
+n_concurrent_trials: 1
+retry:
+  max_retries: 0
+environment:
+  import_path: workflow_bench.harbor:DeadlineDockerEnvironment
+  kwargs:
+    cleanup_timeout_sec: 60
+agents:
+  - import_path: workflow_bench.composer:SessionSafeCodex
+    model_name: openai/gpt-6.1-sol
+    override_timeout_sec: 10
+    env:
+      CODEX_AUTH_JSON_PATH: ""
+      CODEX_FORCE_AUTH_JSON: "FALSE"
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: ""
+    kwargs:
+      version: 0.162.1
+      reasoning_effort: low
+      config:
+        model_provider: empty
+        model_providers:
+          empty:
+            name: Empty local provider
+            base_url: http://127.0.0.1:9/v1
+            wire_api: responses
+            requires_openai_auth: false
+            request_max_retries: 0
+            stream_max_retries: 0
+tasks:
+  - path: tasks/l1-basket-total

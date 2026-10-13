@@ -19,8 +19,10 @@ The agent chooses its strategy; tools provide capabilities rather than business 
 <a id="task-first-and-rternarity"></a>
 
 Read [ARCHITECTURE](ARCHITECTURE.md) before changing an interface, dependency, environment
-or parameter source. Native Harbor is the execution entry point; there is no WB execution CLI,
-benchmark Task, service implementation, image builder, readiness check or report command.
+or parameter source. Native Harbor is the execution entry point; there is no WB execution CLI
+or service implementation. Tasks follow the
+[task authoring regulation](docs/agents/task-authoring.md), checked by `wb check-task`;
+`wb compare` reports saved Harbor jobs.
 
 The product flow is Task Definition → Readiness → Environment → Execution → Evidence →
 Evaluation → Comparison; [SPEC](SPEC.md#3-flow-contract) assigns inputs, outputs and owners.
@@ -95,11 +97,12 @@ model mode remains closed. No tests is pytest exit 5, not successful verificatio
 - [ARCHITECTURE](ARCHITECTURE.md): current code, boundaries, extension rules and parameter sources.
 - [README](README.md): setup and verified local commands.
 - [Code style](docs/development/code-style.md): Python conventions and review checklist.
+- [Task authoring](docs/agents/task-authoring.md): task layout, template and readiness rules.
 - [Agent rules](docs/agents/issue-tracker.md) and [triage labels](docs/agents/triage-labels.md):
   narrow tracker/skill conventions. [CLAUDE.md](CLAUDE.md) points to this file.
 
 Update the document owning a changed fact and link to it elsewhere. Promote durable knowledge
-from tickets to that document. Task-authoring regulation/template/readiness arrive in M1.
+from tickets to that document.
 
 ## Tasks / agent workflow
 

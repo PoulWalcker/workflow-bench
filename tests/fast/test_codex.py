@@ -9,61 +9,10 @@ from pathlib import Path
 import pytest
 
 from workflow_bench.composer import (
-    codex_preflight,
     collect_codex_usage,
     read_codex_limits,
 )
-from workflow_bench.contracts import JsonValue
 from workflow_bench.data import DataError
-
-
-def test_chatgpt_native_preflight_requires_authorization_not_api_spending_cap(
-    config_data: dict[str, JsonValue],
-) -> None:
-    composer = {
-        "mode": "model",
-        "image": "sha256:" + "d" * 64,
-        "cli_version": "0.118.0",
-        "model": "gpt-6.1-sol",
-        "reasoning_effort": "low",
-        "exploration_max_calls": 40,
-        "authentication": "chatgpt",
-    }
-    with pytest.raises(DataError, match="model_not_authorized"):
-        codex_preflight(composer, budget=None, runtime=config_data, authorized=False)
-    with pytest.raises(DataError, match="codex_auth_required"):
-        codex_preflight(composer, budget=None, runtime=config_data, authorized=True)
-    plan = codex_preflight(
-        composer,
-        budget=None,
-        runtime=config_data,
-        authorized=True,
-        auth_path=Path("/explicit/host/auth.json"),
-    )
-    assert plan["execution_enabled"] is True
-    assert plan["provider"] == "chatgpt_subscription"
-    assert plan["max_attempts"] == 2
-
-
-def test_model_free_label_cannot_enable_subscription_auth(
-    config_data: dict[str, JsonValue],
-) -> None:
-    with pytest.raises(DataError, match="invalid_model_free_config"):
-        codex_preflight(
-            {
-                "mode": "model-free",
-                "image": "sha256:" + "d" * 64,
-                "cli_version": "0.118.0",
-                "model": "synthetic",
-                "reasoning_effort": "low",
-                "exploration_max_calls": 4,
-                "authentication": "chatgpt",
-            },
-            budget=None,
-            runtime=config_data,
-            authorized=False,
-            auth_path=Path("/explicit/host/auth.json"),
-        )
 
 
 @pytest.mark.parametrize("used,expected", [(25, None), (100, "subscription_exhausted")])
@@ -106,33 +55,6 @@ def test_subscription_limits_come_from_native_account_not_run_config(
                 "usedPercent"
             ]
             == 25
-        )
-
-
-@pytest.mark.parametrize(
-    "authorized,expected",
-    [(False, "model_not_authorized"), (True, "provider_enforcement_unverified")],
-)
-def test_codex_preflight_never_trusts_declared_enforcement_or_opens_credentials(
-    config_data: dict[str, JsonValue], authorized: bool, expected: str
-) -> None:
-    # A run config can declare a finalized cap and enforcement; it cannot attest them.
-    budget = {
-        "finalized": True,
-        "credential_cap_usd": 5,
-        "enforcement": {"usd": "credential_cap"},
-    }
-    composer = {
-        "mode": "model",
-        "image": "sha256:" + "d" * 64,
-        "cli_version": "0.118.0",
-        "model": "synthetic",
-        "reasoning_effort": "low",
-        "exploration_max_calls": 40,
-    }
-    with pytest.raises(DataError, match=expected):
-        codex_preflight(
-            composer, budget=budget, runtime=config_data, authorized=authorized
         )
 
 
@@ -264,20 +186,3 @@ def test_native_session_ingestion_is_bounded_and_cannot_read_linked_data(
         timeout=5,
     )
     assert result.returncode == 0, result.stderr
-
-
-@pytest.mark.parametrize("field", ["mode", "reasoning_effort"])
-def test_invalid_composer_config_is_rejected_without_setup(
-    config_data: dict[str, JsonValue], field: str
-) -> None:
-    composer = {
-        "mode": "model-free",
-        "image": "sha256:" + "d" * 64,
-        "cli_version": "0.118.0",
-        "model": "synthetic",
-        "reasoning_effort": "low",
-        "exploration_max_calls": 4,
-    }
-    composer[field] = []
-    with pytest.raises(DataError, match="invalid_composer_config"):
-        codex_preflight(composer, budget=None, runtime=config_data, authorized=False)

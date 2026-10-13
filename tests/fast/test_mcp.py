@@ -4,11 +4,12 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_stdio_lists_public_tools_and_rejects_admin_without_http(
-    public_tools_file,
-):
+    public_tools_file: Path,
+) -> None:
     contract = public_tools_file
     requests = [
         {

@@ -37,10 +37,12 @@ class SapiensInstalledAgent(SessionSafeCodex):
 
     @staticmethod
     def name() -> str:
+        """Return the native Harbor agent name."""
         return "sapiens"
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
+        """Verify the prepared image has the required Sapiens and Codex versions."""
         # Images are prepared before execution; never install over the runtime network.
         result = await self.exec_as_agent(
             environment,
@@ -167,7 +169,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
                 await asyncio.gather(observer, return_exceptions=True)
         (self.logs_dir / "sapiens-terminal.json").write_text(observed.stdout or "")
         terminal = self._response(observed.stdout)
-        completed = (
+        has_completed = (
             observed.return_code == 0
             and terminal["ok"]
             and terminal["data"].get("state") == "Completed"
@@ -175,14 +177,11 @@ class SapiensInstalledAgent(SessionSafeCodex):
         LOGGER.info(
             "phase=sapiens-observation sapiens_turn_id=%s result=%s elapsed=%.2fs",
             turn_id,
-            "completed" if completed else "not_completed",
+            "completed" if has_completed else "not_completed",
             time.monotonic() - started,
         )
-        # Terminal status is distinct from artifact validity and Evaluation.
-        if not completed:
+        if not has_completed:
             raise RuntimeError("sapiens_terminal_not_completed")
-        # AGENT_END closes admission and stops the whole host/container
-        # before collection.
         context.model_usage = {}
 
     @staticmethod

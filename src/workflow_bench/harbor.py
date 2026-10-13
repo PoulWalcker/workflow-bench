@@ -4,8 +4,9 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any, override
+from typing import Any, cast, override
 
+from harbor.constants import MAIN_SERVICE_NAME
 from harbor.environments.base import BaseEnvironment, ExecResult, OutputCallback
 from harbor.environments.docker.docker import DockerEnvironment
 
@@ -15,16 +16,63 @@ LOGGER = logging.getLogger(__name__)
 class DeadlineDockerEnvironment(DockerEnvironment):
     """Bound native teardown, including Harbor's shielded finalization calls."""
 
-    def __init__(self, *, cleanup_timeout_sec: float, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, *, cleanup_timeout_sec: float, **kwargs: object) -> None:
+        """Use native Docker options with a cleanup deadline in seconds."""
+        super().__init__(**cast(dict[str, Any], kwargs))
         self.cleanup_timeout_sec = cleanup_timeout_sec
-        self.cancel_writer: Callable[[], Awaitable[None]] | None = None
-        self._stopping_writer = False
+        self.cancel_writer: Callable[[], Awaitable[None]] | None = self._stop_writer
+        self._is_stopping_writer = False
 
     @override
     async def stop(self, delete: bool) -> None:
+        """Bound native teardown without starting another stop during its timeout."""
+        was_stopping = self._is_stopping_writer
+        self._is_stopping_writer = True
+        try:
+            async with asyncio.timeout(self.cleanup_timeout_sec):
+                await super().stop(delete=delete)
+        finally:
+            self._is_stopping_writer = was_stopping
+
+    async def read_file_archive(self, source_path: str, *, max_bytes: int) -> bytes:
+        """Read a main-container path as a bounded, unextracted Docker tar archive.
+
+        Works after stop. Raises RuntimeError on unavailable or oversized input;
+        the cleanup deadline bounds transfer and subprocess reaping separately.
+        """
         async with asyncio.timeout(self.cleanup_timeout_sec):
-            await super().stop(delete=delete)
+            container = await self._run_docker_compose_command(
+                ["ps", "--all", "--quiet", MAIN_SERVICE_NAME]
+            )
+            container_id = (container.stdout or "").strip()
+            if not container_id or len(container_id.splitlines()) != 1:
+                raise RuntimeError("archive_container_unavailable")
+            process = await asyncio.create_subprocess_exec(
+                *self._engine_cmd("cp", f"{container_id}:{source_path}", "-"),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            content = bytearray()
+            try:
+                assert process.stdout is not None
+                while chunk := await process.stdout.read(
+                    min(65536, max_bytes + 1 - len(content))
+                ):
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise RuntimeError("archive_too_large")
+                await process.wait()
+                if process.returncode:
+                    raise RuntimeError("archive_unavailable")
+            finally:
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+                async with asyncio.timeout(self.cleanup_timeout_sec):
+                    await process.communicate()
+        return bytes(content)
 
     @override
     async def _collect_buffered_output(
@@ -60,6 +108,17 @@ class DeadlineDockerEnvironment(DockerEnvironment):
             process,
         )
 
+    async def _stop_writer(self) -> None:
+        """Kill the candidate container before collection; keep it for Docker copy."""
+        await self._run_docker_compose_command(
+            ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
+        )
+        running = await self._run_docker_compose_command(
+            ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
+        )
+        if running.stdout and running.stdout.strip():
+            raise RuntimeError("stop_unconfirmed")
+
     async def _collect_with_stop(
         self,
         collection: Coroutine[object, object, ExecResult],
@@ -71,13 +130,13 @@ class DeadlineDockerEnvironment(DockerEnvironment):
             # installed agent's finally blocks. Both can otherwise leave children.
             return await asyncio.shield(pending)
         except asyncio.CancelledError:
-            if self.cancel_writer is not None and not self._stopping_writer:
-                self._stopping_writer = True
+            if self.cancel_writer is not None and not self._is_stopping_writer:
+                self._is_stopping_writer = True
                 try:
                     async with asyncio.timeout(self.cleanup_timeout_sec):
                         await self.cancel_writer()
                 finally:
-                    self._stopping_writer = False
+                    self._is_stopping_writer = False
             raise
         finally:
             if process.returncode is None:
@@ -94,8 +153,60 @@ class DeadlineDockerEnvironment(DockerEnvironment):
 
 @dataclass
 class LifecycleFacts:
+    """Safe cleanup errors and residual resource references for one lifecycle."""
+
     cleanup_errors: list[str] = field(default_factory=list)
     residual_resources: list[str] = field(default_factory=list)
+
+
+async def docker(*arguments: str) -> str:
+    """A bounded Docker metadata query, never a second lifecycle implementation."""
+    process = await asyncio.create_subprocess_exec(
+        "docker",
+        *arguments,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        async with asyncio.timeout(10):
+            stdout, _ = await process.communicate()
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    if process.returncode:
+        raise RuntimeError("docker_metadata_failed")
+    return stdout.decode().strip()
+
+
+async def assert_stopped(
+    project: str, *, services: set[str] | None = None, deleted: bool = False
+) -> None:
+    """Raise if requested services remain, or deleted resources survive."""
+    arguments = (
+        ["ps"]
+        + (["-a"] if deleted else [])
+        + [
+            "--filter",
+            f"label=com.docker.compose.project={project}",
+            "--format",
+            '{{.Label "com.docker.compose.service"}}',
+        ]
+    )
+    active = set((await docker(*arguments)).splitlines())
+    if active if services is None else active & services:
+        raise RuntimeError("stop_unconfirmed")
+    if deleted:
+        for kind in ("network", "volume"):
+            if await docker(
+                kind,
+                "ls",
+                "--filter",
+                f"label=com.docker.compose.project={project}",
+                "--format",
+                "{{.Name}}",
+            ):
+                raise RuntimeError("cleanup_incomplete")
 
 
 async def _cleanup(
@@ -134,52 +245,3 @@ async def _cleanup(
     if residuals:
         LOGGER.warning("phase=cleanup project=%s result=incomplete", project)
     return not residuals
-
-
-async def docker(*arguments: str) -> str:
-    """A bounded Docker metadata query, never a second lifecycle implementation."""
-    process = await asyncio.create_subprocess_exec(
-        "docker",
-        *arguments,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        async with asyncio.timeout(10):
-            stdout, _ = await process.communicate()
-    finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
-    if process.returncode:
-        raise RuntimeError("docker_metadata_failed")
-    return stdout.decode().strip()
-
-
-async def assert_stopped(
-    project: str, *, services: set[str] | None = None, deleted: bool = False
-) -> None:
-    arguments = (
-        ["ps"]
-        + (["-a"] if deleted else [])
-        + [
-            "--filter",
-            f"label=com.docker.compose.project={project}",
-            "--format",
-            '{{.Label "com.docker.compose.service"}}',
-        ]
-    )
-    active = set((await docker(*arguments)).splitlines())
-    if active if services is None else active & services:
-        raise RuntimeError("stop_unconfirmed")
-    if deleted:
-        for kind in ("network", "volume"):
-            if await docker(
-                kind,
-                "ls",
-                "--filter",
-                f"label=com.docker.compose.project={project}",
-                "--format",
-                "{{.Name}}",
-            ):
-                raise RuntimeError("cleanup_incomplete")

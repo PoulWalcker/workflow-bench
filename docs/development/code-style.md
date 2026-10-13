@@ -71,7 +71,7 @@ For example, `load_record(path, schema)`, `validate_record(record, schema)` and
 Moving a chain of helpers into methods is insufficient by itself: the class must reduce
 what callers and internal operations need to pass or coordinate. Split unrelated
 responsibilities rather than accumulating them in one class. Helper count alone is not a
-criterion. The abstraction constraints in [AGENTS.md](../../AGENTS.md#task-first-and-rternarity)
+criterion. The abstraction constraints in [ARCHITECTURE.md](../../ARCHITECTURE.md#not-doing)
 still apply.
 
 ## Readable Python

@@ -4,9 +4,11 @@ from inspect import getfile
 from pathlib import Path
 
 import pytest
+from _pytest.fixtures import SubRequest
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the integration opt-in and closed model switch."""
     parser.addoption(
         "--run-integration", action="store_true", help="Enable integration tests."
     )
@@ -18,30 +20,23 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """Reject model mode and guard fixture setup across test suites."""
     if config.getoption("--run-model"):
         raise pytest.UsageError("model mode is not implemented")
     execute = pytest.FixtureDef.execute
 
-    def gated_execute(
-        fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest
-    ) -> object:
+    def _gated_execute(fixturedef: pytest.FixtureDef, request: SubRequest) -> object:
         _check_fixture_request(fixturedef, request)
         return execute(fixturedef, request=request)
 
     # Setup hooks use scope-local conftests and are skipped for cached fixtures.
     patch = pytest.MonkeyPatch()
-    patch.setattr(pytest.FixtureDef, "execute", gated_execute)
+    patch.setattr(pytest.FixtureDef, "execute", _gated_execute)
     config.add_cleanup(patch.undo)
 
 
-def _suite(path: Path, config: pytest.Config) -> str | None:
-    for suite in ("model", "integration"):
-        if path.resolve().is_relative_to((config.rootpath / "tests" / suite).resolve()):
-            return suite
-    return None
-
-
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    """Exclude gated suites before collection unless integration is enabled."""
     suite = _suite(collection_path, config)
     if suite == "model":
         return True
@@ -54,6 +49,7 @@ def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool 
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
+    """Reject explicit gated paths and marked items before fixture setup."""
     for argument in config.args:
         path = config.invocation_params.dir / argument.split("::", 1)[0]
         suite = _suite(path, config)
@@ -69,6 +65,13 @@ def pytest_collection_modifyitems(
             suite == "integration" or item.get_closest_marker("integration")
         ) and not config.getoption("--run-integration"):
             raise pytest.UsageError(f"{item.nodeid} requires --run-integration")
+
+
+def _suite(path: Path, config: pytest.Config) -> str | None:
+    for suite in ("model", "integration"):
+        if path.resolve().is_relative_to((config.rootpath / "tests" / suite).resolve()):
+            return suite
+    return None
 
 
 def _check_fixture_request(

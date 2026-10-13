@@ -14,7 +14,7 @@ from workflow_bench.harbor import DeadlineDockerEnvironment
 def test_native_stop_has_a_deadline_even_inside_harbor_finalization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def stalled_stop(self, delete):
+    async def stalled_stop(self: DockerEnvironment, delete: bool) -> None:
         await asyncio.Event().wait()
 
     monkeypatch.setattr(DockerEnvironment, "stop", stalled_stop)
@@ -39,7 +39,7 @@ def test_native_stop_timeout_reaps_its_docker_command(
     command.chmod(0o700)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
 
-    async def prepared(self):
+    async def prepared(self: DockerEnvironment) -> None:
         pass
 
     monkeypatch.setattr(DockerEnvironment, "prepare_logs_for_host", prepared)

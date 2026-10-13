@@ -10,6 +10,9 @@ dependencies = [
     "referencing>=0.37.0",
 ]
 
+[project.scripts]
+wb = "workflow_bench.cli:main"
+
 [build-system]
 requires = ["uv_build==0.12.4"]
 build-backend = "uv_build"
@@ -63,7 +66,7 @@ indent-style = "space"
 line-ending = "lf"
 
 [tool.ty.src]
-include = ["src"]
+include = ["src", "tests"]
 
 [tool.uv.build-backend]
 module-name = ["workflow_bench", "workflow_bench_integrations"]
