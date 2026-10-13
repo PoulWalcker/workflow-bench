@@ -15,11 +15,11 @@ from uuid import uuid4
 import pytest
 
 from workflow_bench.composer import submit_codex
-from workflow_bench.contracts import SUBMISSION_TRIAL_PREFIX
 from workflow_bench.definition import export_public, load_task
 from workflow_bench.execution import accept_artifact, replay
 from workflow_bench.experiment import run_measurement
 from workflow_bench.harbor import replay_environment
+from workflow_bench.n8n_contracts import SUBMISSION_TRIAL_PREFIX
 
 ROOT = Path(__file__).resolve().parents[2]
 

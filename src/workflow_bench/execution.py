@@ -17,12 +17,7 @@ from typing import TYPE_CHECKING
 
 from aiohttp import ClientError
 
-from workflow_bench.contracts import (
-    BoundWorkflow,
-    E1Config,
-    JsonValue,
-    WorkflowArtifact,
-)
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import (
     MAX_JSON_BYTES,
     DataError,
@@ -31,6 +26,7 @@ from workflow_bench.data import (
     validate_contract,
     validate_json,
 )
+from workflow_bench.n8n_contracts import BoundWorkflow, E1Config, WorkflowArtifact
 
 if TYPE_CHECKING:
     from workflow_bench.harbor import ReplayContext

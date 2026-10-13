@@ -25,13 +25,7 @@ from harbor.models.task.config import MCPServerConfig
 from harbor.models.trajectories import Trajectory
 from harbor.models.trial.config import AgentConfig
 
-from workflow_bench.contracts import (
-    SUBMISSION_TRIAL_PREFIX,
-    E1Config,
-    JsonValue,
-    PublicPackage,
-    WorkflowArtifact,
-)
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_EVIDENCE_BYTES, DataError, decode_json, read_json
 from workflow_bench.experiment import ControlledSubmission
 from workflow_bench.harbor import (
@@ -39,6 +33,12 @@ from workflow_bench.harbor import (
     docker,
     replay_environment,
     run_native_trial,
+)
+from workflow_bench.n8n_contracts import (
+    SUBMISSION_TRIAL_PREFIX,
+    E1Config,
+    PublicPackage,
+    WorkflowArtifact,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -243,11 +243,10 @@ def codex_preflight(
             "provider": "chatgpt_subscription",
             "max_attempts": 2,
         }
-    from workflow_bench.cli import model_preflight
-
-    model_preflight(budget, runtime=runtime, authorized=authorized)
-    # No trusted API project spending constraint has been verified for this checkout.
-    # A declaration in a run config cannot attest to independent enforcement.
+    if not authorized:
+        raise DataError("model_not_authorized", "composer")
+    # The API-billed mode is closed: no trusted API project spending constraint is
+    # verified, and a declaration in a run config cannot attest to enforcement.
     raise DataError("provider_enforcement_unverified", "model_budget")
 
 
@@ -358,6 +357,38 @@ async def submit_codex(
         authorized=authorized,
         auth_path=auth_path,
         agent=codex_agent_config(composer, config, auth_path),
+    )
+
+
+async def submit_sapiens(
+    *,
+    public: PublicPackage,
+    root: Path,
+    run_id: str,
+    attempt_id: str,
+    previous: WorkflowArtifact | None,
+    feedback: list[JsonValue],
+    config: E1Config,
+    composer: dict[str, JsonValue],
+    budget: dict[str, JsonValue] | None = None,
+    authorized: bool = False,
+    auth_path: Path | None = None,
+) -> ControlledSubmission:
+    agent = codex_agent_config(composer, config, auth_path)
+    agent.import_path = "workflow_bench_integrations.sapiens:SapiensInstalledAgent"
+    return await submit_installed(
+        public=public,
+        root=root,
+        run_id=run_id,
+        attempt_id=attempt_id,
+        previous=previous,
+        feedback=feedback,
+        config=config,
+        composer=composer,
+        budget=budget,
+        authorized=authorized,
+        auth_path=auth_path,
+        agent=agent,
     )
 
 

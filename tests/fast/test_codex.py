@@ -294,6 +294,28 @@ def test_codex_preflight_never_trusts_declared_enforcement_or_opens_credentials(
         )
 
 
+def test_api_billed_model_mode_is_closed_without_cli_budget_planning(
+    config_data, monkeypatch
+):
+    import sys
+
+    from workflow_bench.composer import codex_preflight
+    from workflow_bench.data import DataError
+
+    # The closed mode must be rejected by Composer alone, not by CLI budget planning.
+    monkeypatch.setitem(sys.modules, "workflow_bench.cli", None)
+    composer = {
+        "mode": "model",
+        "image": "sha256:" + "d" * 64,
+        "cli_version": "0.118.0",
+        "model": "gpt-6.1-sol",
+        "reasoning_effort": "low",
+        "exploration_max_calls": 40,
+    }
+    with pytest.raises(DataError, match="provider_enforcement_unverified"):
+        codex_preflight(composer, budget=None, runtime=config_data, authorized=True)
+
+
 def test_usage_reads_last_cumulative_event_preserving_missing_and_zero(tmp_path):
     from workflow_bench.composer import collect_codex_usage
 

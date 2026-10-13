@@ -5,26 +5,15 @@ import logging
 import re
 import shlex
 import time
-from pathlib import Path
 from typing import override
 
 from harbor.agents.capabilities import AgentCapabilities
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from workflow_bench.composer import (
-    SessionSafeCodex,
-    codex_agent_config,
-    submit_installed,
-)
-from workflow_bench.contracts import (
-    E1Config,
-    JsonValue,
-    PublicPackage,
-    WorkflowArtifact,
-)
+from workflow_bench.composer import SessionSafeCodex
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
-from workflow_bench.experiment import ControlledSubmission
 
 LOGGER = logging.getLogger(__name__)
 
@@ -198,35 +187,3 @@ class SapiensInstalledAgent(SessionSafeCodex):
         ):
             raise RuntimeError("sapiens_response_invalid")
         return value
-
-
-async def submit_sapiens(
-    *,
-    public: PublicPackage,
-    root: Path,
-    run_id: str,
-    attempt_id: str,
-    previous: WorkflowArtifact | None,
-    feedback: list[JsonValue],
-    config: E1Config,
-    composer: dict[str, JsonValue],
-    budget: dict[str, JsonValue] | None = None,
-    authorized: bool = False,
-    auth_path: Path | None = None,
-) -> ControlledSubmission:
-    agent = codex_agent_config(composer, config, auth_path)
-    agent.import_path = "workflow_bench_integrations.sapiens:SapiensInstalledAgent"
-    return await submit_installed(
-        public=public,
-        root=root,
-        run_id=run_id,
-        attempt_id=attempt_id,
-        previous=previous,
-        feedback=feedback,
-        config=config,
-        composer=composer,
-        budget=budget,
-        authorized=authorized,
-        auth_path=auth_path,
-        agent=agent,
-    )

@@ -23,13 +23,7 @@ from harbor.models.trial.paths import TrialPaths
 from harbor.trial.hooks import TrialEvent, TrialHookEvent
 from harbor.trial.trial import Trial
 
-from workflow_bench.contracts import (
-    PROFILE_PROJECT_PREFIX,
-    REPLAY_PROJECT_PREFIX,
-    SUBMISSION_TRIAL_PREFIX,
-    E1Config,
-    JsonValue,
-)
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import (
     MAX_EVIDENCE_BYTES,
     MAX_JSON_BYTES,
@@ -39,6 +33,12 @@ from workflow_bench.data import (
     validate_contract,
 )
 from workflow_bench.evaluation import aggregate_evaluation, harbor_reward, read_evidence
+from workflow_bench.n8n_contracts import (
+    PROFILE_PROJECT_PREFIX,
+    REPLAY_PROJECT_PREFIX,
+    SUBMISSION_TRIAL_PREFIX,
+    E1Config,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -133,18 +133,18 @@ async def _cleanup(
     environment: BaseEnvironment | None,
     project: str,
     *,
-    config: E1Config,
+    cleanup_timeout_sec: float,
     lifecycle: LifecycleFacts,
 ) -> bool:
     try:
-        async with asyncio.timeout(config.cleanup_timeout_sec):
+        async with asyncio.timeout(cleanup_timeout_sec):
             if environment is not None:
                 await environment.stop(delete=True)
     except Exception as error:
         lifecycle.cleanup_errors.append(f"{project}:stop_failed:{type(error).__name__}")
     residuals = []
     try:
-        async with asyncio.timeout(config.cleanup_timeout_sec):
+        async with asyncio.timeout(cleanup_timeout_sec):
             for kind, arguments in (
                 ("container", ["ps", "-a", "--format", "{{.ID}}"]),
                 ("network", ["network", "ls", "--format", "{{.Name}}"]),
@@ -353,10 +353,16 @@ async def run_native_trial(
         native_result = await trial.run()
     finally:
         writer_deleted = await _cleanup(
-            None, trial_name + "__env", config=config, lifecycle=lifecycle
+            None,
+            trial_name + "__env",
+            cleanup_timeout_sec=config.cleanup_timeout_sec,
+            lifecycle=lifecycle,
         )
         verifier_deleted = await _cleanup(
-            None, trial_name + "__verifier__trial", config=config, lifecycle=lifecycle
+            None,
+            trial_name + "__verifier__trial",
+            cleanup_timeout_sec=config.cleanup_timeout_sec,
+            lifecycle=lifecycle,
         )
         if not verify:
             try:
@@ -627,7 +633,12 @@ async def tool_contract(
             destination.write_text(exported.stdout)
             return destination
     finally:
-        if not await _cleanup(environment, project, config=config, lifecycle=lifecycle):
+        if not await _cleanup(
+            environment,
+            project,
+            cleanup_timeout_sec=config.cleanup_timeout_sec,
+            lifecycle=lifecycle,
+        ):
             raise DataError("cleanup_incomplete", "profile-export/harbor")
 
 
@@ -798,7 +809,12 @@ async def replay_environment(
     finally:
         LOGGER.info("phase=cleanup case_id=%s", identity["case_id"])
         try:
-            if await _cleanup(environment, project, config=config, lifecycle=lifecycle):
+            if await _cleanup(
+                environment,
+                project,
+                cleanup_timeout_sec=config.cleanup_timeout_sec,
+                lifecycle=lifecycle,
+            ):
                 LOGGER.info(
                     "phase=cleanup case_id=%s result=confirmed", identity["case_id"]
                 )

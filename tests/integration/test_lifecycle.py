@@ -8,7 +8,6 @@ from uuid import uuid4
 import pytest
 from tests.integration.controls import identity, node, reset
 
-from workflow_bench.contracts import REPLAY_PROJECT_PREFIX, SUBMISSION_TRIAL_PREFIX
 from workflow_bench.data import read_json
 from workflow_bench.execution import accept_artifact, replay
 from workflow_bench.harbor import (
@@ -18,6 +17,7 @@ from workflow_bench.harbor import (
     replay_environment,
     run_native_trial,
 )
+from workflow_bench.n8n_contracts import REPLAY_PROJECT_PREFIX, SUBMISSION_TRIAL_PREFIX
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK = ROOT / "tasks/t1-send-message"

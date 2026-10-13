@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from workflow_bench.composer import submit_sapiens
 from workflow_bench.definition import export_public, load_task
 from workflow_bench.experiment import run_measurement
-from workflow_bench_integrations.sapiens import submit_sapiens
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -126,7 +126,7 @@ def test_sapiens_stops_host_and_late_child(e1_config, sapiens_control, mode):
     )
 
     async def check():
-        from workflow_bench.contracts import SUBMISSION_TRIAL_PREFIX
+        from workflow_bench.n8n_contracts import SUBMISSION_TRIAL_PREFIX
 
         attempt = uuid4().hex
         run_id = uuid4().hex

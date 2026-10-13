@@ -9,10 +9,11 @@ import signal
 from functools import partial
 from pathlib import Path
 
-from workflow_bench.contracts import E1Config, JsonValue
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import DataError, read_json, resource_schema, validate_json
 from workflow_bench.execution import ArtifactError
 from workflow_bench.experiment import ControlledSubmission, run_manual, run_measurement
+from workflow_bench.n8n_contracts import E1Config
 
 
 def load_config(path: Path, *, output: Path) -> E1Config:
@@ -103,13 +104,13 @@ def main() -> None:
             return
         composer = None
         if args.codex or args.sapiens:
-            from workflow_bench.composer import codex_preflight, submit_codex
+            from workflow_bench.composer import (
+                codex_preflight,
+                submit_codex,
+                submit_sapiens,
+            )
 
-            submit = submit_codex
-            if args.sapiens:
-                from workflow_bench_integrations.sapiens import submit_sapiens
-
-                submit = submit_sapiens
+            submit = submit_sapiens if args.sapiens else submit_codex
             document = read_json(args.config.resolve(), "composer_config")
             if not isinstance(document, dict) or set(document) not in (
                 {"runtime", "composer"},

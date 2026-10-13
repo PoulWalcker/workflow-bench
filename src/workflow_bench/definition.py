@@ -11,14 +11,7 @@ from pathlib import Path
 from harbor.models.task.config import TaskConfig
 from harbor.models.task.task import Task
 
-from workflow_bench.contracts import (
-    PUBLIC_PACKAGE_FILES,
-    WORKFLOW_ARTIFACT_FILE,
-    CaseData,
-    JsonValue,
-    PublicPackage,
-    TaskMaterials,
-)
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import (
     MAX_JSON_BYTES,
     read_bytes,
@@ -37,6 +30,13 @@ from workflow_bench.data import (
 )
 from workflow_bench.data import (
     validate_json as _validate,
+)
+from workflow_bench.n8n_contracts import (
+    PUBLIC_PACKAGE_FILES,
+    WORKFLOW_ARTIFACT_FILE,
+    CaseData,
+    PublicPackage,
+    TaskMaterials,
 )
 
 MAX_MATERIAL_BYTES = MAX_JSON_BYTES

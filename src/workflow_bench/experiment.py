@@ -12,12 +12,7 @@ from importlib.metadata import version
 from pathlib import Path
 from uuid import uuid4
 
-from workflow_bench.contracts import (
-    REPLAY_PROJECT_PREFIX,
-    E1Config,
-    JsonValue,
-    WorkflowArtifact,
-)
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import DataError, read_json, validate_contract
 from workflow_bench.definition import export_public, load_cases, load_task
 from workflow_bench.execution import ArtifactError, accept_artifact, replay
@@ -26,6 +21,11 @@ from workflow_bench.harbor import (
     replay_environment,
     run_native_trial,
     tool_contract,
+)
+from workflow_bench.n8n_contracts import (
+    REPLAY_PROJECT_PREFIX,
+    E1Config,
+    WorkflowArtifact,
 )
 
 LOGGER = logging.getLogger(__name__)
