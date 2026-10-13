@@ -360,7 +360,8 @@ def collect_sapiens_usage(logs: Path) -> SapiensUsage:
             candidate = (
                 info.get("total_token_usage") if isinstance(info, dict) else None
             )
-            last = candidate if isinstance(candidate, dict) else None
+            if isinstance(candidate, dict):
+                last = candidate
         if last is None:
             return unknown
         session_totals: dict[str, int] = {}

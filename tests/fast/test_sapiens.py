@@ -172,6 +172,41 @@ def test_sapiens_usage_sums_last_cumulative_event_of_every_session(
     }
 
 
+def test_sapiens_usage_keeps_last_cumulative_event_after_unmeasured_event(
+    tmp_path: Path,
+) -> None:
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "chief.jsonl").write_text(
+        "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {
+                                "input_tokens": 5,
+                                "cached_input_tokens": 1,
+                                "output_tokens": 2,
+                            }
+                        },
+                    },
+                },
+                {"type": "event_msg", "payload": {"type": "token_count", "info": None}},
+            )
+        )
+        + "\n"
+    )
+    assert collect_sapiens_usage(tmp_path) == {
+        "input_tokens": 5,
+        "cached_input_tokens": 1,
+        "output_tokens": 2,
+        "session_count": 1,
+    }
+
+
 def test_sapiens_usage_rejects_invalid_counters_within_one_session(
     tmp_path: Path,
 ) -> None:
