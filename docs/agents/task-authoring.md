@@ -93,9 +93,14 @@ The command prints one JSON report on stdout and exits 0 only when the task is r
 
 1. Structure: the layout and `task.toml` rules above, and Harbor parses the task. A violation
    is named, for example `missing:tests/test.sh` or `unexpected:notes.md`, and no run starts.
-2. Controls: a real `harbor run` with Harbor's `oracle` agent must yield verdict `pass`, and
+2. Helper image: the local image named by the final `FROM` of `environment/Dockerfile` must
+   carry this checkout's evaluation helper. A stale copy (`stale:agents_helper`, rebuild the
+   `agents` image) or an image that cannot be inspected (`unverified:agents_helper`; it is
+   never pulled) stops the check before any run.
+3. Controls: a real `harbor run` with Harbor's `oracle` agent must yield verdict `pass`, and
    one with the `nop` agent must yield `fail` (not `unknown`). Both run through
    `DeadlineDockerEnvironment`; their native jobs stay under `--jobs-dir`.
 
-Review covers what the command cannot see: instruction quality, the `FROM` image, criteria
-that decide the task's real requirements, and that expectations stay private.
+Review covers what the command cannot see: instruction quality, that the `FROM` image is the
+`agents` image, criteria that decide the task's real requirements, and that expectations stay
+private.

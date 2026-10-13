@@ -16,13 +16,18 @@ COPY --from=codex /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version && ps --version
 
 # Task verifiers run in images built FROM this one and call the Workflow Bench
-# evaluation helper. Its runtime dependencies are pinned to the uv.lock versions.
-RUN PIP_ROOT_USER_ACTION=ignore pip install --no-cache-dir --no-deps \
-        --disable-pip-version-check \
-        attrs==26.1.0 jsonschema==4.26.0 jsonschema-specifications==2025.9.1 \
-        referencing==0.37.0 rpds-py==2026.9.1 typing-extensions==4.16.0
-COPY --from=workflow_bench __init__.py contracts.py data.py evaluation.py \
+# evaluation helper. Its direct imports, jsonschema and referencing, and their
+# dependencies are installed at the versions locked in uv.lock.
+RUN --mount=type=bind,from=project,source=uv.lock,target=/tmp/uv.lock \
+    --mount=type=bind,source=lock_requirements.py,target=/tmp/lock_requirements.py \
+    python /tmp/lock_requirements.py /tmp/uv.lock jsonschema referencing \
+        > /tmp/helper-requirements.txt \
+    && PIP_ROOT_USER_ACTION=ignore pip install --no-cache-dir --no-deps \
+        --disable-pip-version-check -r /tmp/helper-requirements.txt \
+    && rm /tmp/helper-requirements.txt
+COPY --from=project src/workflow_bench/__init__.py src/workflow_bench/contracts.py \
+    src/workflow_bench/data.py src/workflow_bench/evaluation.py \
     /usr/local/lib/python3.12/site-packages/workflow_bench/
-COPY --from=workflow_bench resources/wire.schema.json \
+COPY --from=project src/workflow_bench/resources/wire.schema.json \
     /usr/local/lib/python3.12/site-packages/workflow_bench/resources/
 RUN python -c "import workflow_bench.evaluation"

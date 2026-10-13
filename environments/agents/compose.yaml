@@ -5,6 +5,7 @@ services:
     image: workflow-bench-agents:codex-0.162.1
     build:
       context: .
-      # The evaluation helper is copied from this checkout's package sources.
+      # The repository root; the build reads only uv.lock and the evaluation
+      # helper sources from it, and BuildKit transfers only those paths.
       additional_contexts:
-        workflow_bench: ../../src/workflow_bench
+        project: ../..

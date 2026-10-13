@@ -1,13 +1,16 @@
 import json
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Literal, cast
 
 import pytest
 
+from workflow_bench.contracts import Criterion
 from workflow_bench.data import DataError
 from workflow_bench.evaluation import write_evaluation
 
 
-def _read(path: Path) -> object:
+def _read(path: Path) -> dict[str, object]:
     return json.loads(path.read_text())
 
 
@@ -53,10 +56,13 @@ def test_complete_pass_has_full_reward(tmp_path: Path) -> None:
     ],
 )
 def test_missing_facts_leave_assessment_partial_without_reward(
-    tmp_path: Path, statuses: tuple[str, ...], errors: tuple[str, ...], verdict: str
+    tmp_path: Path,
+    statuses: tuple[Literal["pass", "fail", "unknown"], ...],
+    errors: tuple[str, ...],
+    verdict: str,
 ) -> None:
     criteria = [
-        {"criterion_id": f"c{index}", "status": status, "reason_code": status}
+        Criterion(criterion_id=f"c{index}", status=status, reason_code=status)
         for index, status in enumerate(statuses)
     ]
 
@@ -84,6 +90,7 @@ def test_invalid_criteria_are_rejected_without_output(
     tmp_path: Path, criteria: list[dict[str, str]]
 ) -> None:
     with pytest.raises(DataError):
-        write_evaluation(tmp_path, criteria)
+        # Deliberately malformed: the helper must validate what verifiers pass.
+        write_evaluation(tmp_path, cast(Sequence[Criterion], criteria))
 
     assert list(tmp_path.iterdir()) == []

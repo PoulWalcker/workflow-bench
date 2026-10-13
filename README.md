@@ -54,7 +54,10 @@ docker run --rm --network none workflow-bench-agents:codex-0.162.1 codex --versi
 ```
 
 The second command prints `codex-cli 0.162.1`. The image also carries the evaluation
-helper from `src/workflow_bench`; rebuild it after changing that package.
+helper from `src/workflow_bench`, with dependencies at their `uv.lock` versions; rebuild
+it after changing that package or the lock. `wb check-task` reports
+`stale:agents_helper` and the integration preflight fails when the image's helper
+differs from the checkout.
 
 ## Task readiness
 
@@ -69,7 +72,8 @@ uv run --locked pytest -q --run-integration tests/integration
 
 The first command prints a JSON report with `"ready": true` and exits 0 (about 75 seconds
 on the baseline host). The integration controls also check that a task whose no-op run
-passes is rejected; they fail, rather than skip, when Docker or the image is missing.
+passes is rejected; they fail, rather than skip, when Docker or the image is missing
+or its helper is stale.
 
 ## Navigation
 

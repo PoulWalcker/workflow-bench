@@ -56,13 +56,25 @@ def test_unexpected_top_level_file_is_rejected_by_name(
         ('horizon = "single"\n', 'horizon = "daily"\n', "invalid:metadata.horizon"),
         ("[agent]\ntimeout_sec = 600.0\n", "", "missing:agent.timeout_sec"),
         (
+            "[agent]\ntimeout_sec = 600.0\n",
+            "[agent]\ntimeout_sec = inf\n",
+            "invalid:agent.timeout_sec",
+        ),
+        (
             'environment_mode = "separate"\n',
             'environment_mode = "shared"\n',
             "invalid:verifier.environment_mode",
         ),
         ('schema_version = "1.4"\n', "schema_version = \n", "invalid:task.toml"),
     ],
-    ids=["level", "horizon", "agent-timeout", "shared-verifier", "unparsable"],
+    ids=[
+        "level",
+        "horizon",
+        "agent-timeout",
+        "unbounded-agent-timeout",
+        "shared-verifier",
+        "unparsable",
+    ],
 )
 def test_task_config_rule_violation_is_rejected_by_name(
     task_dir: Path,
