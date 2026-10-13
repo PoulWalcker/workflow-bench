@@ -1,11 +1,12 @@
-"""Evaluate frozen criteria and apply the Task-owned complete-set policy."""
+"""Read frozen Evidence and map an evaluated case to a native Harbor reward."""
 
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
-from workflow_bench.contracts import JsonValue
+from workflow_bench.contracts import Evaluation, Evidence, JsonValue
 from workflow_bench.data import (
     MAX_EVIDENCE_BYTES,
     DataError,
@@ -17,23 +18,24 @@ from workflow_bench.data import (
 
 @dataclass(frozen=True)
 class FrozenEvidence:
-    document: dict[str, JsonValue]
+    """Validated Evidence with the SHA-256 of the exact bytes it was read from."""
+
+    document: Evidence
     sha256: str
 
 
 def harbor_reward(evaluation: dict[str, JsonValue]) -> dict[str, float] | None:
     """Map an already evaluated score; this function defines no scoring policy."""
-    aggregate = "cases" in evaluation
-    validate_contract("aggregate" if aggregate else "evaluation", evaluation)
-    cases = evaluation["cases"] if aggregate else [evaluation]
+    validate_contract("evaluation", evaluation)
+    checked = cast(Evaluation, evaluation)
     if (
-        evaluation["completeness"] != "complete"
-        or evaluation["score"] is None
-        or evaluation["errors"]
-        or any(c["status"] == "unknown" for result in cases for c in result["criteria"])
+        checked["completeness"] != "complete"
+        or checked["score"] is None
+        or checked["errors"]
+        or any(c["status"] == "unknown" for c in checked["criteria"])
     ):
         return None
-    return {"reward": float(evaluation["score"])}
+    return {"reward": float(checked["score"])}
 
 
 def resolve_ref(document: JsonValue, reference: str) -> JsonValue:
@@ -60,16 +62,18 @@ def resolve_ref(document: JsonValue, reference: str) -> JsonValue:
 def read_evidence(
     path: Path, *, expected_identity: Mapping[str, str]
 ) -> FrozenEvidence:
+    """Read Evidence for the expected identity; inconsistencies raise DataError."""
     content = read_bytes(path, "evidence", limit=MAX_EVIDENCE_BYTES)
     document = decode_json(content, "evidence")
     validate_contract("evidence", document)
-    if document["identity"] != dict(expected_identity):
+    evidence = cast(Evidence, document)
+    if evidence["identity"] != dict(expected_identity):
         raise DataError("identity_mismatch", "evidence")
-    if document["after"]["revision"] < document["before"]["revision"]:
+    if evidence["after"]["revision"] < evidence["before"]["revision"]:
         raise DataError("invalid_revision", "evidence")
     stages: dict[str, list[str]] = {}
     calls: dict[str, tuple[str, JsonValue]] = {}
-    for seq, event in enumerate(document["events"], 1):
+    for seq, event in enumerate(evidence["events"], 1):
         if event["seq"] != seq or event["profile"] != expected_identity["profile"]:
             raise DataError("invalid_sequence", "evidence")
         call_stages = stages.setdefault(event["call_id"], [])
@@ -79,148 +83,12 @@ def read_evidence(
         call_stages.append(event["stage"])
         if call_stages != ["accepted", "effect", "response"][: len(call_stages)]:
             raise DataError("invalid_sequence", "evidence")
-        if event["details"].get("evidence_ref"):
-            resolve_ref(document, event["details"]["evidence_ref"])
-    if document["freeze_status"] == "complete" and (
-        document["pending_call_ids"]
+        evidence_ref = event["details"].get("evidence_ref")
+        if isinstance(evidence_ref, str):
+            resolve_ref(document, evidence_ref)
+    if evidence["freeze_status"] == "complete" and (
+        evidence["pending_call_ids"]
         or any(len(value) != 3 for value in stages.values())
     ):
         raise DataError("incomplete_freeze", "evidence")
-    return FrozenEvidence(document, hashlib.sha256(content).hexdigest())
-
-
-def assemble_evaluation(
-    criteria: tuple[dict[str, JsonValue], ...],
-    *,
-    rubric: dict[str, JsonValue],
-    execution: dict[str, JsonValue],
-    evidence: FrozenEvidence,
-) -> dict[str, JsonValue]:
-    validate_contract("rubric", rubric)
-    validate_contract("execution", execution)
-    ids = [criterion["criterion_id"] for criterion in criteria]
-    expected_ids = [criterion["id"] for criterion in rubric["criteria"]]
-    if len(set(ids)) != len(ids) or set(ids) != set(expected_ids):
-        raise DataError("criterion_mismatch", "evaluation")
-    for criterion in criteria:
-        validate_contract("criterion", criterion)
-        for reference in criterion["evidence_refs"]:
-            resolve_ref(evidence.document, reference)
-    policy = rubric["scoring_policy"]
-    critical = sorted(
-        {
-            c["reason_code"]
-            for c in criteria
-            if c["status"] == "fail"
-            and policy is not None
-            and c["reason_code"] in policy["critical_codes"]
-        }
-    )
-    required = {c["id"] for c in rubric["criteria"] if c["required"]}
-    relevant = [c for c in criteria if c["criterion_id"] in required]
-    known_fail = any(c["status"] == "fail" for c in relevant)
-    complete = (
-        evidence.document["freeze_status"] == "complete"
-        and execution["stop_confirmed"]
-        and execution["process_status"] == "completed"
-        and execution["claim"] is not None
-        and execution["claim"]["status"] != "unknown"
-        and all(c["status"] != "unknown" for c in relevant)
-    )
-    result = {
-        "identity": evidence.document["identity"],
-        "score": None,
-        "verdict": ("fail" if known_fail else "pass" if complete else "unknown")
-        if rubric["success_policy"] is not None
-        else "unknown",
-        "completeness": "complete" if complete else "partial",
-        "criteria": list(criteria),
-        "violations": evidence.document["violations"],
-        "errors": [],
-        "critical_violations": critical,
-        "evidence_hash": evidence.sha256,
-    }
-    validate_contract("evaluation", result)
-    return result
-
-
-def aggregate_evaluation(
-    results: tuple[dict[str, JsonValue], ...],
-    *,
-    rubric: dict[str, JsonValue],
-    expected_identities: tuple[dict[str, str], ...],
-    purpose: str = "final",
-) -> dict[str, JsonValue]:
-    """Evaluate the entire fixed set; never average the available subset."""
-    validate_contract("rubric", rubric)
-    policy = rubric["scoring_policy"]
-    if policy is None or rubric["success_policy"] != "all-required-v1":
-        raise DataError("missing_methodology", "rubric")
-    ids = [identity["case_id"] for identity in expected_identities]
-    scopes = [
-        {k: v for k, v in identity.items() if k not in {"case_id", "replay_id"}}
-        for identity in expected_identities
-    ]
-    if (
-        len(ids) != policy["case_count"]
-        or len(set(ids)) != len(ids)
-        or any(scope != scopes[0] for scope in scopes)
-    ):
-        raise DataError("invalid_set_identity", "evaluation")
-    expected = {identity["case_id"]: identity for identity in expected_identities}
-    seen = set()
-    for result in results:
-        validate_contract("evaluation", result)
-        case_id = result["identity"]["case_id"]
-        if case_id in seen or result["identity"] != expected.get(case_id):
-            raise DataError("identity_mismatch", "evaluation")
-        seen.add(case_id)
-        if not set(result.get("critical_violations", [])) <= set(
-            policy["critical_codes"]
-        ):
-            raise DataError("unknown_critical_code", "evaluation")
-    missing = seen != set(ids)
-    criterion_ids = {c["id"] for c in rubric["criteria"]}
-    complete = not missing and all(
-        r["completeness"] == "complete"
-        and r["evidence_hash"] is not None
-        and not r["errors"]
-        and r["verdict"] != "unknown"
-        and len(r["criteria"]) == len(criterion_ids)
-        and {c["criterion_id"] for c in r["criteria"]} == criterion_ids
-        and all(c["status"] != "unknown" for c in r["criteria"])
-        for r in results
-    )
-    critical = sorted(
-        {code for r in results for code in r.get("critical_violations", [])}
-    )
-    failed = bool(critical) or any(r["verdict"] == "fail" for r in results)
-    score = None
-    if complete and purpose == "final":
-        score = policy["points_per_pass"] * sum(r["verdict"] == "pass" for r in results)
-        if critical:
-            score = min(score, policy["critical_cap"])
-    completeness = (
-        "complete"
-        if complete
-        else (
-            "invalid"
-            if any(r["completeness"] == "invalid" for r in results)
-            else "unavailable"
-            if not results
-            else "partial"
-        )
-    )
-    evaluation = {
-        "schema_version": "1.0",
-        "purpose": purpose,
-        "case_ids": ids,
-        "cases": list(results),
-        "score": score,
-        "verdict": "fail" if failed else "pass" if complete else "unknown",
-        "completeness": completeness,
-        "critical_violations": critical,
-        "errors": ["missing_cases"] if missing else [],
-    }
-    validate_contract("aggregate", evaluation)
-    return evaluation
+    return FrozenEvidence(evidence, hashlib.sha256(content).hexdigest())

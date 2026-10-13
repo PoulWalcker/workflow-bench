@@ -48,6 +48,10 @@ unclear terms mean no import. Do not copy large subsystems.
 
 ## Code quality and portability
 
+Before changing Python code, read [Code style](docs/development/code-style.md).
+Before completing a Python change or review, check every new or modified definition
+against that document's applicable rules and agent checklist.
+
 Use Python, explicit names, small functions with one responsibility, and typed
 public interfaces/exchange values. Validate external arguments/JSON once at each
 trust boundary; avoid repeated checks of guaranteed internal values. Comments

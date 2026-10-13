@@ -1,95 +1,86 @@
 """Checked host-side exchange values; nested JSON trees must not be mutated."""
 
-from __future__ import annotations
-
-from collections.abc import Mapping
-from dataclasses import dataclass
-from pathlib import Path
-from types import MappingProxyType
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from harbor.models.task.task import Task
+from typing import Literal, NotRequired, TypedDict
 
 type JsonValue = (
     None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
 )
 
-# Fixed protocol roles, shared by loading, exporting and public text templates.
-PUBLIC_PACKAGE_FILES: Mapping[str, str] = MappingProxyType(
-    {
-        "instruction": "instruction.md",
-        "task": "task.json",
-        "tools": "tools.json",
-        "workflow_contract": "workflow.md",
-        "workflow_schema": "workflow.schema.json",
-        "composer": "composer.md",
-    }
-)
-WORKFLOW_ARTIFACT_FILE = "workflow.json"
-SUBMISSION_TRIAL_PREFIX = "wb-submission-"
-REPLAY_PROJECT_PREFIX = "wb-replay-"
-PROFILE_PROJECT_PREFIX = "wb-profile-"
+
+class Identity(TypedDict):
+    """Coordinates that bind Evidence and Evaluation to one replayed case."""
+
+    run_id: str
+    attempt_id: str
+    replay_id: str
+    case_id: str
+    profile: str
+    artifact_hash: str
+    profile_hash: str
 
 
-@dataclass(frozen=True)
-class TaskMaterials:
-    native_task: Task
-    instruction: str
-    public_data: dict[str, JsonValue]
-    tool_contract: dict[str, JsonValue]
-    private_paths: tuple[Path, ...]
-    hashes: tuple[tuple[str, str], ...]
+class StateSnapshot(TypedDict):
+    """Simulator state at one revision."""
+
+    revision: int
+    state: dict[str, JsonValue]
 
 
-@dataclass(frozen=True)
-class PublicPackage:
-    root: Path
-    files: tuple[tuple[str, str], ...]
+class EvidenceEvent(TypedDict):
+    """One stage of one tool call.
+
+    Attributes:
+        seq: One-based position of the event in the bundle.
+        details: Stage-specific fields fixed by the wire schema.
+    """
+
+    seq: int
+    call_id: str
+    actor: Literal["workflow"]
+    profile: str
+    operation: str
+    arguments: dict[str, JsonValue]
+    stage: Literal["accepted", "effect", "response"]
+    details: dict[str, JsonValue]
+    timestamp: float
 
 
-@dataclass(frozen=True)
-class WorkflowArtifact:
-    path: Path
-    sha256: str
-    size_bytes: int
-    document: dict[str, JsonValue]
+class Evidence(TypedDict):
+    """Frozen Evidence bundle after validation against the wire schema."""
+
+    schema_version: Literal["1.0"]
+    identity: Identity
+    before: StateSnapshot
+    after: StateSnapshot
+    events: list[EvidenceEvent]
+    violations: list[str]
+    freeze_status: Literal["complete", "incomplete"]
+    pending_call_ids: list[str]
 
 
-@dataclass(frozen=True)
-class BoundWorkflow:
-    path: Path
-    source_hash: str
-    bound_hash: str
-    replacements: tuple[str, ...]
+class Criterion(TypedDict):
+    """Tri-state result of one evaluation criterion with its Evidence references."""
+
+    criterion_id: str
+    status: Literal["pass", "fail", "unknown", "not_applicable"]
+    value: bool | None
+    reason_code: str
+    evidence_refs: list[str]
 
 
-@dataclass(frozen=True)
-class E1Config:
-    output_root: Path
-    app_image: str
-    n8n_image: str
-    runner_image: str
-    setup_timeout_sec: float
-    submission_timeout_sec: float
-    execute_timeout_sec: float
-    tool_timeout_sec: float
-    control_timeout_sec: float
-    drain_timeout_sec: float
-    verifier_timeout_sec: float
-    cleanup_timeout_sec: float
-    total_timeout_sec: float
-    cpus: int
-    memory_mb: int
-    max_calls: int
-    tools_port: int
-    control_port: int
-    broker_port: int
+class Evaluation(TypedDict):
+    """Evaluated case after validation against the wire schema.
 
+    Attributes:
+        score: Value from 0 to 10, or None when no score could be established.
+    """
 
-@dataclass(frozen=True)
-class CaseData:
-    id: str
-    input: JsonValue
-    state: JsonValue
-    expected: JsonValue
+    identity: Identity
+    score: float | None
+    verdict: Literal["pass", "fail", "unknown"]
+    completeness: Literal["complete", "partial", "unavailable", "invalid"]
+    criteria: list[Criterion]
+    violations: list[str]
+    errors: list[str]
+    evidence_hash: str | None
+    critical_violations: NotRequired[list[str]]

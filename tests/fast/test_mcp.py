@@ -6,8 +6,10 @@ import subprocess
 import sys
 
 
-def test_stdio_lists_public_tools_and_rejects_admin_without_http(native_task_files):
-    _, contract = native_task_files
+def test_stdio_lists_public_tools_and_rejects_admin_without_http(
+    public_tools_file,
+):
+    contract = public_tools_file
     requests = [
         {
             "jsonrpc": "2.0",

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
+from jsonschema.protocols import Validator
 from referencing import Registry, Resource
 from referencing.exceptions import NoSuchResource, Unresolvable
 from referencing.jsonschema import DRAFT202012
@@ -62,7 +63,9 @@ def _no_remote(uri: str) -> Resource:
     raise NoSuchResource(ref=uri)
 
 
-def schema_validator(schema: JsonValue, relative_path: str) -> Draft202012Validator:
+def schema_validator(
+    schema: dict[str, JsonValue] | bool, relative_path: str
+) -> Validator:
     try:
         Draft202012Validator.check_schema(schema)
         root = Resource.from_contents(schema, default_specification=DRAFT202012)
@@ -103,7 +106,10 @@ def schema_validator(schema: JsonValue, relative_path: str) -> Draft202012Valida
         raise DataError("invalid_schema", relative_path) from None
 
 
-def validate_json(data: JsonValue, schema: JsonValue, relative_path: str) -> None:
+def validate_json(
+    data: JsonValue, schema: dict[str, JsonValue] | bool, relative_path: str
+) -> None:
+    """Validate data against a local schema; failures raise a safe DataError."""
     validator = schema_validator(schema, relative_path)
     try:
         validator.validate(data)
@@ -111,7 +117,8 @@ def validate_json(data: JsonValue, schema: JsonValue, relative_path: str) -> Non
         raise DataError("invalid_schema", relative_path) from None
 
 
-def resource_schema(name: str) -> JsonValue:
+def resource_schema(name: str) -> dict[str, JsonValue]:
+    """Return a JSON Schema packaged with this distribution."""
     return json.loads(files("workflow_bench").joinpath("resources", name).read_bytes())
 
 

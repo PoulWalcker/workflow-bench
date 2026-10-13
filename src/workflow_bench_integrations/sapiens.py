@@ -5,26 +5,15 @@ import logging
 import re
 import shlex
 import time
-from pathlib import Path
-from typing import override
+from typing import TypedDict, cast, override
 
 from harbor.agents.capabilities import AgentCapabilities
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from workflow_bench.composer import (
-    SessionSafeCodex,
-    codex_agent_config,
-    submit_installed,
-)
-from workflow_bench.contracts import (
-    E1Config,
-    JsonValue,
-    PublicPackage,
-    WorkflowArtifact,
-)
+from workflow_bench.composer import SessionSafeCodex
+from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
-from workflow_bench.experiment import ControlledSubmission
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +22,12 @@ HOST_PORT = 4174
 HOST_URL = f"http://127.0.0.1:{HOST_PORT}"
 DATA_DIR = "/tmp/sapiens-data"
 CLI = "python -m sapiens.corpora.host.cli --url " + HOST_URL + " --format json "
+
+
+class _CliResponse(TypedDict):
+    schema_version: int
+    ok: bool
+    data: dict[str, JsonValue]
 
 
 class SapiensInstalledAgent(SessionSafeCodex):
@@ -62,6 +57,9 @@ class SapiensInstalledAgent(SessionSafeCodex):
     async def run(
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
+        """Submit one instruction to a fresh Sapiens host and await its completion."""
+        if self.model_name is None:
+            raise RuntimeError("sapiens_model_required")
         home = self._REMOTE_CODEX_HOME.as_posix()
         env = {
             "CODEX_HOME": home,
@@ -107,12 +105,17 @@ class SapiensInstalledAgent(SessionSafeCodex):
         # finally is too late: cancellation stops the container before agent cleanup.
         await self.exec_as_agent(
             environment,
-            command=f"mkdir -m 700 {logs}/sessions && ln -s {logs}/sessions {home}/sessions",
+            command=(
+                f"mkdir -m 700 {logs}/sessions && ln -s {logs}/sessions {home}/sessions"
+            ),
             env=env,
         )
         started = await self.exec_as_agent(
             environment,
-            command=f"python -m sapiens --port {HOST_PORT} --data-dir {DATA_DIR} > {logs}/sapiens-host.txt 2>&1 & echo $! > /tmp/sapiens-host.pid",
+            command=(
+                f"python -m sapiens --port {HOST_PORT} --data-dir {DATA_DIR}"
+                f" > {logs}/sapiens-host.txt 2>&1 & echo $! > /tmp/sapiens-host.pid"
+            ),
             env=env,
         )
         if started.return_code:
@@ -122,7 +125,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
                 command=CLI + "doctor", env=env, timeout_sec=6
             )
             if ready.return_code == 0:
-                (self.logs_dir / "sapiens-doctor.json").write_text(ready.stdout)
+                (self.logs_dir / "sapiens-doctor.json").write_text(ready.stdout or "")
                 break
             await asyncio.sleep(0.2)
         else:
@@ -178,11 +181,12 @@ class SapiensInstalledAgent(SessionSafeCodex):
         # Terminal status is distinct from artifact validity and Evaluation.
         if not completed:
             raise RuntimeError("sapiens_terminal_not_completed")
-        # AGENT_END closes admission and stops the whole host/container before collection.
+        # AGENT_END closes admission and stops the whole host/container
+        # before collection.
         context.model_usage = {}
 
     @staticmethod
-    def _response(stdout: str | None) -> dict[str, JsonValue]:
+    def _response(stdout: str | None) -> _CliResponse:
         raw = (stdout or "").encode()
         if len(raw) > MAX_JSON_BYTES:
             raise RuntimeError("sapiens_response_too_large")
@@ -197,36 +201,4 @@ class SapiensInstalledAgent(SessionSafeCodex):
             or not isinstance(value.get("data"), dict)
         ):
             raise RuntimeError("sapiens_response_invalid")
-        return value
-
-
-async def submit_sapiens(
-    *,
-    public: PublicPackage,
-    root: Path,
-    run_id: str,
-    attempt_id: str,
-    previous: WorkflowArtifact | None,
-    feedback: list[JsonValue],
-    config: E1Config,
-    composer: dict[str, JsonValue],
-    budget: dict[str, JsonValue] | None = None,
-    authorized: bool = False,
-    auth_path: Path | None = None,
-) -> ControlledSubmission:
-    agent = codex_agent_config(composer, config, auth_path)
-    agent.import_path = "workflow_bench_integrations.sapiens:SapiensInstalledAgent"
-    return await submit_installed(
-        public=public,
-        root=root,
-        run_id=run_id,
-        attempt_id=attempt_id,
-        previous=previous,
-        feedback=feedback,
-        config=config,
-        composer=composer,
-        budget=budget,
-        authorized=authorized,
-        auth_path=auth_path,
-        agent=agent,
-    )
+        return cast(_CliResponse, value)
