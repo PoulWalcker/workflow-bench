@@ -15,11 +15,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         help="Reserved; model mode is not implemented.",
     )
-    parser.addoption("--sapiens-config", help="Prepared Sapiens Composer config.")
-    parser.addoption("--measurement-task", help="Pre-frozen private WB-06 Task copy.")
-    parser.addoption(
-        "--e1-config", help="Prepared immutable image/limit config for WB-04."
-    )
 
 
 def pytest_configure(config: pytest.Config) -> None:

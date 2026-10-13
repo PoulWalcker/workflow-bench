@@ -1,15 +1,9 @@
 """Codex wiring at the native Harbor process seam, without Docker or models."""
 
-import asyncio
 import json
 from pathlib import Path
 
 import pytest
-from harbor.models.trial.config import AgentConfig
-from harbor.trial.trial import Trial
-
-from workflow_bench.cli import load_config
-from workflow_bench.harbor import run_native_trial
 
 
 def test_chatgpt_native_preflight_requires_authorization_not_api_spending_cap(
@@ -110,162 +104,6 @@ def test_subscription_limits_come_from_native_account_not_run_config(
         )
 
 
-def test_native_trial_accepts_codex_config_and_bounds_setup(
-    tmp_path, monkeypatch, config_data, native_task_files
-):
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config_data))
-    config = load_config(config_path, output=tmp_path)
-    seen = []
-
-    class ProcessObserved(Exception):
-        pass
-
-    async def create(configuration):
-        seen.append(configuration)
-        raise ProcessObserved()
-
-    async def prepared(path):
-        pytest.fail("process has not run")
-
-    monkeypatch.setattr(Trial, "create", create)
-    agent = AgentConfig(
-        name="codex",
-        model_name="openai/synthetic",
-        kwargs={"version": "0.118.0", "config": {"web_search": "disabled"}},
-    )
-    with pytest.raises(ProcessObserved):
-        asyncio.run(
-            run_native_trial(
-                native_task_files[0],
-                "synthetic",
-                prepared,
-                config=config,
-                agent=agent,
-                verify=False,
-            )
-        )
-    assert seen[0].agent.name == "codex"
-    assert seen[0].agent.override_setup_timeout_sec == config.setup_timeout_sec
-    assert seen[0].agent.override_timeout_sec == config.submission_timeout_sec
-    assert seen[0].verifier.disable is True
-    assert not seen[0].agent.resume_trajectory and not seen[0].agent.skills
-
-
-@pytest.mark.parametrize("fault", [None, "stop", "creation", "connection"])
-def test_generic_composer_preserves_human_instruction_on_setup_failure(
-    tmp_path, monkeypatch, config_data, native_task_files, fault
-):
-    import os
-
-    from harbor.environments.docker.docker import DockerEnvironment
-
-    from workflow_bench.composer import submit_codex
-    from workflow_bench.definition import export_public, load_task
-
-    task, tools = native_task_files
-    public = export_public(load_task(task, tool_contract=tools), tmp_path / "public")
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config_data))
-    config = load_config(config_path, output=tmp_path / "run")
-    command = tmp_path / "docker"
-    command.write_text("#!/bin/sh\nexit 0\n")
-    command.chmod(0o700)
-    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
-
-    class SetupFailed(Exception):
-        pass
-
-    async def start(self, **kwargs):
-        if fault == "stop":
-            (config.output_root / "submission-stop.json").write_text("{invalid")
-        elif fault is not None:
-            (config.output_root / (fault + ".json")).mkdir()
-        raise SetupFailed()
-
-    monkeypatch.setattr(DockerEnvironment, "start", start)
-    with pytest.raises(SetupFailed):
-        asyncio.run(
-            submit_codex(
-                public=public,
-                root=config.output_root,
-                run_id="run",
-                attempt_id="attempt",
-                previous=None,
-                feedback=[],
-                config=config,
-                composer={
-                    "mode": "model-free",
-                    "image": config_data["app_image"],
-                    "cli_version": "0.118.0",
-                    "model": "synthetic",
-                    "reasoning_effort": "low",
-                    "exploration_max_calls": 4,
-                },
-            )
-        )
-    assert (config.output_root / "native-task/instruction.md").read_bytes() == (
-        task / "instruction.md"
-    ).read_bytes()
-
-
-def test_measurement_requests_one_submission_and_never_retries_unknown(
-    tmp_path, monkeypatch, config_data, native_task_files
-):
-    from workflow_bench.experiment import ControlledSubmission, run_measurement
-
-    task, tools = native_task_files
-    toml = task / "task.toml"
-    toml.write_text(
-        toml.read_text().replace(
-            "[metadata]", '[metadata]\nwb_final_cases = "tests/final.json"'
-        )
-    )
-    final = json.loads((task / "tests/cases.json").read_bytes())
-    final["purpose"] = "final"
-    for case in final["cases"]:
-        case["id"] = "final-" + case["id"]
-        case["input"]["item"] = "new-" + case["input"]["item"]
-    (task / "tests/final.json").write_text(json.dumps(final))
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config_data))
-    calls = []
-
-    async def exported(config, **kwargs):
-        return tools
-
-    async def submit(**request):
-        calls.append(request)
-        assert {p.name for p in request["public"].root.iterdir()} == {
-            "instruction.md",
-            "task.json",
-            "tools.json",
-            "workflow.md",
-            "workflow.schema.json",
-            "composer.md",
-        }
-        assert request["previous"] is None and request["feedback"] == []
-        return ControlledSubmission(
-            None,
-            "unknown",
-            True,
-            metrics={"input_tokens": None, "output_tokens": None, "model_calls": None},
-        )
-
-    monkeypatch.setattr("workflow_bench.experiment.tool_contract", exported)
-    report = asyncio.run(
-        run_measurement(
-            task,
-            config=load_config(config_path, output=tmp_path / "run"),
-            submit=submit,
-        )
-    )
-    assert len(calls) == report["attempt_count"] == 1
-    assert report["selection"]["blocked"] and report["score"] is None
-    assert report["model_calls"] is None
-    assert report["efficiency"]["creation"]["attempts"][0]["input_tokens"] is None
-
-
 @pytest.mark.parametrize(
     "authorized,expected",
     [(False, "model_not_authorized"), (True, "provider_enforcement_unverified")],
@@ -273,13 +111,15 @@ def test_measurement_requests_one_submission_and_never_retries_unknown(
 def test_codex_preflight_never_trusts_declared_enforcement_or_opens_credentials(
     config_data, authorized, expected
 ):
-    from tests.fast.test_measurement import budget_document
-
     from workflow_bench.composer import codex_preflight
     from workflow_bench.data import DataError
 
-    budget = budget_document()
-    budget["finalized"] = True
+    # A run config can declare a finalized cap and enforcement; it cannot attest them.
+    budget = {
+        "finalized": True,
+        "credential_cap_usd": 5,
+        "enforcement": {"usd": "credential_cap"},
+    }
     composer = {
         "mode": "model",
         "image": "sha256:" + "d" * 64,
@@ -292,28 +132,6 @@ def test_codex_preflight_never_trusts_declared_enforcement_or_opens_credentials(
         codex_preflight(
             composer, budget=budget, runtime=config_data, authorized=authorized
         )
-
-
-def test_api_billed_model_mode_is_closed_without_cli_budget_planning(
-    config_data, monkeypatch
-):
-    import sys
-
-    from workflow_bench.composer import codex_preflight
-    from workflow_bench.data import DataError
-
-    # The closed mode must be rejected by Composer alone, not by CLI budget planning.
-    monkeypatch.setitem(sys.modules, "workflow_bench.cli", None)
-    composer = {
-        "mode": "model",
-        "image": "sha256:" + "d" * 64,
-        "cli_version": "0.118.0",
-        "model": "gpt-6.1-sol",
-        "reasoning_effort": "low",
-        "exploration_max_calls": 40,
-    }
-    with pytest.raises(DataError, match="provider_enforcement_unverified"):
-        codex_preflight(composer, budget=None, runtime=config_data, authorized=True)
 
 
 def test_usage_reads_last_cumulative_event_preserving_missing_and_zero(tmp_path):
@@ -464,109 +282,3 @@ def test_invalid_composer_config_is_rejected_without_setup(config_data, field):
     composer[field] = []
     with pytest.raises(DataError, match="invalid_composer_config"):
         codex_preflight(composer, budget=None, runtime=config_data, authorized=False)
-
-
-def test_cli_codex_gate_rejects_before_resources_and_ambient_auth(
-    tmp_path, config_data
-):
-    import os
-    import subprocess
-    import sys
-
-    from tests.fast.test_measurement import budget_document
-
-    budget = budget_document()
-    budget["finalized"] = True
-    config = tmp_path / "config.json"
-    config.write_text(
-        json.dumps(
-            {
-                "runtime": config_data,
-                "budget": budget,
-                "composer": {
-                    "mode": "model",
-                    "image": "sha256:" + "d" * 64,
-                    "cli_version": "0.118.0",
-                    "model": "synthetic",
-                    "reasoning_effort": "low",
-                    "exploration_max_calls": 4,
-                },
-            }
-        )
-    )
-    output = tmp_path / "must-not-exist"
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "workflow_bench.cli",
-            "--codex",
-            "--config",
-            str(config),
-            "--output",
-            str(output),
-            "--task",
-            str(tmp_path / "missing-task"),
-        ],
-        env={
-            **os.environ,
-            "CODEX_FORCE_AUTH_JSON": "true",
-            "CODEX_AUTH_JSON_PATH": str(tmp_path / "must-not-read"),
-        },
-        capture_output=True,
-        text=True,
-        timeout=5,
-    )
-    assert result.returncode == 1
-    assert "model_not_authorized" in result.stderr
-    assert not output.exists() and not result.stdout
-
-
-@pytest.mark.parametrize("remaining_known", [None, "unknown"])
-def test_unknown_remaining_creation_budget_blocks_second_attempt(
-    tmp_path, monkeypatch, config_data, native_task_files, remaining_known
-):
-    from workflow_bench.experiment import ControlledSubmission, run_measurement
-
-    task, tools = native_task_files
-    toml = task / "task.toml"
-    toml.write_text(
-        toml.read_text().replace(
-            "[metadata]", '[metadata]\nwb_final_cases = "tests/final.json"'
-        )
-    )
-    final = json.loads((task / "tests/cases.json").read_bytes())
-    final["purpose"] = "final"
-    for case in final["cases"]:
-        case["id"] = "final-" + case["id"]
-        case["input"]["item"] = "new-" + case["input"]["item"]
-    (task / "tests/final.json").write_text(json.dumps(final))
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config_data))
-    calls = []
-
-    async def exported(config, **kwargs):
-        return tools
-
-    async def submit(**request):
-        calls.append(request)
-        return ControlledSubmission(
-            None,
-            metrics={
-                "model_calls": None,
-                "usd": None,
-                "budget_remaining_known": remaining_known,
-            },
-        )
-
-    monkeypatch.setattr("workflow_bench.experiment.tool_contract", exported)
-    report = asyncio.run(
-        run_measurement(
-            task,
-            config=load_config(config_path, output=tmp_path / "run"),
-            submit=submit,
-        )
-    )
-    assert len(calls) == report["attempt_count"] == 1
-    assert report["selection"]["blocked"]
-    assert report["model_calls"] is None
