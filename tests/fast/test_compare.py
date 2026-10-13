@@ -265,6 +265,234 @@ def test_transcript_renders_codex_conversation_and_redacts_identifiers(
     )
 
 
+def test_transcript_redacts_common_secrets_and_invalid_session_counters(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "codex-job")
+    _trial(job, "private", criteria=_criteria("pass"))
+    _session(
+        job / "private" / "agent",
+        "rollout.jsonl",
+        [
+            _message(
+                "2026-01-01T00:00:00Z",
+                "user",
+                "Authorization: Basic dXNlcjpwYXNz; "
+                "AWS_ACCESS_KEY_ID=AKIAEXAMPLE00000000; "
+                'account ID is 123456789; password: "a secret phrase"; '
+                "password: another secret phrase",
+            ),
+            {
+                "timestamp": "2026-01-01T00:00:01Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "total_token_usage": {
+                            "input_tokens": "OPENAI_API_KEY=sk-secret123456",
+                            "output_tokens": 3,
+                        }
+                    },
+                },
+            },
+        ],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "[REDACTED]" in output
+    assert "unknown input" in output and "3 output" in output
+    for secret in (
+        "dXNlcjpwYXNz",
+        "AKIAEXAMPLE00000000",
+        "123456789",
+        "a secret phrase",
+        "another secret phrase",
+        "secret phrase",
+        "sk-secret123456",
+    ):
+        assert secret not in output
+
+
+def test_transcript_marks_mixed_timestamp_styles_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "codex-job")
+    _trial(job, "mixed-time", criteria=_criteria("pass"))
+    _session(
+        job / "mixed-time" / "agent",
+        "rollout.jsonl",
+        [
+            _message("2026-01-01T00:00:00Z", "user", "Compute basket"),
+            _message("2026-01-01T00:00:01", "assistant", "Done"),
+        ],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    assert "Time: [missing: time]" in capsys.readouterr().out
+
+
+def test_transcript_marks_invalid_sapiens_state_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "invalid-state", criteria=_criteria("pass"), harness="sapiens")
+    agent = job / "invalid-state" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text("{}")
+    assert main(["compare", "--transcript", str(job)]) == 0
+    assert "[missing: Sapiens state (invalid)]" in capsys.readouterr().out
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [],
+                "turns": [],
+                "workloads": [],
+                "truncated": {"account ID is 123456789": True},
+            }
+        )
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "[missing: Sapiens state (invalid)]" in output
+    assert "123456789" not in output
+
+
+def test_transcript_bounds_entire_session_tree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "codex-job")
+    _trial(job, "crowded", criteria=_criteria("pass"))
+    agent = job / "crowded" / "agent"
+    _session(agent, "rollout.jsonl", [_message("2026-01-01T00:00:00Z", "user", "Task")])
+    for index in range(256):
+        (agent / "sessions" / f"extra-{index}.txt").touch()
+    assert main(["compare", "--transcript", str(job)]) == 0
+    assert "[missing: Codex sessions (too many entries)]" in capsys.readouterr().out
+
+
+def test_transcript_does_not_assign_missing_chief_transition_to_specialist(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "partial", criteria=_criteria("pass"), harness="sapiens")
+    agent = job / "partial" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {"id": "chief", "name": "Chief"},
+                    {"id": "specialist", "name": "BasketExpert"},
+                ],
+                "turns": [{"input": "Compute basket", "output": "Done"}],
+                "workloads": [
+                    {
+                        "calls": [],
+                        "decisions": [
+                            {
+                                "agent": "chief",
+                                "node": "ChiefTriage",
+                                "transition": {
+                                    "before": "ChiefTriage",
+                                    "after": "Delegation",
+                                },
+                            },
+                            {
+                                "agent": "specialist",
+                                "node": "Execution",
+                                "transition": {
+                                    "before": "Execution",
+                                    "after": "Outcome",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    prompt = (
+        "You are handling a Sapiens4 decision at node Execution.\nContext:\n"
+        + json.dumps({"selfId": "specialist", "chiefId": "chief"})
+    )
+    _session(
+        agent,
+        "specialist.jsonl",
+        [_message("2026-01-01T00:00:02Z", "user", prompt)],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "BasketExpert — Execution" in output
+    assert "Transition: Execution → Outcome" in output
+    assert "Transition: ChiefTriage → Delegation" not in output
+    assert "[missing: Codex session for 1 Sapiens decision(s)]" in output
+
+
+def test_transcript_discloses_truncated_sapiens_chronology(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "truncated", criteria=_criteria("pass"), harness="sapiens")
+    agent = job / "truncated" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [],
+                "turns": [],
+                "workloads": [],
+                "truncated": {"decisions": True, "calls": False},
+            }
+        )
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    assert "[missing: Sapiens state truncated (decisions)]" in capsys.readouterr().out
+
+
+def test_transcript_does_not_reuse_agentless_transition_between_sapis(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "ambiguous", criteria=_criteria("pass"), harness="sapiens")
+    agent = job / "ambiguous" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [],
+                "turns": [],
+                "workloads": [
+                    {
+                        "calls": [],
+                        "decisions": [
+                            {
+                                "node": "Execution",
+                                "transition": {
+                                    "before": "Execution",
+                                    "after": "Outcome",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    for actor in ("chief", "specialist"):
+        prompt = (
+            "You are handling a Sapiens4 decision at node Execution.\nContext:\n"
+            + json.dumps({"selfId": actor, "chiefId": "chief"})
+        )
+        _session(
+            agent,
+            f"{actor}.jsonl",
+            [_message("2026-01-01T00:00:00Z", "user", prompt)],
+        )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "Transition: Execution → Outcome" not in output
+    assert "[missing: Codex session for 1 Sapiens decision(s)]" in output
+
+
 def test_transcript_renders_sapiens_delegation_under_specialist_name(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

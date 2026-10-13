@@ -339,7 +339,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
                 env=env,
                 timeout_sec=15,
             )
-        except Exception:  # Agent-environment diagnostics must not change the outcome.
+        except Exception:
             self.logger.warning(
                 "phase=sapiens-state trial=%s result=unavailable",
                 self.logs_dir.parent.name,

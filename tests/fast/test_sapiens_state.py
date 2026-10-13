@@ -36,7 +36,13 @@ def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
             (
                 "turn1",
                 "chief",
-                "Compute total OPENAI_API_KEY=sk-secret123456",
+                (
+                    "Compute total OPENAI_API_KEY=sk-secret123456; "
+                    "Authorization: Basic dXNlcjpwYXNz; "
+                    "AWS_ACCESS_KEY_ID=AKIAEXAMPLE00000000; "
+                    'account ID is 123456789; password: "a secret phrase"; '
+                    "password: another secret phrase"
+                ),
                 "Done",
                 "done",
                 "2026-01-01T00:00:00Z",
@@ -90,7 +96,7 @@ def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
     snapshot = json.loads(output.read_text())
     content = output.read_text()
     assert snapshot["agents"] == [{"id": "chief", "name": "Chief", "role": "admin"}]
-    assert snapshot["turns"][0]["input"] == "Compute total [REDACTED]"
+    assert snapshot["turns"][0]["input"].count("[REDACTED]") == 6
     assert snapshot["workloads"][0]["calls"][1]["addressedTo"] == "sapi_x"
     assert snapshot["workloads"][0]["decisions"][0]["transition"] == {
         "before": "Delegation",
@@ -105,6 +111,35 @@ def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
             "do-not-copy",
             "auth-file-secret",
             "wal-secret",
+            "dXNlcjpwYXNz",
+            "AKIAEXAMPLE00000000",
+            "123456789",
+            "a secret phrase",
+            "another secret phrase",
+            "secret phrase",
         )
     )
     assert not output.with_name("corpora.sqlite3").exists()
+
+
+def test_state_snapshot_marks_capped_decisions(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "data"
+    source.mkdir()
+    with sqlite3.connect(source / "corpora.sqlite3") as connection:
+        connection.executescript(
+            "CREATE TABLE agents (id TEXT, name TEXT, role TEXT, created TEXT);"
+            "CREATE TABLE turns (id TEXT, agent TEXT, input TEXT, output TEXT, "
+            "status TEXT, created TEXT);"
+            "CREATE TABLE workloads (value TEXT);"
+        )
+        connection.execute(
+            "INSERT INTO workloads VALUES (?)",
+            (json.dumps({"calls": [], "decisions": [{"node": "Execution"}] * 65}),),
+        )
+    destination = tmp_path / "sapiens-state.json"
+    write_state_snapshot(source, destination)
+    snapshot = json.loads(destination.read_text())
+    assert len(snapshot["workloads"][0]["decisions"]) == 64
+    assert snapshot["truncated"]["decisions"] is True

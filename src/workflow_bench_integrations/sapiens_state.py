@@ -14,13 +14,21 @@ _MAX_CALLS = 64
 _MAX_DECISIONS = 64
 _MAX_TEXT = 16_000
 _MAX_OUTPUT_BYTES = 4 * 1024 * 1024
+_SENSITIVE_VALUE = r"""(?:"[^"]*"|'[^']*'|[^\s,;"'}]+)"""
 _SECRET = re.compile(
-    r"(?i)(?:\b(?:OPENAI_API_KEY|api[_ -]?key|access[_ -]?token|"
-    r"account[_ -]?(?:id|number)|creator_account_id|secret|password)"
-    r"\b\s*[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'}]+"
+    r"\b(?:password|secret)\b\s*[\"']?\s*[:=]\s*"
+    r"(?:\"[^\"]*(?:\"|$)|'[^']*(?:'|$)|[^\n;]+)"
+    r"|(?:\b(?:OPENAI_API_KEY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|api[_ -]?key|"
+    r"access[_ -]?token|account[_ -]?(?:id|number)|creator_account_id|"
+    r"secret|password)\b\s*[\"']?\s*[:=]\s*|"
+    r"\baccount[ _-]*(?:id|number)\b\s+is\s+)"
+    + _SENSITIVE_VALUE
+    + r"|\bAuthorization\s*:\s*Basic\s+[A-Za-z0-9+/=]+"
     r"|\bBearer\s+[A-Za-z0-9._~+/-]+|\bsk-[A-Za-z0-9_-]+"
+    r"|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
     r"|\b(?:acct|org|usr|user|acc)_[A-Za-z0-9_-]+"
-    r"|\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b"
+    r"|\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b",
+    re.IGNORECASE,
 )
 
 
@@ -36,33 +44,47 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
         raise ValueError("sapiens_state_unavailable")
     with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=5) as connection:
         connection.row_factory = sqlite3.Row
+        truncated = {
+            key: False for key in ("agents", "turns", "workloads", "calls", "decisions")
+        }
+        agent_rows = connection.execute(
+            "SELECT id, name, role FROM agents ORDER BY created, id LIMIT ?",
+            (_MAX_AGENTS + 1,),
+        ).fetchall()
+        truncated["agents"] = len(agent_rows) > _MAX_AGENTS
         agents = [
             {key: _text(row[key]) for key in ("id", "name", "role")}
-            for row in connection.execute(
-                "SELECT id, name, role FROM agents ORDER BY created, id LIMIT ?",
-                (_MAX_AGENTS,),
-            )
+            for row in agent_rows[:_MAX_AGENTS]
         ]
+        turn_rows = connection.execute(
+            "SELECT id, agent, input, output, status, created "
+            "FROM turns ORDER BY created, id LIMIT ?",
+            (_MAX_TURNS + 1,),
+        ).fetchall()
+        truncated["turns"] = len(turn_rows) > _MAX_TURNS
         turns = [
             {
                 key: _text(row[key])
                 for key in ("id", "agent", "input", "output", "status", "created")
             }
-            for row in connection.execute(
-                "SELECT id, agent, input, output, status, created "
-                "FROM turns ORDER BY created, id LIMIT ?",
-                (_MAX_TURNS,),
-            )
+            for row in turn_rows[:_MAX_TURNS]
         ]
         workloads = []
-        for row in connection.execute(
-            "SELECT value FROM workloads ORDER BY rowid LIMIT ?", (_MAX_WORKLOADS,)
-        ):
+        workload_rows = connection.execute(
+            "SELECT value FROM workloads ORDER BY rowid LIMIT ?", (_MAX_WORKLOADS + 1,)
+        ).fetchall()
+        truncated["workloads"] = len(workload_rows) > _MAX_WORKLOADS
+        for row in workload_rows[:_MAX_WORKLOADS]:
             work = json.loads(row["value"])
             if not isinstance(work, dict):
+                truncated["workloads"] = True
                 continue
             calls = work.get("calls")
             decisions = work.get("decisions")
+            if isinstance(calls, list) and len(calls) > _MAX_CALLS:
+                truncated["calls"] = True
+            if isinstance(decisions, list) and len(decisions) > _MAX_DECISIONS:
+                truncated["decisions"] = True
             workloads.append(
                 {
                     "calls": [
@@ -93,7 +115,12 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
                     else [],
                 }
             )
-    snapshot = {"agents": agents, "turns": turns, "workloads": workloads}
+    snapshot = {
+        "agents": agents,
+        "turns": turns,
+        "workloads": workloads,
+        "truncated": truncated,
+    }
     encoded = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")).encode()
     if len(encoded) > _MAX_OUTPUT_BYTES:
         raise ValueError("sapiens_state_too_large")

@@ -1,27 +1,49 @@
 """Readable, bounded Trial chronology from saved Harbor agent evidence."""
 
 import json
+import os
 import re
+import stat
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import cast
+from typing import NotRequired, TypedDict, cast
 
 from workflow_bench.comparison import SummaryReport, TrialSummary
 from workflow_bench.data import DataError, decode_json, read_json
 
 _MAX_SESSION_BYTES = 4 * 1024 * 1024
 _MAX_SESSION_COUNT = 256
+_MAX_SESSION_ENTRIES = 256
+_MAX_SESSION_DEPTH = 8
 _MAX_ALL_SESSIONS_BYTES = 32 * 1024 * 1024
 _MAX_STATE_BYTES = 4 * 1024 * 1024
+_SENSITIVE_VALUE = r"""(?:"[^"]*"|'[^']*'|[^\s,;"'}]+)"""
 _SECRET = re.compile(
-    r"(?i)(?:\b(?:OPENAI_API_KEY|api[_ -]?key|access[_ -]?token|"
-    r"account[_ -]?(?:id|number)|creator_account_id|secret|password)"
-    r"\b\s*[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'}]+"
+    r"\b(?:password|secret)\b\s*[\"']?\s*[:=]\s*"
+    r"(?:\"[^\"]*(?:\"|$)|'[^']*(?:'|$)|[^\n;]+)"
+    r"|(?:\b(?:OPENAI_API_KEY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|api[_ -]?key|"
+    r"access[_ -]?token|account[_ -]?(?:id|number)|creator_account_id|"
+    r"secret|password)\b\s*[\"']?\s*[:=]\s*|"
+    r"\baccount[ _-]*(?:id|number)\b\s+is\s+)"
+    + _SENSITIVE_VALUE
+    + r"|\bAuthorization\s*:\s*Basic\s+[A-Za-z0-9+/=]+"
     r"|\bBearer\s+[A-Za-z0-9._~+/-]+|\bsk-[A-Za-z0-9_-]+"
+    r"|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
     r"|\b(?:acct|org|usr|user|acc)_[A-Za-z0-9_-]+"
-    r"|\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b"
+    r"|\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b",
+    re.IGNORECASE,
 )
 _NODE = re.compile(r"decision at node ([A-Za-z][A-Za-z0-9_]*)")
+
+
+class SapiensState(TypedDict):
+    """Selected Sapiens chronology; older exports omit truncation metadata."""
+
+    agents: list[dict[str, object]]
+    turns: list[dict[str, object]]
+    workloads: list[dict[str, object]]
+    truncated: NotRequired[dict[str, bool]]
 
 
 def render_transcripts(summary: SummaryReport, *, full_prompts: bool = False) -> str:
@@ -54,6 +76,15 @@ def render_trial_transcript(
     if is_sapiens:
         if state_marker:
             lines.append(f"[missing: Sapiens state ({state_marker})]")
+        if state is not None:
+            truncated = state.get("truncated", {})
+            omitted = sorted(
+                key for key, was_truncated in truncated.items() if was_truncated
+            )
+            if omitted:
+                lines.append(
+                    "[missing: Sapiens state truncated (" + ", ".join(omitted) + ")]"
+                )
         lines += _sapiens_steps(sessions, state, names, full_prompts=full_prompts)
     else:
         lines += _codex_steps(sessions)
@@ -89,18 +120,35 @@ def render_trial_transcript(
     return "\n".join(lines)
 
 
-def _read_state(path: Path) -> tuple[dict[str, object] | None, str | None]:
+def _read_state(path: Path) -> tuple[SapiensState | None, str | None]:
     if not path.is_file() or path.is_symlink():
         return None, "not collected"
     try:
-        if path.stat().st_size > _MAX_STATE_BYTES:
+        content = _bounded_file(path, _MAX_STATE_BYTES)
+        if content is None:
             return None, "too large"
-        state = decode_json(path.read_bytes(), "sapiens-state.json")
+        state = decode_json(content, "sapiens-state.json")
     except (OSError, DataError):
         return None, "unreadable"
     if not isinstance(state, dict):
         return None, "invalid"
-    return cast(dict[str, object], state), None
+    for key in ("agents", "turns", "workloads"):
+        records = state.get(key)
+        if not isinstance(records, list) or not all(
+            isinstance(item, dict) for item in records
+        ):
+            return None, "invalid"
+    truncated = state.get("truncated")
+    if truncated is not None and (
+        not isinstance(truncated, dict)
+        or not all(
+            key in {"agents", "turns", "workloads", "calls", "decisions"}
+            and type(value) is bool
+            for key, value in truncated.items()
+        )
+    ):
+        return None, "invalid"
+    return cast(SapiensState, state), None
 
 
 def _harness_name(trial_dir: Path) -> str | None:
@@ -120,7 +168,12 @@ def _harness_name(trial_dir: Path) -> str | None:
 def _read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
     if not directory.is_dir() or directory.is_symlink():
         return [], "not collected"
-    paths = sorted(directory.rglob("*.jsonl"))
+    try:
+        paths, marker = _session_paths(directory)
+    except OSError:
+        return [], "unreadable"
+    if marker:
+        return [], marker
     if not paths:
         return [], "empty"
     if len(paths) > _MAX_SESSION_COUNT:
@@ -129,14 +182,15 @@ def _read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str 
     total_bytes = 0
     try:
         for path in paths:
-            if path.is_symlink() or path.stat().st_size > _MAX_SESSION_BYTES:
+            content = _bounded_file(
+                path, min(_MAX_SESSION_BYTES, _MAX_ALL_SESSIONS_BYTES - total_bytes)
+            )
+            if content is None:
                 return [], "unsafe or too large"
-            total_bytes += path.stat().st_size
-            if total_bytes > _MAX_ALL_SESSIONS_BYTES:
-                return [], "too large"
+            total_bytes += len(content)
             rows = [
                 decode_json(line, "session")
-                for line in path.read_bytes().splitlines()
+                for line in content.splitlines()
                 if line.strip()
             ]
             if not all(isinstance(row, dict) for row in rows):
@@ -149,22 +203,56 @@ def _read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str 
     ), None
 
 
-def _agent_names(state: dict[str, object] | None) -> dict[str, str]:
-    names = {}
+def _bounded_file(path: Path, limit: int) -> bytes | None:
+    """Read at most one byte beyond the cap from a regular, singly linked file."""
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise DataError("unsafe_file", path.name)
+        content = stream.read(limit + 1)
+    return content if len(content) <= limit else None
+
+
+def _session_paths(directory: Path) -> tuple[list[Path], str | None]:
+    """Enumerate a finite session tree, including entries that are not JSONL."""
+    paths = []
+    stack = [(directory, 0)]
+    entries = 0
+    while stack:
+        parent, depth = stack.pop()
+        with os.scandir(parent) as children:
+            for child in children:
+                entries += 1
+                if entries > _MAX_SESSION_ENTRIES:
+                    return [], "too many entries"
+                if child.is_symlink():
+                    return [], "unsafe entry"
+                if child.is_dir(follow_symlinks=False):
+                    if depth >= _MAX_SESSION_DEPTH:
+                        return [], "too deep"
+                    stack.append((Path(child.path), depth + 1))
+                elif child.name.endswith(".jsonl"):
+                    if not child.is_file(follow_symlinks=False):
+                        return [], "unsafe entry"
+                    paths.append(Path(child.path))
+    return sorted(paths), None
+
+
+def _agent_names(state: SapiensState | None) -> dict[str, str]:
+    names: dict[str, str] = {}
     agents = state.get("agents") if state else None
     if isinstance(agents, list):
         for index, agent in enumerate(agents):
-            if (
-                isinstance(agent, dict)
-                and isinstance(agent.get("id"), str)
-                and isinstance(agent.get("name"), str)
-            ):
-                names[agent["id"]] = "Chief" if index == 0 else agent["name"]
+            agent_id = agent.get("id")
+            name = agent.get("name")
+            if isinstance(agent_id, str) and isinstance(name, str):
+                names[agent_id] = "Chief" if index == 0 else name
     return names
 
 
 def _admin_task(
-    state: dict[str, object] | None,
+    state: SapiensState | None,
     sessions: list[list[dict[str, object]]],
     *,
     is_sapiens: bool,
@@ -173,8 +261,9 @@ def _admin_task(
         turns = state.get("turns")
         if isinstance(turns, list):
             for turn in turns:
-                if isinstance(turn, dict) and isinstance(turn.get("input"), str):
-                    return turn["input"]
+                admin_input = turn.get("input")
+                if isinstance(admin_input, str):
+                    return admin_input
     if is_sapiens and sessions:
         prompt = _node_prompt(sessions[0])
         if prompt:
@@ -194,13 +283,14 @@ def _admin_task(
 
 def _sapiens_steps(
     sessions: list[list[dict[str, object]]],
-    state: dict[str, object] | None,
+    state: SapiensState | None,
     names: dict[str, str],
     *,
     full_prompts: bool,
 ) -> list[str]:
     lines = ["## Sapiens steps"]
     decisions = _state_decisions(state)
+    aligned, unmatched_count = _aligned_decisions(sessions, decisions)
     if not sessions:
         for index, decision in enumerate(decisions, 1):
             agent_id = decision.get("agent")
@@ -265,8 +355,9 @@ def _sapiens_steps(
         else:
             lines.append("[missing: assistant decision]")
         lines += _tools(rows)
-        if index <= len(decisions):
-            transition = decisions[index - 1].get("transition")
+        decision = aligned[index - 1]
+        if decision is not None:
+            transition = decision.get("transition")
             if isinstance(transition, dict):
                 lines.append(
                     "Transition: "
@@ -274,6 +365,10 @@ def _sapiens_steps(
                     + " → "
                     + _safe(str(transition.get("after", "?")))
                 )
+    if sessions and unmatched_count:
+        lines.append(
+            f"[missing: Codex session for {unmatched_count} Sapiens decision(s)]"
+        )
     if state is not None:
         lines += _delegations(state, names)
         reply = _final_turn_reply(state)
@@ -330,13 +425,12 @@ def _codex_steps(sessions: list[list[dict[str, object]]]) -> list[str]:
                 text = _message_text(payload)
                 if role == "user" and text.startswith("<environment_context>"):
                     continue
-                title = (
-                    "Final reply"
-                    if payload.get("phase") == "final_answer"
-                    else "User"
-                    if role == "user"
-                    else "Assistant"
-                )
+                if payload.get("phase") == "final_answer":
+                    title = "Final reply"
+                elif role == "user":
+                    title = "User"
+                else:
+                    title = "Assistant"
                 has_final_reply = has_final_reply or title == "Final reply"
                 at = _safe(str(row.get("timestamp", "unknown time")))
                 lines.append(f"- {at} {title}: {_safe(text)}")
@@ -414,7 +508,7 @@ def _decision_response(messages: list[str]) -> dict[str, object] | None:
     return None
 
 
-def _state_decisions(state: dict[str, object] | None) -> list[dict[str, object]]:
+def _state_decisions(state: SapiensState | None) -> list[dict[str, object]]:
     if state is None or not isinstance(state.get("workloads"), list):
         return []
     workloads = cast(list[object], state["workloads"])
@@ -428,15 +522,58 @@ def _state_decisions(state: dict[str, object] | None) -> list[dict[str, object]]
     return decisions
 
 
-def _delegations(state: dict[str, object], names: dict[str, str]) -> list[str]:
+def _aligned_decisions(
+    sessions: list[list[dict[str, object]]], decisions: list[dict[str, object]]
+) -> tuple[list[dict[str, object] | None], int]:
+    """Attach transitions only where agent/node occurrence counts agree."""
+    keys = []
+    for rows in sessions:
+        prompt = _node_prompt(rows)
+        node = _NODE.search(prompt or "")
+        agent = _node_context(prompt or "").get("selfId")
+        keys.append(
+            (agent if isinstance(agent, str) else None, node.group(1) if node else None)
+        )
+    counts = Counter(keys)
+    seen: Counter[tuple[str | None, str | None]] = Counter()
+    aligned: list[dict[str, object] | None] = []
+    used = set()
+    for agent, node in keys:
+        key = (agent, node)
+        is_only_agent_for_node = (
+            sum(1 for _, other_node in keys if other_node == node) == counts[key]
+        )
+        candidates = [
+            index
+            for index, decision in enumerate(decisions)
+            if node is not None
+            and agent is not None
+            and decision.get("node") == node
+            and (
+                decision.get("agent") == agent
+                or (decision.get("agent") is None and is_only_agent_for_node)
+            )
+        ]
+        if len(candidates) == counts[key]:
+            match = candidates[seen[key]]
+            used.add(match)
+            aligned.append(decisions[match])
+        else:
+            aligned.append(None)
+        seen[key] += 1
+    return aligned, len(decisions) - len(used)
+
+
+def _delegations(state: SapiensState, names: dict[str, str]) -> list[str]:
     lines = []
     workloads = state.get("workloads")
     if not isinstance(workloads, list):
         return lines
     for work in workloads:
-        if not isinstance(work, dict) or not isinstance(work.get("calls"), list):
+        calls = work.get("calls")
+        if not isinstance(calls, list):
             continue
-        for call in work["calls"]:
+        for call in calls:
             if not isinstance(call, dict) or not call.get("causedBy"):
                 continue
             agent_id = call.get("addressedTo")
@@ -452,30 +589,29 @@ def _delegations(state: dict[str, object], names: dict[str, str]) -> list[str]:
                 else f"Delegation to {_safe(speaker)}"
             )
             lines += ["", f"{action}: {request}"]
-    if any(
-        isinstance(work, dict)
-        and isinstance(work.get("calls"), list)
-        and any(
+    is_waiting = False
+    for work in workloads:
+        calls = work.get("calls")
+        if isinstance(calls, list) and any(
             isinstance(call, dict) and call.get("state") == "WaitingForAdmin"
-            for call in work["calls"]
-        )
-        for work in workloads
-    ):
+            for call in calls
+        ):
+            is_waiting = True
+            break
+    if is_waiting:
         lines.append("WaitingForAdmin: awaiting Admin clarification")
     return lines
 
 
-def _final_turn_reply(state: dict[str, object]) -> str | None:
+def _final_turn_reply(state: SapiensState) -> str | None:
     turns = state.get("turns")
     if not isinstance(turns, list):
         return None
-    outputs = [
-        turn["output"]
-        for turn in turns
-        if isinstance(turn, dict)
-        and isinstance(turn.get("output"), str)
-        and turn["output"]
-    ]
+    outputs = []
+    for turn in turns:
+        output = turn.get("output")
+        if isinstance(output, str) and output:
+            outputs.append(output)
     return outputs[-1] if outputs else None
 
 
@@ -510,14 +646,17 @@ def _tokens(rows: list[dict[str, object]]) -> str:
                 last = info["total_token_usage"]
     if last is None:
         return "[missing: token count]"
-    return ", ".join(
-        f"{last.get(key, 'unknown')} {label}"
-        for key, label in (
-            ("input_tokens", "input"),
-            ("cached_input_tokens", "cached"),
-            ("output_tokens", "output"),
+    values = []
+    for key, label in (
+        ("input_tokens", "input"),
+        ("cached_input_tokens", "cached"),
+        ("output_tokens", "output"),
+    ):
+        count = last.get(key)
+        values.append(
+            f"{count if type(count) is int and count >= 0 else 'unknown'} {label}"
         )
-    )
+    return ", ".join(values)
 
 
 def _time(rows: list[dict[str, object]]) -> str:
@@ -530,7 +669,7 @@ def _time(rows: list[dict[str, object]]) -> str:
         start = datetime.fromisoformat(timestamps[0].replace("Z", "+00:00"))
         finish = datetime.fromisoformat(timestamps[-1].replace("Z", "+00:00"))
         duration = max(0, int((finish - start).total_seconds()))
-    except ValueError:
+    except (TypeError, ValueError):
         return "[missing: time]"
     return f"{_safe(timestamps[0])} ({duration}s)"
 
