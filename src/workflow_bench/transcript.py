@@ -1,6 +1,7 @@
-"""Readable Trial chronology with exact injected-secret masking.
+"""Readable Trial chronology with pattern-only, best-effort masking.
 
-Pattern masking is best-effort; inspect transcripts before sharing them.
+Exact-value masking applies only to exported Sapiens state. Check transcripts
+before sharing them.
 """
 
 import json
@@ -69,23 +70,21 @@ def render_trial_transcript(
     trial_dir: Path, summary: TrialSummary, *, should_show_full_prompts: bool = False
 ) -> str:
     """Show one Trial's conversation and independently recorded verifier result."""
-    secrets, has_masking_source = _host_secrets(trial_dir.parent)
-    summary = cast(TrialSummary, _mask_values(summary, secrets))
     agent_dir = trial_dir / "agent"
     state, state_marker = _read_state(agent_dir / "sapiens-state.json")
     sessions, session_marker = _read_sessions(agent_dir / "sessions")
-    if state is not None:
-        state = cast(SapiensState, _mask_values(state, secrets))
-    sessions = cast(list[list[dict[str, object]]], _mask_values(sessions, secrets))
     is_sapiens = (
         _harness_name(trial_dir) == "sapiens"
         or state is not None
         or bool(sessions and _node_prompt(sessions[0]) is not None)
     )
     names = _agent_names(state)
-    lines = [f"# Trial {_safe(summary['trial'])}", ""]
-    if not has_masking_source:
-        lines += ["[missing: exact-value masking source]", ""]
+    lines = [
+        "Masking is pattern-based best-effort; check the transcript before sharing it.",
+        "",
+        f"# Trial {_safe(summary['trial'])}",
+        "",
+    ]
     admin = _admin_task(state, sessions, is_sapiens=is_sapiens)
     lines += [f"Admin task: {_safe(admin) if admin else '[missing: admin task]'}", ""]
     if is_sapiens:
@@ -134,96 +133,7 @@ def render_trial_transcript(
         ),
         f"Sessions: {session_count if session_count is not None else 'unknown'}",
     ]
-    output = "\n".join(lines)
-    for secret in secrets:
-        output = output.replace(secret, "[REDACTED]")
-    return output
-
-
-def _host_secrets(job_dir: Path) -> tuple[tuple[str, ...], bool]:
-    """Resolve the adapter's host auth source without exposing its contents."""
-    configured: dict[str, str] = {}
-    try:
-        config = read_json(job_dir / "config.json", "config")
-        if isinstance(config, dict):
-            agents = config.get("agents")
-            if isinstance(agents, list) and len(agents) == 1:
-                agent = agents[0]
-                agent_env = agent.get("env") if isinstance(agent, dict) else None
-                if isinstance(agent_env, dict):
-                    configured = {
-                        key: value
-                        for key, value in agent_env.items()
-                        if isinstance(key, str) and isinstance(value, str)
-                    }
-    except (OSError, DataError):
-        pass
-    values = set()
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if api_key:
-        values.add(api_key)
-    configured_api_key = configured.get("OPENAI_API_KEY", "")
-    is_configured_api_unresolved = configured_api_key.startswith("${") or (
-        "****" in configured_api_key
-    )
-    if configured_api_key and not is_configured_api_unresolved:
-        values.add(configured_api_key)
-    api_key_unavailable = is_configured_api_unresolved and not api_key
-    configured_auth_path = configured.get("CODEX_AUTH_JSON_PATH", "")
-    explicit = configured_auth_path
-    if not explicit or not Path(explicit).is_file():
-        explicit = os.environ.get("CODEX_AUTH_JSON_PATH", "")
-    force_auth = configured.get("CODEX_FORCE_AUTH_JSON") or os.environ.get(
-        "CODEX_FORCE_AUTH_JSON", ""
-    )
-    auth_path = Path(explicit) if explicit else None
-    if auth_path is None and force_auth.lower() in {"1", "true", "yes", "on"}:
-        auth_path = Path.home() / ".codex" / "auth.json"
-    if auth_path is None:
-        force_unresolved = bool(force_auth) and force_auth.lower() not in {
-            "0",
-            "false",
-            "no",
-            "off",
-        }
-        auth_unavailable = bool(configured_auth_path) or force_unresolved
-        available = bool(values) and not api_key_unavailable and not auth_unavailable
-        return tuple(sorted(values, key=len, reverse=True)), available
-    try:
-        content = _bounded_file(auth_path.resolve(), 1024 * 1024)
-        if content is None:
-            raise ValueError("auth_source_unavailable")
-        pending = [decode_json(content, "auth.json")]
-        while pending:
-            item = pending.pop()
-            if isinstance(item, dict):
-                pending.extend(item.values())
-            elif isinstance(item, list):
-                pending.extend(item)
-            elif isinstance(item, str) and len(item) >= 16:
-                values.add(item)
-    except (OSError, ValueError, DataError, RecursionError):
-        return tuple(sorted(values, key=len, reverse=True)), False
-    return tuple(sorted(values, key=len, reverse=True)), not api_key_unavailable
-
-
-def _mask_values(value: object, secrets: tuple[str, ...], depth: int = 0) -> object:
-    if depth >= 64:
-        return "[nested data omitted]"
-    if isinstance(value, str):
-        for secret in secrets:
-            value = value.replace(secret, "[REDACTED]")
-        return value
-    if isinstance(value, list):
-        return [_mask_values(item, secrets, depth + 1) for item in value]
-    if isinstance(value, dict):
-        return {
-            _mask_values(key, secrets, depth + 1): _mask_values(
-                item, secrets, depth + 1
-            )
-            for key, item in value.items()
-        }
-    return value
+    return "\n".join(lines)
 
 
 def _read_state(path: Path) -> tuple[SapiensState | None, str | None]:

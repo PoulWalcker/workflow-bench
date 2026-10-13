@@ -191,14 +191,11 @@ tokens when recorded, and the verifier result. Sapiens captures a bounded
 state snapshot in its Harbor agent log for speaker names,
 delegations and transitions. Older Trials without that snapshot show missing-data
 markers. Node prompts show a short excerpt by default; add `--full-prompts` to
-show their full text. State export and transcript rendering mask every occurrence
-of each string value of at least 16 characters in the run's `auth.json`, plus
-`OPENAI_API_KEY` when set. Export reads `$CODEX_HOME/auth.json` in the container;
-offline rendering resolves the host source used by the adapter from the saved
-agent configuration and current host environment. If that source is unavailable,
-the transcript marks exact-value masking as unavailable. Additional pattern
-masking for credential and account-ID forms is best-effort. Check transcripts
-before sharing them.
+show their full text. The Sapiens state export masks every occurrence of each
+string value of at least 16 characters in the run's `auth.json`, plus
+`OPENAI_API_KEY` when set; export reads `$CODEX_HOME/auth.json` in the container.
+Transcripts use only best-effort pattern masking for credential and account-ID
+forms. Every transcript starts with a notice to check it before sharing.
 
 ## Navigation
 
