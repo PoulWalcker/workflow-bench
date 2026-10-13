@@ -1,18 +1,20 @@
 # Workflow Bench — product specification
 
-Workflow Bench supports decisions about Sapiens development by comparing Sapiens
-with bare Codex on the same model. [GLOSSARY](GLOSSARY.md) owns domain terms;
+Workflow Bench measures how Sapiens performs on autonomous tasks: outcomes,
+reliability, cost, and where and why it fails. [GLOSSARY](GLOSSARY.md) owns domain terms;
 [ARCHITECTURE](ARCHITECTURE.md) owns technical boundaries and
 [README](README.md) records verified commands. This is a product contract, not a
-claim that readiness, comparison or all task levels are already implemented.
+claim that readiness, reporting or all task levels are already implemented.
 
 ## 1. Goal and limits of conclusions
 
-Measure where Sapiens helps or hurts, by how much, and why, using reproducible
-[Tasks](GLOSSARY.md#task) and independent outcome checks. Compare whole
-[Configurations](GLOSSARY.md#configuration), including the
-[Harness](GLOSSARY.md#harness), model, settings and environment; results do not
-isolate model quality or establish reliability beyond the tested tasks and conditions.
+Assess Sapiens using reproducible [Tasks](GLOSSARY.md#task) and independent outcome
+checks. Report one [Configuration](GLOSSARY.md#configuration), including its
+[Harness](GLOSSARY.md#harness), model, settings and environment, as the primary mode.
+Comparison with Codex or another configuration, including another model within
+Sapiens, is optional when the question needs a baseline. Results concern the whole
+configuration; they do not isolate model quality or establish reliability beyond
+the tested tasks and conditions.
 One successful [Trial](GLOSSARY.md#trial) does not establish general reliability;
 simulated services do not establish real-service latency or production safety.
 
@@ -53,12 +55,12 @@ Task-authoring regulation, its template and automated readiness check arrive in 
 | Stage | Input → output | Owner |
 |---|---|---|
 | Task Definition | Native Harbor task directory: public goal, constraints and result location; environment; private checks/expectations/rubric; oracle solution; level/horizon metadata → defined task. | Task author; Workflow Bench owns authoring rules. |
-| [Readiness](GLOSSARY.md#readiness) | Defined task → ready/not ready: structure conforms, Harbor parses, oracle passes, no-op fails (not unknown), semantic Judge calibrated when used. | Workflow Bench readiness checks, native Harbor controls and comparison. |
+| [Readiness](GLOSSARY.md#readiness) | Defined task → ready/not ready: structure conforms, Harbor parses, oracle passes, no-op fails (not unknown), semantic Judge calibrated when used. | Workflow Bench readiness checks, native Harbor controls and reporting. |
 | Environment | Configuration → isolated agent environment, optional services, network and tools. | Harbor; Workflow Bench supplies its images/services. |
-| Execution | Ready tasks × configurations × bounded trial count under equal conditions → native logs, trajectory, usage and process status. | Harbor and the selected harness integration. |
+| Execution | Ready tasks × selected configuration(s) × bounded trial count → native logs, trajectory, usage and process status; equal conditions required for comparison. | Harbor and the selected harness integration. |
 | [Evidence](GLOSSARY.md#evidence) | Execution → answer files/filesystem facts and protected service state with provenance. | Harbor collection; Workflow Bench service exports. |
 | [Evaluation](GLOSSARY.md#evaluation) | Evidence + private criteria → verdict, criterion results and completeness; native reward only for complete evaluation. | Task verifier and Workflow Bench helper, inside the Harbor Trial. |
-| [Comparison](GLOSSARY.md#comparison) | Saved Harbor job results/configuration/evaluation → per-task metrics, per-level summary or incomparable. | Workflow Bench offline comparison; the only report-building stage. |
+| [Comparison](GLOSSARY.md#comparison) | Saved Harbor job results/configuration/evaluation → per-configuration per-task metrics and per-level summary; optional comparison or incomparable. | Workflow Bench offline reporting; the only report-building stage. |
 
 No model trial starts before readiness passes. Public instructions give intent,
 constraints and result location without prescribing an algorithm or a tool when
@@ -71,8 +73,9 @@ by an aggregate; later steps may omit agent execution in the configure-once form
 
 Assign each trial exactly one [Outcome](GLOSSARY.md#outcome): `pass`, `fail`,
 `unknown` or `infra_error`. The [Verdict](GLOSSARY.md#verdict) depends only on
-observable results against the same [Criteria](GLOSSARY.md#criterion) for both
-harnesses. Harness-specific process checks, such as delegation, are diagnostics.
+observable results against task-owned [Criteria](GLOSSARY.md#criterion), shared
+across configurations when compared. Harness-specific process checks, such as
+delegation, are diagnostics.
 Known violations remain failures when other criteria are unknown; incomplete or
 untrusted evidence cannot establish a full pass. A missing measurement is unknown,
 never a known zero. Infrastructure failure is separate from agent quality.
@@ -91,13 +94,15 @@ in a separate context without execution powers; candidate text is data, not
 instructions. Validate its output; unavailable or invalid judgement leaves the
 affected criteria unknown. Judge cannot replace protected proof of an effect.
 
-## 5. Comparison contract
+## 5. Reporting and optional comparison
 
-Offline comparison reads native Harbor files without launching trials or
-re-evaluating evidence. The same source files produce the same report.
-Compare only equal model, reasoning effort, task digest, timeouts and network
-conditions; otherwise label the configurations incomparable. Use fresh harness
-state, sessions and memory for independent trials. Record pinned revision and
+Offline reporting reads native Harbor files without launching trials or
+re-evaluating evidence. The same source files produce the same report. Reporting
+one configuration requires no baseline or comparability decision. Optional
+comparison requires equal model, reasoning effort, task digest, timeouts and network
+conditions; otherwise label the comparison incomparable while retaining each
+configuration's measurements. Use fresh harness state, sessions and memory for
+independent trials. Record pinned revision and
 effective settings; a new revision is a new configuration. Sapiens starts without
 task-specific preset specialists or memory; delegation remains its decision.
 Reset task state for independent trials; repeated-step state follows the task contract.
@@ -106,11 +111,14 @@ For each task/configuration pair report trial count, pass rate over known outcom
 (`pass` / (`pass` + `fail`)), separate unknown and infrastructure counts/rates,
 pass^k, failures by criterion, median duration, input/cached/output tokens, and cost
 as an estimate or unknown. Record the chosen trial count, k, aggregation and
-comparison decision rules before measurement; unavailable metrics remain unknown.
+decision rules for any comparison before measurement; unavailable metrics remain
+unknown.
 Separate Judge costs and disclose metric sources and observability limits.
 
-Present a per-task table and per-level summary: average task pass rates over only
-comparable tasks, and counts of Sapiens better/worse/tied under the recorded rules.
+Present a per-task table and per-level summary for each configuration: average task
+pass rates with explicit coverage, unknown/infrastructure counts and failures by
+criterion. Optional comparison adds averages over comparable tasks and counts of
+Sapiens better/worse/tied under the recorded rules; label incomparable comparisons.
 There is no single overall score. Harbor's missing reward or binary aggregate must
 not silently turn unknown/infrastructure outcomes into measured agent failures.
 

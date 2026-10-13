@@ -1,6 +1,7 @@
 # Workflow Bench glossary
 
-Canonical domain language for comparing agent configurations on business tasks.
+Canonical domain language for measuring Sapiens on autonomous business tasks
+and optionally comparing agent configurations.
 Product requirements belong in [SPEC](SPEC.md).
 
 ## Language
@@ -33,7 +34,7 @@ including its orchestration and execution behavior.
 <a id="configuration"></a>
 
 **Configuration**:
-The complete compared combination of harness revision, model, effective settings,
+The complete measured combination of harness revision, model, effective settings,
 initial agent state, environment and limits.
 _Avoid_: Model alone
 
@@ -84,8 +85,9 @@ reliably enough to admit measured agent trials.
 <a id="comparison"></a>
 
 **Comparison**:
-The assessment of differences between configurations using saved trial outcomes
-and costs under equal conditions, with unequal conditions marked incomparable.
+The offline reporting stage for one configuration's saved trial outcomes and costs,
+optionally assessing differences between configurations under equal conditions;
+unequal conditions make that comparison incomparable.
 
 <a id="simulated-service"></a>
 
