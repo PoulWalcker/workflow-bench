@@ -3,10 +3,14 @@
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 import yaml
 from harbor.agents.factory import AgentFactory
+from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
 
@@ -214,6 +218,7 @@ def test_sapiens_example_builds_agent_with_native_model_and_reasoning(
 
 def test_sapiens_agent_populates_harbor_context_from_native_sessions(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()
@@ -239,7 +244,49 @@ def test_sapiens_agent_populates_harbor_context_from_native_sessions(
         yaml.safe_load(Path("examples/sapiens/job.yaml").read_text())
     )
     agent = AgentFactory.create_agent_from_config(config.agents[0], logs_dir=tmp_path)
+    monkeypatch.setattr(agent, "_resolve_auth_json_path", lambda: None)
+    monkeypatch.setattr(agent, "_upload_effective_config", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        agent,
+        "exec_as_agent",
+        AsyncMock(return_value=SimpleNamespace(return_code=0)),
+    )
+
+    def state(tick: int) -> str:
+        return json.dumps(
+            {
+                "pulse": {"id": "pulse-a", "numbers": {"bpm60": tick}},
+                "turns": [{"status": "done"}],
+                "workloads": [],
+                "run_activity": {},
+            }
+        )
+
+    environment = cast(
+        BaseEnvironment,
+        SimpleNamespace(
+            exec=AsyncMock(
+                side_effect=[
+                    SimpleNamespace(return_code=0, stdout="{}"),
+                    SimpleNamespace(
+                        return_code=0,
+                        stdout=json.dumps(
+                            {
+                                "schema_version": 1,
+                                "ok": True,
+                                "data": {"id": "a" * 32},
+                            }
+                        ),
+                    ),
+                    SimpleNamespace(return_code=0, stdout=state(1)),
+                    SimpleNamespace(return_code=0, stdout=state(2)),
+                ]
+            )
+        ),
+    )
     context = AgentContext()
+    asyncio.run(agent.run("fixture instruction", environment, context))
+    assert context.is_empty(), "Harbor populates native usage only for empty contexts"
     agent.populate_context_post_run(context)
     assert (
         context.n_input_tokens,
@@ -250,5 +297,8 @@ def test_sapiens_agent_populates_harbor_context_from_native_sessions(
         2,
         3,
     )
-    assert context.metadata == {"sapiens_session_count": 1}
+    assert context.metadata == {
+        "sapiens_outcome": "completed",
+        "sapiens_session_count": 1,
+    }
     assert context.model_usage == {}

@@ -47,7 +47,10 @@ class SapiensCompletion:
     def observe(self, snapshot: Mapping[str, object]) -> CompletionDecision:
         """Return a terminal decision only after two distinct quiet Pulse ticks.
 
-        Invalid or incomplete public state raises rather than proving completion.
+        ``agent_outcome`` means Sapiens stopped without normal completion; the
+        adapter returns so the independent verifier can judge task results.
+        ``working`` keeps observation active. Invalid or incomplete public state
+        raises rather than proving completion.
         """
         pulse = snapshot.get("pulse")
         turns = snapshot.get("turns")
@@ -113,6 +116,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
     """Use Harbor's Codex config/MCP/auth seams, with Sapiens owning planning."""
 
     capabilities = AgentCapabilities(native_config=True, mcp_servers=True)
+    _last_outcome: CompletionDecision | None = None
 
     @staticmethod
     def name() -> str:
@@ -126,10 +130,11 @@ class SapiensInstalledAgent(SessionSafeCodex):
         context.n_input_tokens = usage["input_tokens"]
         context.n_cache_tokens = usage["cached_input_tokens"]
         context.n_output_tokens = usage["output_tokens"]
-        context.metadata = {
-            **(context.metadata or {}),
-            "sapiens_session_count": usage["session_count"],
-        }
+        metadata = dict(context.metadata or {})
+        metadata["sapiens_session_count"] = usage["session_count"]
+        if self._last_outcome is not None:
+            metadata["sapiens_outcome"] = self._last_outcome
+        context.metadata = metadata
         context.model_usage = {}
 
     @override
@@ -151,17 +156,13 @@ class SapiensInstalledAgent(SessionSafeCodex):
     async def run(
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
-        """Submit one instruction to a fresh Sapiens host and await its completion."""
+        """Submit once and leave Harbor's context empty until logs are collected."""
         started = time.monotonic()
         phase_result = "failed"
+        self._last_outcome = None
         try:
-            await self._run_sapiens(instruction, environment, context)
-            phase_result = (
-                "agent_outcome"
-                if context.metadata
-                and context.metadata.get("sapiens_outcome") == "agent_outcome"
-                else "completed"
-            )
+            phase_result = await self._run_sapiens(instruction, environment)
+            self._last_outcome = phase_result
         except asyncio.CancelledError:
             phase_result = "cancelled"
             raise
@@ -177,9 +178,9 @@ class SapiensInstalledAgent(SessionSafeCodex):
             )
 
     async def _run_sapiens(
-        self, instruction: str, environment: BaseEnvironment, context: AgentContext
-    ) -> None:
-        """Submit once to the host and await all Sapiens work's terminal state."""
+        self, instruction: str, environment: BaseEnvironment
+    ) -> CompletionDecision:
+        """Submit once to the host and return all Sapiens work's terminal state."""
         if self.model_name is None:
             raise RuntimeError("sapiens_model_required")
         home = self._REMOTE_CODEX_HOME.as_posix()
@@ -266,7 +267,9 @@ class SapiensInstalledAgent(SessionSafeCodex):
             raise RuntimeError("sapiens_submission_unknown")
         started = time.monotonic()
         LOGGER.info(
-            "phase=sapiens-observation sapiens_turn_id=%s result=started", turn_id
+            "phase=sapiens-observation trial=%s sapiens_turn_id=%s result=started",
+            self.logs_dir.parent.name,
+            turn_id,
         )
         completion = SapiensCompletion()
         state_command = "python -c " + shlex.quote(
@@ -296,14 +299,15 @@ class SapiensInstalledAgent(SessionSafeCodex):
         (self.logs_dir / "sapiens-terminal.json").write_text(
             json.dumps({"turn_id": turn_id, "outcome": decision})
         )
-        context.metadata = {**(context.metadata or {}), "sapiens_outcome": decision}
         LOGGER.info(
-            "phase=sapiens-observation sapiens_turn_id=%s result=%s elapsed=%.2fs",
+            "phase=sapiens-observation trial=%s sapiens_turn_id=%s "
+            "result=%s elapsed=%.2fs",
+            self.logs_dir.parent.name,
             turn_id,
             decision,
             time.monotonic() - started,
         )
-        context.model_usage = {}
+        return decision
 
     @staticmethod
     def _response(stdout: str | None) -> _CliResponse:

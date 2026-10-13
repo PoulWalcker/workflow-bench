@@ -71,7 +71,12 @@ class CodexAllowance(TypedDict):
 
 
 class SapiensUsage(TypedDict):
-    """Totals over every validated native Codex session of one Sapiens Trial."""
+    """Totals over every validated native Codex session of one Sapiens Trial.
+
+    ``session_count`` is unknown when logs are missing or invalid, and counts
+    validated sessions even when their token totals cannot be measured.
+    Missing or invalid token measurements are unknown, never zero.
+    """
 
     input_tokens: int | None
     cached_input_tokens: int | None
