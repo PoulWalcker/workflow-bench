@@ -135,6 +135,18 @@ model-free configuration/control example. The fast configuration test verifies
 Harbor builds `SapiensInstalledAgent` with these settings; the Sapiens execution
 controls are a separate integration path.
 
+Run the opted-in Sapiens controls with:
+
+```sh
+uv run --locked pytest -q --run-integration tests/integration/test_sapiens_controls.py
+```
+
+Their real-Codex case uses a test-image loopback endpoint that rejects every
+request with HTTP 401 and has no model. Codex 0.162.1 keeps reconnecting to an
+unused loopback socket despite zero configured
+retries; a definite rejection lets the control verify Sapiens' model-failure outcome
+within the finite Trial limit. No provider credential is used.
+
 The adapter observes Sapiens' public state until all turns, workloads and run
 activity are quiet for two consecutive Pulse ticks. It reports the sum of last
 cumulative token counts over all validated Codex sessions and their session count

@@ -17,6 +17,7 @@ from harbor.models.agent.context import AgentContext
 from workflow_bench.composer import SessionSafeCodex, collect_sapiens_usage
 from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
+from workflow_bench.harbor import DeadlineDockerEnvironment
 from workflow_bench.observability import format_phase_line
 
 LOGGER = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
     async def run(
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
-        """Submit once and leave Harbor's context empty until logs are collected."""
+        """Submit once, stop on cancellation, then let Harbor collect logs."""
         started = time.monotonic()
         phase_result = "failed"
         self._last_outcome = None
@@ -165,6 +166,12 @@ class SapiensInstalledAgent(SessionSafeCodex):
             self._last_outcome = phase_result
         except asyncio.CancelledError:
             phase_result = "cancelled"
+            if (
+                isinstance(environment, DeadlineDockerEnvironment)
+                and environment.cancel_writer is not None
+            ):
+                # Observation can be cancelled between Docker exec calls.
+                await environment.cancel_writer()
             raise
         finally:
             self.logger.info(
@@ -296,8 +303,17 @@ class SapiensInstalledAgent(SessionSafeCodex):
             if decision != "working":
                 break
             await asyncio.sleep(0.2)
+        # Record state names only; the public snapshot can include private requests.
+        workloads = cast(list[dict[str, object]], snapshot["workloads"])
+        workload_states = sorted({cast(str, work["state"]) for work in workloads})
         (self.logs_dir / "sapiens-terminal.json").write_text(
-            json.dumps({"turn_id": turn_id, "outcome": decision})
+            json.dumps(
+                {
+                    "turn_id": turn_id,
+                    "outcome": decision,
+                    "workload_states": workload_states,
+                }
+            )
         )
         LOGGER.info(
             "phase=sapiens-observation trial=%s sapiens_turn_id=%s "

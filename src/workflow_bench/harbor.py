@@ -172,14 +172,23 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         )
 
     async def _stop_writer(self) -> None:
-        """Kill the candidate container before collection; keep it for Docker copy."""
-        await self._run_docker_compose_command(
-            ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
-        )
+        """Stop the candidate before collection; keep it for Docker copy."""
         running = await self._run_docker_compose_command(
             ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
         )
-        if running.stdout and running.stdout.strip():
+        if not running.stdout or not running.stdout.strip():
+            return
+        try:
+            await self._run_docker_compose_command(
+                ["kill", "--signal", "SIGKILL", MAIN_SERVICE_NAME]
+            )
+        except Exception:
+            # Another cancellation path may have stopped it after the first query.
+            pass
+        remaining = await self._run_docker_compose_command(
+            ["ps", "--status", "running", "--quiet", MAIN_SERVICE_NAME]
+        )
+        if remaining.stdout and remaining.stdout.strip():
             raise RuntimeError("stop_unconfirmed")
 
     async def _collect_with_stop(
