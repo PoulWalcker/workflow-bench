@@ -1,18 +1,20 @@
 """Unmodified CORPORA host and CLI at Harbor's installed-agent seam."""
 
 import asyncio
+import json
 import logging
 import re
 import shlex
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TypedDict, cast, override
+from typing import Literal, TypedDict, cast, override
 
 from harbor.agents.capabilities import AgentCapabilities
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from workflow_bench.composer import SessionSafeCodex
+from workflow_bench.composer import SessionSafeCodex, collect_sapiens_usage
 from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
 from workflow_bench.observability import format_phase_line
@@ -32,6 +34,81 @@ class _CliResponse(TypedDict):
     data: dict[str, JsonValue]
 
 
+type CompletionDecision = Literal["working", "completed", "agent_outcome"]
+
+
+class SapiensCompletion:
+    """Decide when two observed Pulse ticks have no Sapiens work remaining."""
+
+    def __init__(self) -> None:
+        self._last_pulse: tuple[str, int] | None = None
+        self._quiet_ticks = 0
+
+    def observe(self, snapshot: Mapping[str, object]) -> CompletionDecision:
+        """Return a terminal decision only after two distinct quiet Pulse ticks.
+
+        Invalid or incomplete public state raises rather than proving completion.
+        """
+        pulse = snapshot.get("pulse")
+        turns = snapshot.get("turns")
+        workloads = snapshot.get("workloads")
+        run_activity = snapshot.get("run_activity")
+        if (
+            not isinstance(pulse, dict)
+            or not isinstance(turns, list)
+            or not isinstance(workloads, list)
+            or not isinstance(run_activity, dict)
+        ):
+            raise RuntimeError("sapiens_state_invalid")
+        numbers = pulse.get("numbers")
+        identity = pulse.get("id")
+        tick = numbers.get("bpm60") if isinstance(numbers, dict) else None
+        if (
+            not isinstance(identity, str)
+            or not isinstance(tick, int)
+            or isinstance(tick, bool)
+            or tick < 0
+            or any(
+                not isinstance(turn, dict) or not isinstance(turn.get("status"), str)
+                for turn in turns
+            )
+            or any(
+                not isinstance(work, dict) or not isinstance(work.get("state"), str)
+                for work in workloads
+            )
+        ):
+            raise RuntimeError("sapiens_state_invalid")
+        current_pulse = (identity, tick)
+        is_busy = (
+            any(
+                turn["status"] in {"queued", "running", "output_pending"}
+                for turn in turns
+            )
+            or any(
+                work["state"] in {"Running", "Queued", "Delegated"}
+                for work in workloads
+            )
+            or bool(run_activity)
+        )
+        if is_busy:
+            self._quiet_ticks = 0
+        if current_pulse == self._last_pulse:
+            return "working"
+        if self._last_pulse is not None and (
+            identity != self._last_pulse[0] or tick != self._last_pulse[1] + 1
+        ):
+            self._quiet_ticks = 0
+        self._last_pulse = current_pulse
+        self._quiet_ticks = 0 if is_busy else self._quiet_ticks + 1
+        if self._quiet_ticks < 2:
+            return "working"
+        is_agent_outcome = any(
+            work["state"] in {"WaitingForAdmin", "Failed", "Interrupted", "Unresolved"}
+            for work in workloads
+        ) or any(turn["status"] in {"failed", "interrupted"} for turn in turns)
+        return "agent_outcome" if is_agent_outcome else "completed"
+
+
 class SapiensInstalledAgent(SessionSafeCodex):
     """Use Harbor's Codex config/MCP/auth seams, with Sapiens owning planning."""
 
@@ -43,6 +120,19 @@ class SapiensInstalledAgent(SessionSafeCodex):
         return "sapiens"
 
     @override
+    def populate_context_post_run(self, context: AgentContext) -> None:
+        """Report all validated Codex sessions while blocking trajectory fallback."""
+        usage = collect_sapiens_usage(self.logs_dir)
+        context.n_input_tokens = usage["input_tokens"]
+        context.n_cache_tokens = usage["cached_input_tokens"]
+        context.n_output_tokens = usage["output_tokens"]
+        context.metadata = {
+            **(context.metadata or {}),
+            "sapiens_session_count": usage["session_count"],
+        }
+        context.model_usage = {}
+
+    @override
     async def install(self, environment: BaseEnvironment) -> None:
         """Verify the prepared image has the required Sapiens and Codex versions."""
         # Images are prepared before execution; never install over the runtime network.
@@ -50,7 +140,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
             environment,
             command="test "
             + shlex.quote(SAPIENS_REVISION)
-            + ' = "$(cat /opt/sapiens/REVISION)" && codex --version && command -v ps',
+            + ' = "$(cat /opt/sapiens/REVISION)" && codex --version',
         )
         if result.return_code or not await self._installed_codex_satisfies_version(
             environment
@@ -66,7 +156,12 @@ class SapiensInstalledAgent(SessionSafeCodex):
         phase_result = "failed"
         try:
             await self._run_sapiens(instruction, environment, context)
-            phase_result = "completed"
+            phase_result = (
+                "agent_outcome"
+                if context.metadata
+                and context.metadata.get("sapiens_outcome") == "agent_outcome"
+                else "completed"
+            )
         except asyncio.CancelledError:
             phase_result = "cancelled"
             raise
@@ -84,7 +179,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
     async def _run_sapiens(
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
-        """Submit once to the host and await the Chief turn's terminal state."""
+        """Submit once to the host and await all Sapiens work's terminal state."""
         if self.model_name is None:
             raise RuntimeError("sapiens_model_required")
         home = self._REMOTE_CODEX_HOME.as_posix()
@@ -173,40 +268,41 @@ class SapiensInstalledAgent(SessionSafeCodex):
         LOGGER.info(
             "phase=sapiens-observation sapiens_turn_id=%s result=started", turn_id
         )
-        observer = asyncio.create_task(
-            environment.exec(
-                command=CLI + "conversation watch " + shlex.quote(turn_id), env=env
+        completion = SapiensCompletion()
+        state_command = "python -c " + shlex.quote(
+            "import sys,urllib.request; "
+            f"sys.stdout.buffer.write(urllib.request.urlopen('{HOST_URL}/api/state',"
+            f"timeout=5).read({MAX_JSON_BYTES + 1}))"
+        )
+        while True:
+            observed = await environment.exec(
+                command=state_command, env=env, timeout_sec=6
             )
+            if observed.return_code:
+                raise RuntimeError("sapiens_state_unavailable")
+            raw_state = (observed.stdout or "").encode()
+            if len(raw_state) > MAX_JSON_BYTES:
+                raise RuntimeError("sapiens_state_too_large")
+            try:
+                snapshot = decode_json(raw_state, "sapiens_state")
+            except DataError:
+                raise RuntimeError("sapiens_state_invalid") from None
+            if not isinstance(snapshot, dict):
+                raise RuntimeError("sapiens_state_invalid")
+            decision = completion.observe(snapshot)
+            if decision != "working":
+                break
+            await asyncio.sleep(0.2)
+        (self.logs_dir / "sapiens-terminal.json").write_text(
+            json.dumps({"turn_id": turn_id, "outcome": decision})
         )
-        try:
-            while not observer.done():
-                done, _ = await asyncio.wait({observer}, timeout=30)
-                if not done:
-                    LOGGER.info(
-                        "phase=sapiens-observation sapiens_turn_id=%s elapsed=%.0fs",
-                        turn_id,
-                        time.monotonic() - started,
-                    )
-            observed = await observer
-        finally:
-            if not observer.done():
-                observer.cancel()
-                await asyncio.gather(observer, return_exceptions=True)
-        (self.logs_dir / "sapiens-terminal.json").write_text(observed.stdout or "")
-        terminal = self._response(observed.stdout)
-        has_completed = (
-            observed.return_code == 0
-            and terminal["ok"]
-            and terminal["data"].get("state") == "Completed"
-        )
+        context.metadata = {**(context.metadata or {}), "sapiens_outcome": decision}
         LOGGER.info(
             "phase=sapiens-observation sapiens_turn_id=%s result=%s elapsed=%.2fs",
             turn_id,
-            "completed" if has_completed else "not_completed",
+            decision,
             time.monotonic() - started,
         )
-        if not has_completed:
-            raise RuntimeError("sapiens_terminal_not_completed")
         context.model_usage = {}
 
     @staticmethod

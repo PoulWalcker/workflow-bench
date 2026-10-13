@@ -10,6 +10,7 @@ from datetime import UTC
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
+from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
 from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.trial.artifact_manifest import ArtifactManifest
@@ -99,6 +100,7 @@ class PairReport(TypedDict):
     input_tokens: Median
     cached_tokens: Median
     output_tokens: Median
+    session_count: Median
     trials: list[TrialOutcome]
 
 
@@ -154,6 +156,7 @@ class TrialTokens(TypedDict):
     input: int | None
     cached: int | None
     output: int | None
+    sessions: int | None
 
 
 class TrialPaths(TypedDict):
@@ -205,6 +208,7 @@ class _Trial:
     input_tokens: int | None
     cached_tokens: int | None
     output_tokens: int | None
+    session_count: int | None
 
 
 def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
@@ -308,8 +312,9 @@ def render_markdown(report: ComparisonReport) -> str:
             (
                 "| Task | Checksum | Trials | Pass | Fail | Unknown | Infra error "
                 "| Pass rate | Median agent s | Median tokens in / cached / out |"
+                " Median sessions |"
             ),
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         lines += [_markdown_row(pair) for pair in pairs]
     if report["incomplete_trials"]:
@@ -368,6 +373,7 @@ def _summarize_trial(
             "input": None if usage is None else usage.n_input_tokens,
             "cached": None if usage is None else usage.n_cache_tokens,
             "output": None if usage is None else usage.n_output_tokens,
+            "sessions": _reported_session_count(usage),
         },
         "artifact_manifest": _manifest_summary(trial_dir),
         "paths": paths,
@@ -463,7 +469,17 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
         input_tokens=None if usage is None else usage.n_input_tokens,
         cached_tokens=None if usage is None else usage.n_cache_tokens,
         output_tokens=None if usage is None else usage.n_output_tokens,
+        session_count=_reported_session_count(usage),
     )
+
+
+def _reported_session_count(context: AgentContext | None) -> int | None:
+    """Read the validated Sapiens session count from Harbor's agent result."""
+    metadata = None if context is None else context.metadata
+    count = metadata.get("sapiens_session_count") if metadata else None
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        return count
+    return None
 
 
 def _classify(trial_dir: Path, result: TrialResult) -> tuple[Outcome, str | None]:
@@ -590,6 +606,7 @@ def _pair_report(trials: Sequence[_Trial]) -> PairReport:
         "input_tokens": _median([trial.input_tokens for trial in trials]),
         "cached_tokens": _median([trial.cached_tokens for trial in trials]),
         "output_tokens": _median([trial.output_tokens for trial in trials]),
+        "session_count": _median([trial.session_count for trial in trials]),
         "trials": outcomes,
     }
 
@@ -637,6 +654,7 @@ def _markdown_row(pair: PairReport) -> str:
         "unknown" if pass_rate is None else f"{pass_rate:.2f}",
         "unknown" if agent_sec is None else f"{agent_sec:.1f}",
         tokens,
+        _format_count(pair["session_count"]["median"]),
     ]
     return f"| {' | '.join(cells)} |"
 

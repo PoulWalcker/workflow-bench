@@ -70,6 +70,15 @@ class CodexAllowance(TypedDict):
     observed_at_unix: float
 
 
+class SapiensUsage(TypedDict):
+    """Totals over every validated native Codex session of one Sapiens Trial."""
+
+    input_tokens: int | None
+    cached_input_tokens: int | None
+    output_tokens: int | None
+    session_count: int | None
+
+
 def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> CodexAllowance:
     """Read available subscription allowance in a clean host-only native session.
 
@@ -315,6 +324,53 @@ def collect_codex_usage(
                 + usage["output_tokens"] * prices["output_per_million"]
             ) / 1_000_000
     return usage
+
+
+def collect_sapiens_usage(logs: Path) -> SapiensUsage:
+    """Sum each session's last cumulative token count; keep missing facts unknown."""
+    _, snapshots, has_invalid_session = _session_snapshot(logs)
+    unknown: SapiensUsage = {
+        "input_tokens": None,
+        "cached_input_tokens": None,
+        "output_tokens": None,
+        "session_count": len(snapshots)
+        if snapshots and not has_invalid_session
+        else None,
+    }
+    if has_invalid_session or not snapshots:
+        return unknown
+    totals = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
+    for _, content in snapshots:
+        last: dict[str, JsonValue] | None = None
+        for line in content.splitlines():
+            if not line.strip():
+                continue
+            event = decode_json(line, "sessions")
+            if not isinstance(event, dict) or event.get("type") != "event_msg":
+                continue
+            payload = event.get("payload")
+            if not isinstance(payload, dict) or payload.get("type") != "token_count":
+                continue
+            info = payload.get("info")
+            candidate = (
+                info.get("total_token_usage") if isinstance(info, dict) else None
+            )
+            last = candidate if isinstance(candidate, dict) else None
+        if last is None:
+            return unknown
+        for name in totals:
+            count = last.get(name)
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                return unknown
+            totals[name] += count
+    if totals["cached_input_tokens"] > totals["input_tokens"]:
+        return unknown
+    return {
+        "input_tokens": totals["input_tokens"],
+        "cached_input_tokens": totals["cached_input_tokens"],
+        "output_tokens": totals["output_tokens"],
+        "session_count": len(snapshots),
+    }
 
 
 def _write_session_snapshot(

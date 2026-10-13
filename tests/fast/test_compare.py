@@ -64,6 +64,7 @@ def _trial(
     kwargs: dict[str, object] | None = None,
     agent_sec: float | None = 10.0,
     tokens: tuple[int | None, int | None, int | None] = (None, None, None),
+    sessions: int | None = None,
     exception: str | None = None,
     artifacts_status: str = "ok",
     verifier: Literal["finished", "failed", "skipped"] = "finished",
@@ -119,6 +120,9 @@ def _trial(
             n_input_tokens=tokens[0],
             n_cache_tokens=tokens[1],
             n_output_tokens=tokens[2],
+            metadata={"sapiens_session_count": sessions}
+            if sessions is not None
+            else None,
         )
         (trial_dir / "artifacts").mkdir()
         (trial_dir / "artifacts" / "manifest.json").write_text(
@@ -178,7 +182,12 @@ def test_summary_reads_trial_facts_and_reuses_report_outcomes(
     }
     assert passed["evaluation"]["verdict"] == "pass"
     assert passed["evaluation"]["criteria"] == _criteria("pass")
-    assert passed["tokens"] == {"input": 120, "cached": 20, "output": 8}
+    assert passed["tokens"] == {
+        "input": 120,
+        "cached": 20,
+        "output": 8,
+        "sessions": None,
+    }
     assert passed["artifact_manifest"]["status"] == "ok"
     assert passed["artifact_manifest"]["entries"] == [
         {"destination": "artifacts/work/output", "status": "ok"}
@@ -190,6 +199,32 @@ def test_summary_reads_trial_facts_and_reuses_report_outcomes(
     )
     assert summary["trials"][3]["artifact_manifest"]["status"] == "failed"
     assert summary["trials"][3]["errors"] == ["artifacts_failed"]
+
+
+def test_sapiens_session_count_reaches_compare_reports(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(
+        job,
+        "direct",
+        criteria=_criteria("pass"),
+        harness="sapiens",
+        tokens=(15, 4, 9),
+        sessions=2,
+    )
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["session_count"] == {"median": 2.0, "known": 1}
+    assert report["pairs"][0]["input_tokens"] == {"median": 15.0, "known": 1}
+    status = main(["compare", "--format", "summary", str(job)])
+    summary = json.loads(capsys.readouterr().out)
+    assert status == 0
+    assert summary["trials"][0]["tokens"] == {
+        "input": 15,
+        "cached": 4,
+        "output": 9,
+        "sessions": 2,
+    }
 
 
 def test_summary_keeps_report_outcomes_for_replayed_trial_names(
@@ -443,6 +478,7 @@ def test_trials_are_grouped_by_task_and_configuration_with_median_metrics(
             "input_tokens": median(200.0, 2),
             "cached_tokens": median(20.0, 2),
             "output_tokens": median(20.0, 2),
+            "session_count": median(None, 0),
         },
         {
             "task": "t1",
@@ -462,6 +498,7 @@ def test_trials_are_grouped_by_task_and_configuration_with_median_metrics(
             "input_tokens": median(500.0, 1),
             "cached_tokens": median(100.0, 1),
             "output_tokens": median(50.0, 1),
+            "session_count": median(None, 0),
         },
         {
             "task": "t2",
@@ -481,6 +518,7 @@ def test_trials_are_grouped_by_task_and_configuration_with_median_metrics(
             "input_tokens": median(None, 0),
             "cached_tokens": median(None, 0),
             "output_tokens": median(None, 0),
+            "session_count": median(None, 0),
         },
     ]
 
@@ -577,10 +615,10 @@ def test_markdown_report_has_one_table_per_configuration(
     assert status == 0
     codex = lines.index("## codex 0.162.1, model openai/gpt-5, reasoning high")
     assert lines[codex + 4] == (
-        "| t1 | c1 | 3 | 1 | 1 | 0 | 1 | 0.50 | 17.5 | 200.5 / 20 / 20 |"
+        "| t1 | c1 | 3 | 1 | 1 | 0 | 1 | 0.50 | 17.5 | 200.5 / 20 / 20 | unknown |"
     )
     no_model = lines.index("## codex 0.162.1, model unknown, reasoning unknown")
     assert lines[no_model + 4] == (
         "| t1 | c1 | 1 | 0 | 0 | 0 | 1 | unknown | unknown "
-        "| unknown / unknown / unknown |"
+        "| unknown / unknown / unknown | unknown |"
     )

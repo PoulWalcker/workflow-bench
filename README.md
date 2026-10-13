@@ -124,6 +124,24 @@ kept the task's no-network baseline. The ignored local evidence is in
 `runs/m1a-06-compare.json` and `runs/m1a-06-compare.md`. This is one smoke
 result, not a reliability estimate.
 
+## Direct Sapiens configuration
+
+[The Sapiens job example](examples/sapiens/job.yaml) uses the same pinned `agents`
+image and `DeadlineDockerEnvironment`, an absolute `jobs_dir`, one attempt and no
+retry. It supplies both Harbor's reasoning option and Sapiens' required
+`config.model_reasoning_effort` with `low`, plus `openai/gpt-6.1-sol` as the model.
+Its empty loopback provider and explicit empty credential settings make it a
+model-free configuration/control example. The fast configuration test verifies
+Harbor builds `SapiensInstalledAgent` with these settings; the Sapiens execution
+controls are a separate integration path.
+
+The adapter observes Sapiens' public state until all turns, workloads and run
+activity are quiet for two consecutive Pulse ticks. It reports the sum of last
+cumulative token counts over all validated Codex sessions and their session count
+in `wb compare`; absent or malformed usage remains unknown. Pinned Sapiens may
+raise reasoning effort to `xhigh` internally in deep mode, regardless of the
+job's configured base effort. The example uses normal mode.
+
 ## Report
 
 Reporting reads saved Harbor job directories offline and needs no Docker, model or
