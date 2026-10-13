@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -289,6 +290,7 @@ def test_sapiens_example_builds_agent_with_native_model_and_reasoning(
 def test_sapiens_agent_populates_harbor_context_from_native_sessions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()
@@ -327,7 +329,7 @@ def test_sapiens_agent_populates_harbor_context_from_native_sessions(
             {
                 "pulse": {"id": "pulse-a", "numbers": {"bpm60": tick}},
                 "turns": [{"status": "done"}],
-                "workloads": [],
+                "workloads": [{"state": "Completed"}],
                 "run_activity": {},
             }
         )
@@ -355,7 +357,20 @@ def test_sapiens_agent_populates_harbor_context_from_native_sessions(
         ),
     )
     context = AgentContext()
-    asyncio.run(agent.run("fixture instruction", environment, context))
+    with caplog.at_level(logging.INFO, logger=agent.logger.name):
+        asyncio.run(agent.run("fixture instruction", environment, context))
+    observation_lines = [
+        record.message
+        for record in caplog.records
+        if "phase=sapiens-observation" in record.message
+    ]
+    assert len(observation_lines) == 2
+    assert f"trial={tmp_path.parent.name}" in observation_lines[0]
+    assert "result=started" in observation_lines[0]
+    assert "result=completed" in observation_lines[1]
+    assert "turn_states=done" in observation_lines[1]
+    assert "workload_states=Completed" in observation_lines[1]
+    assert "run_activity_empty=true quiet_ticks=2" in observation_lines[1]
     assert context.is_empty(), "Harbor populates native usage only for empty contexts"
     agent.populate_context_post_run(context)
     assert (

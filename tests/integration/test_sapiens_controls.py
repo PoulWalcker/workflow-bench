@@ -25,6 +25,7 @@ def test_chief_completes_trivial_task_without_delegation(
     assert _summary(job)["outcome"] == "pass"
     native = json.loads(next(job.glob("*/result.json")).read_text())
     assert native["agent_result"]["metadata"]["sapiens_outcome"] == "completed"
+    _assert_observation(job, "completed")
 
 
 def test_chief_waits_for_new_specialist_to_complete(
@@ -34,6 +35,7 @@ def test_chief_waits_for_new_specialist_to_complete(
     assert _summary(job)["outcome"] == "pass"
     marker = json.loads(next(job.glob("*/agent/specialist-executed.json")).read_text())
     assert marker["self"] != marker["chief"]
+    _assert_observation(job, "completed")
 
 
 def test_unclear_request_is_judged_from_world_state(
@@ -50,6 +52,7 @@ def test_unclear_request_is_judged_from_world_state(
     assert decision["event"] == "RequestUnclear"
     terminal = json.loads(next(job.glob("*/agent/sapiens-terminal.json")).read_text())
     assert "WaitingForAdmin" in terminal["workload_states"]
+    _assert_observation(job, "agent_outcome", workload_state="WaitingForAdmin")
 
 
 @pytest.mark.parametrize("is_cancelled", [False, True], ids=["timeout", "cancel"])
@@ -63,6 +66,9 @@ def test_stop_kills_late_child_and_sapiens_host(
         timeout_seconds=60 if is_cancelled else 3,
     )
     assert list(job.glob("*/agent/child-started"))
+    observation = next(job.glob("*/trial.log")).read_text()
+    assert "phase=sapiens-observation" in observation
+    assert "result=started" in observation
     time.sleep(9)
     assert not list(job.glob("*/agent/late-write"))
     trial = next(job.glob("*/result.json")).parent.name
@@ -105,6 +111,30 @@ def test_real_codex_accepts_sapiens_exec_arguments_without_a_provider(
         and event["payload"].get("type") == "task_complete"
     )
     assert "401 Unauthorized: empty test provider" in completed["error"]["message"]
+    _assert_observation(job, "agent_outcome")
+
+
+def _assert_observation(
+    job: Path, expected_decision: str, *, workload_state: str | None = None
+) -> None:
+    """Check the Trial log's bounded observation record for a completed control."""
+    trial_log = next(job.glob("*/trial.log"))
+    lines = [
+        line
+        for line in trial_log.read_text().splitlines()
+        if "phase=sapiens-observation" in line
+    ]
+    assert len(lines) == 2
+    assert all(f"trial={trial_log.parent.name}" in line for line in lines)
+    assert all("sapiens_turn_id=" in line for line in lines)
+    assert "result=started" in lines[0]
+    assert f"result={expected_decision}" in lines[1]
+    assert "turn_states=" in lines[1]
+    assert "workload_states=" in lines[1]
+    assert "run_activity_empty=true quiet_ticks=2" in lines[1]
+    if workload_state is not None:
+        states = lines[1].split("workload_states=", 1)[1].split()[0].split(",")
+        assert workload_state in states
 
 
 def _fake_task(source: Path, directory: Path, scenario: str) -> Path:

@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 import re
 import shlex
 import time
@@ -19,8 +18,6 @@ from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
 from workflow_bench.harbor import DeadlineDockerEnvironment
 from workflow_bench.observability import format_phase_line
-
-LOGGER = logging.getLogger(__name__)
 
 SAPIENS_REVISION = "71e93cb3de00183c263ec440919b313cf92ed8af"
 HOST_PORT = 4174
@@ -44,6 +41,11 @@ class SapiensCompletion:
     def __init__(self) -> None:
         self._last_pulse: tuple[str, int] | None = None
         self._quiet_ticks = 0
+
+    @property
+    def quiet_ticks(self) -> int:
+        """Return the consecutive quiet Pulse ticks in the latest observation."""
+        return self._quiet_ticks
 
     def observe(self, snapshot: Mapping[str, object]) -> CompletionDecision:
         """Return a terminal decision only after two distinct quiet Pulse ticks.
@@ -273,7 +275,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
         if not isinstance(turn_id, str) or not re.fullmatch(r"[a-f0-9]{32}", turn_id):
             raise RuntimeError("sapiens_submission_unknown")
         started = time.monotonic()
-        LOGGER.info(
+        self.logger.info(
             "phase=sapiens-observation trial=%s sapiens_turn_id=%s result=started",
             self.logs_dir.parent.name,
             turn_id,
@@ -304,6 +306,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
                 break
             await asyncio.sleep(0.2)
         # Record state names only; the public snapshot can include private requests.
+        turns = cast(list[dict[str, object]], snapshot["turns"])
         workloads = cast(list[dict[str, object]], snapshot["workloads"])
         workload_states = sorted({cast(str, work["state"]) for work in workloads})
         (self.logs_dir / "sapiens-terminal.json").write_text(
@@ -315,13 +318,64 @@ class SapiensInstalledAgent(SessionSafeCodex):
                 }
             )
         )
-        LOGGER.info(
+        # State names can be untrusted strings; log only the known vocabulary.
+        turn_states = sorted({cast(str, turn["status"]) for turn in turns})
+        turn_states_for_log = (
+            ",".join(
+                sorted(
+                    {
+                        status
+                        if status
+                        in {
+                            "queued",
+                            "running",
+                            "output_pending",
+                            "done",
+                            "failed",
+                            "interrupted",
+                        }
+                        else "other"
+                        for status in turn_states
+                    }
+                )
+            )
+            or "none"
+        )
+        workload_states_for_log = (
+            ",".join(
+                sorted(
+                    {
+                        state
+                        if state
+                        in {
+                            "Running",
+                            "Queued",
+                            "Delegated",
+                            "Completed",
+                            "WaitingForAdmin",
+                            "Failed",
+                            "Interrupted",
+                            "Unresolved",
+                        }
+                        else "other"
+                        for state in workload_states
+                    }
+                )
+            )
+            or "none"
+        )
+        self.logger.info(
             "phase=sapiens-observation trial=%s sapiens_turn_id=%s "
-            "result=%s elapsed=%.2fs",
+            "result=%s elapsed=%.2fs turn_states=%s workload_states=%s "
+            "run_activity_empty=%s quiet_ticks=%s",
             self.logs_dir.parent.name,
             turn_id,
             decision,
             time.monotonic() - started,
+            turn_states_for_log,
+            workload_states_for_log,
+            str(not snapshot["run_activity"]).lower(),
+            completion.quiet_ticks,
         )
         return decision
 

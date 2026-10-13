@@ -117,6 +117,10 @@ It returns after two distinct consecutive quiet `bpm60` Pulse ticks. Harbor's ag
 timeout bounds the observation loop; timeout/cancellation follows the same
 `DeadlineDockerEnvironment` stop path as direct Codex. A terminal Sapiens agent
 state is diagnostic; the independent verifier determines the Trial outcome.
+The adapter writes observation start and terminal decision lines to the Trial log.
+The decision line records safe turn/workload state names, whether `run_activity`
+was empty, and the consecutive quiet-tick count; an interrupted observation has
+no terminal decision line.
 
 `DeadlineDockerEnvironment` installs a cancellation callback that kills the main
 candidate container and confirms it is no longer running before cancelling the
