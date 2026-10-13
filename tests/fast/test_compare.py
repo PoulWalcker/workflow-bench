@@ -9,6 +9,7 @@ from typing import Literal
 import pytest
 from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
+from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.task.id import LocalTaskId
 from harbor.models.trial.config import AgentConfig, TaskConfig, TrialConfig
 from harbor.models.trial.result import (
@@ -65,11 +66,15 @@ def _trial(
     tokens: tuple[int | None, int | None, int | None] = (None, None, None),
     exception: str | None = None,
     artifacts_status: str = "ok",
+    verifier: Literal["finished", "failed", "skipped"] = "finished",
+    verifier_mode: Literal["separate", "shared"] = "separate",
 ) -> None:
-    """Write one Trial directory with Harbor's result and the real verifier output.
+    """Write one Trial directory with Harbor's result and an evaluation file.
 
-    ``criteria=None`` leaves no evaluation (the verifier did not produce one);
-    ``agent_sec=None`` means the agent never started.
+    ``criteria=None`` leaves no evaluation; ``agent_sec=None`` means the agent
+    never started. ``verifier`` is what Harbor recorded of its verifier phase:
+    ``failed`` began it without a verifier result, ``skipped`` never began it,
+    so an evaluation file then is not the verifier's.
     """
     trial_dir = job_dir / name
     (trial_dir / "verifier").mkdir(parents=True)
@@ -92,7 +97,13 @@ def _trial(
         agent_info=AgentInfo(name=harness, version=version, model_info=model_info),
         started_at=START,
         finished_at=START + timedelta(minutes=5),
+        verifier_environment_mode=VerifierEnvironmentMode(verifier_mode),
     )
+    if verifier != "skipped":
+        result.verifier = TimingInfo(
+            started_at=START + timedelta(minutes=4),
+            finished_at=START + timedelta(minutes=5),
+        )
     if exception is not None:
         result.exception_info = ExceptionInfo(
             exception_type=exception,
@@ -126,7 +137,7 @@ def _trial(
         )
     if criteria is not None:
         evaluation = write_evaluation(trial_dir / "verifier", criteria)
-        if evaluation["completeness"] == "complete":
+        if verifier == "finished" and evaluation["completeness"] == "complete":
             reward = 1.0 if evaluation["verdict"] == "pass" else 0.0
             result.verifier_result = VerifierResult(rewards={"reward": reward})
     (trial_dir / "result.json").write_text(result.model_dump_json(indent=4))
@@ -188,6 +199,7 @@ def test_each_trial_gets_one_outcome_and_missing_reward_is_not_zero(
         criteria=None,
         kwargs=kwargs,
         exception="VerifierTimeoutError",
+        verifier="failed",
     )
     # The answer was not collected, so the verifier's proven `fail` is not trusted.
     _trial(
@@ -233,6 +245,43 @@ def test_each_trial_gets_one_outcome_and_missing_reward_is_not_zero(
     assert pair["pass_rate"] == pytest.approx(1 / 3)
     assert pair["unknown_rate"] == pytest.approx(1 / 7)
     assert pair["infra_error_rate"] == pytest.approx(3 / 7)
+
+
+def test_evaluation_not_produced_by_a_finished_separate_verifier_is_infra_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "job-a")
+    # The candidate wrote a passing evaluation into the verifier directory
+    # mounted in its container; an agent error then made Harbor skip the verifier.
+    _trial(
+        job,
+        "a-skipped",
+        criteria=_criteria("pass"),
+        exception="RuntimeError",
+        verifier="skipped",
+    )
+    # A shared verifier runs where the candidate's processes can still write.
+    _trial(job, "b-shared", criteria=_criteria("pass"), verifier_mode="shared")
+    # The verifier environment failed to start, so it never cleared the
+    # directory: a complete evaluation without Harbor's verifier result.
+    _trial(
+        job,
+        "c-not-started",
+        criteria=_criteria("pass"),
+        exception="EnvironmentStartTimeoutError",
+        verifier="failed",
+    )
+
+    _, report = _compare([job], capsys)
+
+    [pair] = report["pairs"]
+    assert [
+        (trial["trial"], trial["outcome"], trial["reason"]) for trial in pair["trials"]
+    ] == [
+        ("a-skipped", "infra_error", "verifier_skipped"),
+        ("b-shared", "infra_error", "verifier_not_separate"),
+        ("c-not-started", "infra_error", "verifier_result_missing"),
+    ]
 
 
 def test_trials_are_grouped_by_task_and_configuration_with_median_metrics(

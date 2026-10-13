@@ -95,18 +95,18 @@ def _parser() -> argparse.ArgumentParser:
         default=60.0,
         help="Deadline for environment teardown and interruption (default: 60).",
     )
-    report = commands.add_parser(
+    compare_command = commands.add_parser(
         "compare",
         help="Report Trial outcomes per task and configuration from Harbor jobs.",
     )
-    report.add_argument(
+    compare_command.add_argument(
         "job_dirs",
         type=Path,
         nargs="+",
         metavar="job_dir",
         help="Harbor job directory (<jobs-dir>/<job-name>).",
     )
-    report.add_argument(
+    compare_command.add_argument(
         "--format",
         choices=("json", "markdown"),
         default="json",

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal, TypedDict, cast
 
 from harbor.models.job.config import JobConfig
+from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.trial.artifact_manifest import ArtifactManifest
 from harbor.models.trial.result import TrialResult
 
@@ -18,6 +19,8 @@ from workflow_bench.data import DataError, read_bytes, read_json, validate_contr
 LOGGER = logging.getLogger(__name__)
 
 type Outcome = Literal["pass", "fail", "unknown", "infra_error"]
+# Sortable identity; an optional part is (known, value) so unknown sorts first.
+type _Key = tuple[str | tuple[bool, str], ...]
 
 
 class Configuration(TypedDict):
@@ -134,6 +137,7 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
         DataError: A directory is not a Harbor job directory
             (``not_a_harbor_job``).
     """
+    LOGGER.info("phase=compare jobs=%d status=started", len(job_dirs))
     started = time.monotonic()
     trials: list[_Trial] = []
     incomplete: list[IncompleteTrial] = []
@@ -153,8 +157,8 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
                     {"job": job_dir.name, "trial": trial_dir.name, "reason": error.code}
                 )
                 continue
-            trials.append(_trial(job_dir.name, trial_dir, result))
-    groups: dict[tuple[str, ...], list[_Trial]] = {}
+            trials.append(_measure_trial(job_dir.name, trial_dir, result))
+    groups: dict[_Key, list[_Trial]] = {}
     for trial in trials:
         groups.setdefault(_pair_key(trial), []).append(trial)
     pairs = [_pair_report(groups[key]) for key in sorted(groups)]
@@ -175,7 +179,7 @@ def render_markdown(report: ComparisonReport) -> str:
     Per-Trial outcomes stay in the JSON report; unknown metrics print as
     ``unknown``.
     """
-    sections: dict[tuple[str, ...], list[PairReport]] = {}
+    sections: dict[_Key, list[PairReport]] = {}
     for pair in report["pairs"]:
         sections.setdefault(_configuration_key(pair["configuration"]), []).append(pair)
     lines = ["# Workflow Bench report"]
@@ -240,12 +244,16 @@ def _read_result(trial_dir: Path) -> TrialResult:
         raise DataError("result_invalid", trial_dir.name) from None
 
 
-def _trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
+def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
     outcome, reason = _classify(trial_dir, result)
     exception = result.exception_info
     execution = result.agent_execution
     agent_sec = None
-    if execution is not None and execution.started_at and execution.finished_at:
+    if (
+        execution is not None
+        and execution.started_at is not None
+        and execution.finished_at is not None
+    ):
         agent_sec = (execution.finished_at - execution.started_at).total_seconds()
     usage = result.agent_result
     return _Trial(
@@ -270,21 +278,33 @@ def _classify(trial_dir: Path, result: TrialResult) -> tuple[Outcome, str | None
     """Return the Trial's outcome class and, for ``infra_error``, its reason.
 
     Infrastructure failure covers a Trial whose agent never started, whose
-    artifacts were not collected and a missing or invalid evaluation. Any
-    other Trial, including one whose agent timed out or failed, takes the
-    evaluation verdict; Harbor's reward is ignored because an incomplete
-    evaluation has none.
+    artifacts were not collected, whose verifier did not run separately from
+    the candidate, and a missing or invalid evaluation. The candidate can
+    write the verifier directory, which only a started separate verifier
+    clears; so a pass or complete evaluation also needs Harbor's verifier
+    result, which a complete evaluation always yields. Any other Trial,
+    including one whose agent timed out or exited non-zero, takes the
+    evaluation verdict; Harbor's reward value is ignored because an
+    incomplete evaluation has none.
     """
     if result.agent_execution is None:
         return "infra_error", "setup_failed"
     if not _has_collected_artifacts(trial_dir):
         return "infra_error", "artifacts_failed"
+    if result.verifier is None:
+        return "infra_error", "verifier_skipped"
+    if result.verifier_environment_mode != VerifierEnvironmentMode.SEPARATE:
+        return "infra_error", "verifier_not_separate"
     try:
         evaluation = read_evaluation(trial_dir / "verifier" / "evaluation.json")
     except FileNotFoundError:
         return "infra_error", "evaluation_missing"
     except (OSError, DataError):
         return "infra_error", "evaluation_invalid"
+    if result.verifier_result is None and (
+        evaluation["verdict"] == "pass" or evaluation["completeness"] == "complete"
+    ):
+        return "infra_error", "verifier_result_missing"
     return evaluation["verdict"], None
 
 
@@ -337,7 +357,7 @@ def _reasoning(kwargs: Mapping[str, object]) -> str | None:
     return effort if isinstance(effort, str) else None
 
 
-def _pair_key(trial: _Trial) -> tuple[str, ...]:
+def _pair_key(trial: _Trial) -> _Key:
     return (
         trial.task,
         trial.task_checksum,
@@ -345,14 +365,17 @@ def _pair_key(trial: _Trial) -> tuple[str, ...]:
     )
 
 
-def _configuration_key(configuration: Configuration) -> tuple[str, ...]:
-    """Return a sortable identity of the configuration; unknown sorts first."""
+def _configuration_key(configuration: Configuration) -> _Key:
     return (
         configuration["harness"],
         configuration["harness_version"],
-        configuration["model"] or "",
-        configuration["reasoning"] or "",
+        _unknown_first(configuration["model"]),
+        _unknown_first(configuration["reasoning"]),
     )
+
+
+def _unknown_first(value: str | None) -> tuple[bool, str]:
+    return (False, "") if value is None else (True, value)
 
 
 def _pair_report(trials: Sequence[_Trial]) -> PairReport:
@@ -400,9 +423,13 @@ def _median(values: Sequence[float | None]) -> Median:
 def _configuration_title(configuration: Configuration) -> str:
     return (
         f"{configuration['harness']} {configuration['harness_version']}, "
-        f"model {configuration['model'] or 'unknown'}, "
-        f"reasoning {configuration['reasoning'] or 'unknown'}"
+        f"model {_or_unknown(configuration['model'])}, "
+        f"reasoning {_or_unknown(configuration['reasoning'])}"
     )
+
+
+def _or_unknown(value: str | None) -> str:
+    return "unknown" if value is None else value
 
 
 def _markdown_row(pair: PairReport) -> str:
