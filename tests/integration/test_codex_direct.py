@@ -68,9 +68,40 @@ def test_pinned_codex_empty_provider_is_evaluated_from_state(
     )
 
 
-@pytest.mark.parametrize("cancel", [False, True], ids=["timeout", "cancel"])
+@pytest.mark.parametrize(
+    "has_oversized_host_tree", [False, True], ids=["transfer", "existing-tree"]
+)
+def test_interrupted_session_recovery_rejects_oversized_inputs(
+    trivial_task: Path, tmp_path: Path, has_oversized_host_tree: bool
+) -> None:
+    executable = (
+        FAKE_CODEX
+        + f"\nhas_oversized_host_tree = {has_oversized_host_tree!r}\n"
+        + """
+sessions = Path(os.environ["CODEX_HOME"]) / "sessions"
+sessions.mkdir(parents=True, exist_ok=True)
+(sessions / "native.jsonl").write_text('{"type":"session_meta","payload":{}}\\n')
+if has_oversized_host_tree:
+    host_sessions = Path("/logs/agent/sessions")
+    host_sessions.mkdir()
+    for index in range(257):
+        (host_sessions / f"unrelated-{index}").touch()
+else:
+    with (sessions / "unrelated.bin").open("wb") as stream:
+        stream.truncate(40 * 1024 * 1024)
+Path("/logs/agent/child-started").write_text("ready")
+time.sleep(120)
+"""
+    )
+    task = _fake_task(trivial_task, tmp_path, executable)
+    job = _run_job(task, tmp_path, is_cancelled=True, timeout_seconds=60)
+    assert not list(job.glob("*/agent/sessions/**/*.jsonl"))
+    assert "session_recovery=unavailable" in next(job.glob("*/trial.log")).read_text()
+
+
+@pytest.mark.parametrize("is_cancelled", [False, True], ids=["timeout", "cancel"])
 def test_late_child_cannot_write_after_stop(
-    trivial_task: Path, tmp_path: Path, cancel: bool
+    trivial_task: Path, tmp_path: Path, is_cancelled: bool
 ) -> None:
     executable = (
         FAKE_CODEX
@@ -87,7 +118,10 @@ else:
     )
     task = _fake_task(trivial_task, tmp_path, executable)
     job = _run_job(
-        task, tmp_path, cancel=cancel, timeout_seconds=3 if not cancel else 60
+        task,
+        tmp_path,
+        is_cancelled=is_cancelled,
+        timeout_seconds=3 if not is_cancelled else 60,
     )
     assert list(job.glob("*/agent/child-started"))
     time.sleep(9)
@@ -120,8 +154,13 @@ def _fake_task(source: Path, directory: Path, executable: str) -> Path:
 
 
 def _run_job(
-    task: Path, directory: Path, *, cancel: bool = False, timeout_seconds: float = 10
+    task: Path,
+    directory: Path,
+    *,
+    is_cancelled: bool = False,
+    timeout_seconds: float = 10,
 ) -> Path:
+    """Run a model-free job; cancellation waits for the fixture child-started marker."""
     config = yaml.safe_load(EXAMPLE.read_text())
     config["tasks"] = [{"path": str(task)}]
     config["jobs_dir"] = str(directory / "jobs")
@@ -146,7 +185,7 @@ def _run_job(
             stderr=subprocess.STDOUT,
         )
         try:
-            if cancel:
+            if is_cancelled:
                 deadline = time.monotonic() + 120
                 while not list(job.glob("*/agent/child-started")):
                     if process.poll() is not None or time.monotonic() > deadline:
@@ -158,7 +197,7 @@ def _run_job(
             if process.poll() is None:
                 process.send_signal(signal.SIGINT)
                 process.wait(timeout=70)
-    assert process.returncode in ((0, 130) if cancel else (0,)), (
+    assert process.returncode in ((0, 130) if is_cancelled else (0,)), (
         directory / "harbor.log"
     ).read_text()
     return job

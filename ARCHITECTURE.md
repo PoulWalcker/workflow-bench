@@ -52,7 +52,7 @@ remain the source facts; reporting one configuration needs no comparison baselin
 | [harbor helpers](src/workflow_bench/harbor.py) | `DeadlineDockerEnvironment` bounds native stop and buffered/streamed collection cleanup. `_cleanup`, `LifecycleFacts`, `docker` and `assert_stopped` record or check Compose-project-scoped residual resources using bounded metadata queries. |
 
 Dependency direction: Sapiens integration → composer/data/contracts and Harbor;
-composer → data/contracts and Harbor; evaluation → data/contracts; mcp → data/contracts;
+composer → data/contracts, harbor helpers and Harbor; evaluation → data/contracts; mcp → data/contracts;
 cli → readiness, comparison and composer; readiness → comparison (evaluation reader);
 both → data/contracts and Harbor.
 Core modules do not import the Sapiens integration or application business rules.
@@ -90,9 +90,13 @@ paths/keys and `CODEX_FORCE_AUTH_JSON=FALSE` override ambient credentials. Upper
 `FALSE` avoids Harbor 0.24.0's text scrubber replacing JSON's lowercase `false`.
 MCP servers come from the task's native configuration; the trivial task needs none.
 On cancellation, `SessionSafeCodex` recovers only validated, bounded session files
-from the stopped container through Docker copy (10-second recovery deadline),
-because native Codex's final in-container copy can no longer execute. The Docker
-controls cover a fake executable's answer and private-file isolation,
+from the stopped container through `DeadlineDockerEnvironment` (10-second recovery
+deadline), because native Codex's final in-container copy can no longer execute.
+Docker copy streams an uncompressed archive into bounded memory (32 MiB payload
+plus 1 MiB archive overhead); oversized transfers are stopped without extracting
+anything to host disk. Before writing JSONL snapshots, validation rejects unsafe
+paths, links, special files, invalid JSON and trees beyond 256 entries/depth 8.
+The Docker controls cover a fake executable's answer and private-file isolation,
 real pinned Codex's native session parsing and state-based failure, and cessation
 of a detached late writer on timeout and SIGINT.
 

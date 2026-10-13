@@ -100,19 +100,31 @@ def test_preflight_malformed_protocol_is_a_safe_error(
     )
 
 
+@pytest.mark.parametrize("spend_control", [True, "true", 1, [], {"reached": True}])
 def test_preflight_respects_native_spend_control(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    spend_control: object,
 ) -> None:
     auth = _account_server(
         tmp_path,
         monkeypatch,
         {
             "ordinaryUsageAllowed": True,
-            "rateLimits": {"primary": {"usedPercent": 25}, "spendControlReached": True},
+            "rateLimits": {
+                "primary": {"usedPercent": 25},
+                "spendControlReached": spend_control,
+            },
         },
     )
     assert main(["preflight", "--auth-path", str(auth)]) == 1
-    assert json.loads(capsys.readouterr().out)["reason"] == "subscription_exhausted"
+    reason = (
+        "subscription_exhausted"
+        if spend_control is True
+        else "subscription_status_unavailable"
+    )
+    assert json.loads(capsys.readouterr().out) == {"allowed": False, "reason": reason}
 
 
 def _account_server(

@@ -34,6 +34,46 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         finally:
             self._is_stopping_writer = was_stopping
 
+    async def read_file_archive(self, source_path: str, *, max_bytes: int) -> bytes:
+        """Read a main-container path as a bounded, unextracted Docker tar archive.
+
+        Works after stop. Raises RuntimeError on unavailable or oversized input;
+        the cleanup deadline bounds transfer and subprocess reaping separately.
+        """
+        async with asyncio.timeout(self.cleanup_timeout_sec):
+            container = await self._run_docker_compose_command(
+                ["ps", "--all", "--quiet", MAIN_SERVICE_NAME]
+            )
+            container_id = (container.stdout or "").strip()
+            if not container_id or len(container_id.splitlines()) != 1:
+                raise RuntimeError("archive_container_unavailable")
+            process = await asyncio.create_subprocess_exec(
+                *self._engine_cmd("cp", f"{container_id}:{source_path}", "-"),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            content = bytearray()
+            try:
+                assert process.stdout is not None
+                while chunk := await process.stdout.read(
+                    min(65536, max_bytes + 1 - len(content))
+                ):
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise RuntimeError("archive_too_large")
+                await process.wait()
+                if process.returncode:
+                    raise RuntimeError("archive_unavailable")
+            finally:
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+                async with asyncio.timeout(self.cleanup_timeout_sec):
+                    await process.communicate()
+        return bytes(content)
+
     @override
     async def _collect_buffered_output(
         self,

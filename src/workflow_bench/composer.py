@@ -1,6 +1,7 @@
 """Codex composition at Harbor's installed-agent seam; no agent loop."""
 
 import asyncio
+import io
 import json
 import math
 import os
@@ -8,7 +9,9 @@ import selectors
 import shutil
 import stat
 import subprocess
+import tarfile
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TypedDict, override
@@ -25,13 +28,26 @@ from workflow_bench.data import (
     decode_json,
     read_json,
 )
+from workflow_bench.harbor import DeadlineDockerEnvironment
 
 MAX_SESSION_ENTRIES = 256
 MAX_SESSION_DEPTH = 8
+MAX_SESSION_ARCHIVE_BYTES = MAX_EVIDENCE_BYTES + 1024 * 1024
+
+
+class _AccountRequest(TypedDict):
+    """Native app-server request with a response correlation id."""
+
+    id: int
+    method: str
+    params: dict[str, JsonValue]
 
 
 class AllowanceWindow(TypedDict):
-    """Native included-usage window; absent duration/reset facts stay unknown."""
+    """Native usage window; absent duration/reset facts stay unknown.
+
+    resetsAt is seconds since the Unix epoch; windowDurationMins is minutes.
+    """
 
     usedPercent: float
     windowDurationMins: int | None
@@ -85,7 +101,7 @@ def read_codex_limits(auth_path: Path, *, timeout_sec: float) -> CodexAllowance:
         with selectors.DefaultSelector() as selector:
             selector.register(stdout, selectors.EVENT_READ)
 
-            def _request(message: dict[str, JsonValue]) -> JsonValue:
+            def _request(message: _AccountRequest) -> JsonValue:
                 nonlocal buffer
                 stdin.write((json.dumps(message) + "\n").encode())
                 stdin.flush()
@@ -157,27 +173,27 @@ class SessionSafeCodex(Codex):
             await super().run(instruction, environment, context)
         except asyncio.CancelledError:
             # Native Codex's finally uses exec, unavailable after confirmed stop.
-            # Docker copy can still read the stopped container, without credentials.
+            # Bound the stopped container's archive before materializing any files.
             try:
                 async with asyncio.timeout(10):
-                    with TemporaryDirectory(prefix="wb-interrupted-") as directory:
-                        recovered = Path(directory)
-                        await environment.download_dir(
-                            str(self._REMOTE_CODEX_HOME / "sessions"),
-                            recovered / "sessions",
-                        )
-                        _, snapshots, invalid = _session_snapshot(recovered)
-                        if not invalid and snapshots:
-                            sessions = self.logs_dir / "sessions"
-                            if sessions.is_symlink() or sessions.is_file():
-                                sessions.unlink()
-                            elif sessions.exists():
-                                shutil.rmtree(sessions)
-                            for reference, content in snapshots:
-                                target = self.logs_dir / reference
-                                target.parent.mkdir(parents=True, exist_ok=True)
-                                target.write_bytes(content)
-            except (OSError, RuntimeError, TimeoutError):
+                    if not isinstance(environment, DeadlineDockerEnvironment):
+                        raise RuntimeError("bounded_archive_unavailable")
+                    archive = await environment.read_file_archive(
+                        str(self._REMOTE_CODEX_HOME / "sessions"),
+                        max_bytes=MAX_SESSION_ARCHIVE_BYTES,
+                    )
+                    snapshots = _session_archive_snapshot(archive)
+                    if snapshots:
+                        sessions = self.logs_dir / "sessions"
+                        if sessions.is_symlink() or sessions.is_file():
+                            sessions.unlink()
+                        elif sessions.exists():
+                            _, _, invalid = _session_snapshot(self.logs_dir)
+                            if invalid:
+                                raise DataError("unsafe_session", "sessions")
+                            shutil.rmtree(sessions)
+                        _write_session_snapshot(self.logs_dir, snapshots)
+            except (OSError, RuntimeError, TimeoutError, DataError, tarfile.TarError):
                 self.logger.warning("phase=agent session_recovery=unavailable")
             raise
 
@@ -188,10 +204,7 @@ class SessionSafeCodex(Codex):
             return None
         with TemporaryDirectory(prefix="wb-session-") as directory:
             safe_logs = Path(directory)
-            for reference, content in snapshots:
-                target = safe_logs / reference
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
+            _write_session_snapshot(safe_logs, snapshots)
             return super().convert_trajectory(safe_logs)
 
     @override
@@ -202,10 +215,7 @@ class SessionSafeCodex(Codex):
             with TemporaryDirectory(prefix="wb-session-") as directory:
                 self.logs_dir = Path(directory)
                 try:
-                    for reference, content in snapshots:
-                        target = self.logs_dir / reference
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_bytes(content)
+                    _write_session_snapshot(self.logs_dir, snapshots)
                     super().populate_context_post_run(context)
                 finally:
                     self.logs_dir = original
@@ -284,6 +294,65 @@ def collect_codex_usage(
     return usage
 
 
+def _write_session_snapshot(
+    logs: Path, snapshots: Sequence[tuple[Path, bytes]]
+) -> None:
+    """Materialize validated relative references beneath a trusted logs directory."""
+    for reference, content in snapshots:
+        target = logs / reference
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+
+
+def _session_archive_snapshot(archive: bytes) -> list[tuple[Path, bytes]]:
+    """Validate a bounded uncompressed archive before writing any session files.
+
+    Reject links, special files, duplicate/escaping paths and oversized trees with
+    DataError. Only regular JSONL files become snapshots; other files stay in memory.
+    """
+    snapshots = []
+    references: set[Path] = set()
+    remaining = MAX_EVIDENCE_BYTES
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as stream:
+        for member in stream:
+            reference = Path(member.name)
+            if (
+                reference.is_absolute()
+                or ".." in reference.parts
+                or not reference.parts
+                or reference.parts[0] != "sessions"
+                or reference in references
+                or len(reference.parts)
+                > MAX_SESSION_DEPTH + (1 if member.isdir() else 2)
+                or not (member.isdir() or member.isreg())
+                or member.sparse is not None
+            ):
+                raise DataError("unsafe_session", "sessions")
+            references.add(reference)
+            if len(references - {Path("sessions")}) > MAX_SESSION_ENTRIES:
+                raise DataError("session_tree_too_large", "sessions")
+            if member.isdir() or not member.name.endswith(".jsonl"):
+                continue
+            if member.size < 0 or member.size > remaining:
+                raise DataError("session_too_large", "sessions")
+            content_stream = stream.extractfile(member)
+            if content_stream is None:
+                raise DataError("unsafe_session", "sessions")
+            with content_stream:
+                content = content_stream.read(remaining + 1)
+            _validate_session_content(content)
+            remaining -= len(content)
+            snapshots.append((reference, content))
+    return sorted(snapshots)
+
+
+def _validate_session_content(content: bytes) -> None:
+    """Raise DataError unless every nonblank JSONL line is a strict JSON object."""
+    for line in content.splitlines():
+        if line.strip() and not isinstance(decode_json(line, "sessions"), dict):
+            raise DataError("invalid_session", "sessions")
+
+
 def _read_session(name: str, directory: int, limit: int) -> bytes:
     descriptor = os.open(
         name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory
@@ -325,11 +394,7 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
                         content = _read_session(child.name, directory, remaining)
                         # Native Harbor uses permissive JSON and unbounded line reads.
                         # Give it only checked, finite regular-file snapshots.
-                        for line in content.splitlines():
-                            if line.strip() and not isinstance(
-                                decode_json(line, "sessions"), dict
-                            ):
-                                raise DataError("invalid_session", "sessions")
+                        _validate_session_content(content)
                         remaining -= len(content)
                         snapshots.append((reference, content))
                     except (OSError, DataError):
@@ -365,6 +430,7 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
 
 
 def _allowance_report(account_response: JsonValue) -> CodexAllowance:
+    """Return available usage; reject exhausted or malformed facts with DataError."""
     if (
         isinstance(account_response, dict)
         and account_response.get("ordinaryUsageAllowed") is False
@@ -385,7 +451,12 @@ def _allowance_report(account_response: JsonValue) -> CodexAllowance:
     )
     if not isinstance(bucket, dict) or not isinstance(bucket.get("primary"), dict):
         raise DataError("subscription_status_unavailable", "codex_account")
-    if bucket.get("spendControlReached") is True:
+    spend_control_reached = bucket.get("spendControlReached")
+    if spend_control_reached is not None and not isinstance(
+        spend_control_reached, bool
+    ):
+        raise DataError("subscription_status_unavailable", "codex_account")
+    if spend_control_reached is True:
         raise DataError("subscription_exhausted", "codex_account")
     if bucket.get("rateLimitReachedType") is not None:
         raise DataError("subscription_exhausted", "codex_account")
@@ -402,6 +473,7 @@ def _allowance_report(account_response: JsonValue) -> CodexAllowance:
 
 
 def _allowance_window(window: JsonValue) -> AllowanceWindow | None:
+    """Preserve an absent window; reject malformed or exhausted ones with DataError."""
     if window is None:
         return None
     if not isinstance(window, dict):
