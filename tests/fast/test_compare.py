@@ -280,7 +280,10 @@ def test_transcript_redacts_common_secrets_and_invalid_session_counters(
                 "Authorization: Basic dXNlcjpwYXNz; "
                 "AWS_ACCESS_KEY_ID=AKIAEXAMPLE00000000; "
                 'account ID is 123456789; password: "a secret phrase"; '
-                "password: another secret phrase",
+                "password: another secret phrase; "
+                "api_token=DEMO_API_TOKEN_123; token=DEMO_TOKEN_123; "
+                "Authorization: token DEMO_AUTH_TOKEN_123; "
+                "account identifier is 987654321",
             ),
             {
                 "timestamp": "2026-01-01T00:00:01Z",
@@ -309,6 +312,10 @@ def test_transcript_redacts_common_secrets_and_invalid_session_counters(
         "another secret phrase",
         "secret phrase",
         "sk-secret123456",
+        "DEMO_API_TOKEN_123",
+        "DEMO_TOKEN_123",
+        "DEMO_AUTH_TOKEN_123",
+        "987654321",
     ):
         assert secret not in output
 

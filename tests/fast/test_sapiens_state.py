@@ -41,7 +41,10 @@ def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
                     "Authorization: Basic dXNlcjpwYXNz; "
                     "AWS_ACCESS_KEY_ID=AKIAEXAMPLE00000000; "
                     'account ID is 123456789; password: "a secret phrase"; '
-                    "password: another secret phrase"
+                    "password: another secret phrase; "
+                    "api_token=DEMO_API_TOKEN_123; token=DEMO_TOKEN_123; "
+                    "Authorization: token DEMO_AUTH_TOKEN_123; "
+                    "account identifier is 987654321"
                 ),
                 "Done",
                 "done",
@@ -96,7 +99,7 @@ def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
     snapshot = json.loads(output.read_text())
     content = output.read_text()
     assert snapshot["agents"] == [{"id": "chief", "name": "Chief", "role": "admin"}]
-    assert snapshot["turns"][0]["input"].count("[REDACTED]") == 6
+    assert snapshot["turns"][0]["input"].count("[REDACTED]") == 10
     assert snapshot["workloads"][0]["calls"][1]["addressedTo"] == "sapi_x"
     assert snapshot["workloads"][0]["decisions"][0]["transition"] == {
         "before": "Delegation",
@@ -117,6 +120,10 @@ def test_state_snapshot_keeps_chronology_without_credentials_or_sqlite_files(
             "a secret phrase",
             "another secret phrase",
             "secret phrase",
+            "DEMO_API_TOKEN_123",
+            "DEMO_TOKEN_123",
+            "DEMO_AUTH_TOKEN_123",
+            "987654321",
         )
     )
     assert not output.with_name("corpora.sqlite3").exists()
