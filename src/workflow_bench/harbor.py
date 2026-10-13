@@ -153,8 +153,60 @@ class DeadlineDockerEnvironment(DockerEnvironment):
 
 @dataclass
 class LifecycleFacts:
+    """Safe cleanup errors and residual resource references for one lifecycle."""
+
     cleanup_errors: list[str] = field(default_factory=list)
     residual_resources: list[str] = field(default_factory=list)
+
+
+async def docker(*arguments: str) -> str:
+    """A bounded Docker metadata query, never a second lifecycle implementation."""
+    process = await asyncio.create_subprocess_exec(
+        "docker",
+        *arguments,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        async with asyncio.timeout(10):
+            stdout, _ = await process.communicate()
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    if process.returncode:
+        raise RuntimeError("docker_metadata_failed")
+    return stdout.decode().strip()
+
+
+async def assert_stopped(
+    project: str, *, services: set[str] | None = None, deleted: bool = False
+) -> None:
+    """Raise if requested services remain, or deleted resources survive."""
+    arguments = (
+        ["ps"]
+        + (["-a"] if deleted else [])
+        + [
+            "--filter",
+            f"label=com.docker.compose.project={project}",
+            "--format",
+            '{{.Label "com.docker.compose.service"}}',
+        ]
+    )
+    active = set((await docker(*arguments)).splitlines())
+    if active if services is None else active & services:
+        raise RuntimeError("stop_unconfirmed")
+    if deleted:
+        for kind in ("network", "volume"):
+            if await docker(
+                kind,
+                "ls",
+                "--filter",
+                f"label=com.docker.compose.project={project}",
+                "--format",
+                "{{.Name}}",
+            ):
+                raise RuntimeError("cleanup_incomplete")
 
 
 async def _cleanup(
@@ -193,52 +245,3 @@ async def _cleanup(
     if residuals:
         LOGGER.warning("phase=cleanup project=%s result=incomplete", project)
     return not residuals
-
-
-async def docker(*arguments: str) -> str:
-    """A bounded Docker metadata query, never a second lifecycle implementation."""
-    process = await asyncio.create_subprocess_exec(
-        "docker",
-        *arguments,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        async with asyncio.timeout(10):
-            stdout, _ = await process.communicate()
-    finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
-    if process.returncode:
-        raise RuntimeError("docker_metadata_failed")
-    return stdout.decode().strip()
-
-
-async def assert_stopped(
-    project: str, *, services: set[str] | None = None, deleted: bool = False
-) -> None:
-    arguments = (
-        ["ps"]
-        + (["-a"] if deleted else [])
-        + [
-            "--filter",
-            f"label=com.docker.compose.project={project}",
-            "--format",
-            '{{.Label "com.docker.compose.service"}}',
-        ]
-    )
-    active = set((await docker(*arguments)).splitlines())
-    if active if services is None else active & services:
-        raise RuntimeError("stop_unconfirmed")
-    if deleted:
-        for kind in ("network", "volume"):
-            if await docker(
-                kind,
-                "ls",
-                "--filter",
-                f"label=com.docker.compose.project={project}",
-                "--format",
-                "{{.Name}}",
-            ):
-                raise RuntimeError("cleanup_incomplete")

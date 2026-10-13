@@ -6,6 +6,7 @@ import pytest
 
 @pytest.fixture
 def public_tools_file(tmp_path: Path) -> Path:
+    """Write a public tool contract for stdio transport tests."""
     arguments_schema = {
         "type": "object",
         "properties": {"item": {"type": "string"}},

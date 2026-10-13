@@ -13,6 +13,7 @@ FIELDS = ("item_count", "total_cents")
 
 
 def main() -> None:
+    """Write the private basket criteria and derived evaluation for Harbor."""
     expected = read_json(EXPECTED_PATH, "expected")
     if not isinstance(expected, dict):
         raise DataError("invalid_expected", "expected")

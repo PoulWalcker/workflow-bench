@@ -2,7 +2,7 @@
 # Base images, the Debian package and the Codex CLI are pinned here only.
 
 # Build-only stage: npm resolves Codex's platform package; only its output is kept.
-# Codex 0.162.1 was the latest stable release when pinned and meets Sapiens' >= 0.156.1.
+# Sapiens requires Codex >= 0.156.1.
 FROM node:22.23.3-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa AS codex
 RUN npm install --global --prefix /opt/codex --no-audit --no-fund @openai/codex@0.162.1
 

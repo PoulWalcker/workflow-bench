@@ -33,7 +33,6 @@ TOP_LEVEL_ENTRIES = frozenset(
 )
 LEVELS = ("L1", "L2", "L3a", "L3b")
 HORIZONS = ("single", "repeated")
-# Each control agent and the verdict a ready task must give it.
 CONTROLS = (("oracle", "pass"), ("nop", "fail"))
 ENVIRONMENT_IMPORT_PATH = "workflow_bench.harbor:DeadlineDockerEnvironment"
 PROGRESS_INTERVAL_SEC = 30.0
@@ -76,6 +75,7 @@ class ReadinessReport:
 
     @property
     def is_ready(self) -> bool:
+        """Return whether all readiness checks found no reason to reject the task."""
         return not self.reasons
 
 
@@ -129,12 +129,9 @@ def structure_reasons(task_dir: Path) -> list[str]:
 def helper_reasons(task_dir: Path) -> list[str]:
     """Return why the task's base image may not carry this package's helper.
 
-    Separate verifiers import the evaluation helper from the image, so a stale
-    copy would silently apply outdated evaluation logic. The base image is the
-    last ``FROM`` of ``environment/Dockerfile``; it is inspected locally, never
-    pulled. ``stale:agents_helper`` means an installed helper file differs from
-    this package; ``unverified:agents_helper`` means the image could not be
-    inspected.
+    The last Dockerfile ``FROM`` is inspected locally, never pulled.
+    ``stale:agents_helper`` means its helper differs from this checkout;
+    ``unverified:agents_helper`` means inspection failed.
     """
     image = _base_image(task_dir)
     image_python = [

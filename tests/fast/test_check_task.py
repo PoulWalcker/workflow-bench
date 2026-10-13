@@ -13,6 +13,7 @@ TRIVIAL_TASK = Path(__file__).resolve().parents[2] / "tasks" / "l1-basket-total"
 
 @pytest.fixture
 def task_dir(tmp_path: Path) -> Path:
+    """Copy the trivial task for structure rejection cases."""
     copy = tmp_path / "task"
     shutil.copytree(TRIVIAL_TASK, copy, ignore=shutil.ignore_patterns("__pycache__"))
     return copy

@@ -109,6 +109,8 @@ class IncompleteTrial(TypedDict):
 
 
 class ComparisonReport(TypedDict):
+    """Reported pairs and Trials without a readable Harbor result."""
+
     pairs: list[PairReport]
     incomplete_trials: list[IncompleteTrial]
 
@@ -277,15 +279,9 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
 def _classify(trial_dir: Path, result: TrialResult) -> tuple[Outcome, str | None]:
     """Return the Trial's outcome class and, for ``infra_error``, its reason.
 
-    Infrastructure failure covers a Trial whose agent never started, whose
-    artifacts were not collected, whose verifier did not run separately from
-    the candidate, and a missing or invalid evaluation. The candidate can
-    write the verifier directory, which only a started separate verifier
-    clears; so a pass or complete evaluation also needs Harbor's verifier
-    result, which a complete evaluation always yields. Any other Trial,
-    including one whose agent timed out or exited non-zero, takes the
-    evaluation verdict; Harbor's reward value is ignored because an
-    incomplete evaluation has none.
+    A pass or complete evaluation requires Harbor's verifier result because
+    the candidate can write that directory until a separate verifier starts.
+    Agent timeout or non-zero exit does not override a trustworthy verdict.
     """
     if result.agent_execution is None:
         return "infra_error", "setup_failed"

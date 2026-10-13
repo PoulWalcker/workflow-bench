@@ -188,8 +188,8 @@ class SessionSafeCodex(Codex):
                         if sessions.is_symlink() or sessions.is_file():
                             sessions.unlink()
                         elif sessions.exists():
-                            _, _, invalid = _session_snapshot(self.logs_dir)
-                            if invalid:
+                            _, _, has_invalid_entry = _session_snapshot(self.logs_dir)
+                            if has_invalid_entry:
                                 raise DataError("unsafe_session", "sessions")
                             shutil.rmtree(sessions)
                         _write_session_snapshot(self.logs_dir, snapshots)
@@ -200,8 +200,8 @@ class SessionSafeCodex(Codex):
     @override
     def convert_trajectory(self, logs_dir: Path) -> Trajectory | None:
         """Parse validated sessions, returning None for invalid or absent logs."""
-        _, snapshots, invalid = _session_snapshot(logs_dir)
-        if invalid or not snapshots:
+        _, snapshots, has_invalid_entry = _session_snapshot(logs_dir)
+        if has_invalid_entry or not snapshots:
             return None
         with TemporaryDirectory(prefix="wb-session-") as directory:
             safe_logs = Path(directory)
@@ -217,8 +217,8 @@ class SessionSafeCodex(Codex):
         missing token and cost measurements remain unknown.
         """
         original = self.logs_dir
-        _, snapshots, invalid = _session_snapshot(original)
-        if not invalid and snapshots:
+        _, snapshots, has_invalid_entry = _session_snapshot(original)
+        if not has_invalid_entry and snapshots:
             with TemporaryDirectory(prefix="wb-session-") as directory:
                 self.logs_dir = Path(directory)
                 try:
@@ -236,14 +236,14 @@ def collect_codex_usage(
     logs: Path, *, prices: dict[str, float] | None = None
 ) -> dict[str, JsonValue]:
     """Keep raw refs; one session's last totals take precedence over turn events."""
-    raw_refs, snapshots, malformed = _session_snapshot(logs)
+    raw_refs, snapshots, has_invalid_event = _session_snapshot(logs)
     totals = None
-    if len(snapshots) == 1 and not malformed:
+    if len(snapshots) == 1 and not has_invalid_event:
         try:
             lines = snapshots[0][1].decode("utf-8").splitlines()
         except (OSError, UnicodeError, DataError):
             lines = []
-            malformed = True
+            has_invalid_event = True
         for line in lines:
             try:
                 event = json.loads(line)
@@ -258,8 +258,8 @@ def collect_codex_usage(
                     ):
                         totals = info["total_token_usage"]
             except (ValueError, AttributeError, TypeError):
-                malformed = True
-    if malformed:
+                has_invalid_event = True
+    if has_invalid_event:
         totals = None
     usage = {
         "source": "native_session_last_cumulative",
@@ -388,11 +388,11 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
     snapshots = []
     entries = 0
     remaining = MAX_EVIDENCE_BYTES
-    invalid = False
+    has_invalid_entry = False
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
     def _visit(directory: int, relative: Path, depth: int) -> None:
-        nonlocal entries, remaining, invalid
+        nonlocal entries, remaining, has_invalid_entry
         if depth > MAX_SESSION_DEPTH:
             raise DataError("session_tree_too_large", "sessions")
         with os.scandir(directory) as children:
@@ -411,7 +411,7 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
                         remaining -= len(content)
                         snapshots.append((reference, content))
                     except (OSError, DataError):
-                        invalid = True
+                        has_invalid_entry = True
                 elif child.is_dir(follow_symlinks=False):
                     descriptor = os.open(child.name, flags, dir_fd=directory)
                     try:
@@ -420,7 +420,7 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
                         os.close(descriptor)
                 elif child.is_symlink():
                     references.append(reference.as_posix())
-                    invalid = True
+                    has_invalid_entry = True
 
     try:
         descriptor = os.open(logs, flags)
@@ -436,10 +436,10 @@ def _session_snapshot(logs: Path) -> tuple[list[str], list[tuple[Path, bytes]], 
         finally:
             os.close(descriptor)
     except FileNotFoundError:
-        invalid = bool(references)
+        has_invalid_entry = bool(references)
     except (OSError, DataError):
-        invalid = True
-    return sorted(references), sorted(snapshots), invalid
+        has_invalid_entry = True
+    return sorted(references), sorted(snapshots), has_invalid_entry
 
 
 def _allowance_report(account_response: JsonValue) -> CodexAllowance:

@@ -1,5 +1,4 @@
 #!/bin/sh
-# Proves the task is solvable from the public instruction alone.
 set -eu
 python3 - <<'SOLVE'
 import json
