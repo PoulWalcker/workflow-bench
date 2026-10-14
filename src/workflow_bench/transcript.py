@@ -136,7 +136,7 @@ def render_trial_transcript(
         f"Reasoning summary setting: {summary_setting}",
         f"steps with a reasoning summary: {summary_steps} of {step_count}",
     ]
-    if summary_setting != "none" and observed_summary_steps == 0:
+    if summary_setting != "none" and summary_steps == 0:
         lines.append("reasoning summaries: unavailable")
     evaluation = summary["evaluation"]
     lines += ["", "## Verifier"]

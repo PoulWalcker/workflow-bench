@@ -336,7 +336,7 @@ def test_transcript_marks_sapiens_state_only_summary_as_unknown(
     assert "Reasoning summary: [unknown: no aligned Codex session]" in output
     assert "Reasoning summary setting: unknown" in output
     assert "steps with a reasoning summary: unknown of 1" in output
-    assert "reasoning summaries: unavailable" in output
+    assert "reasoning summaries: unavailable" not in output
 
 
 def test_transcript_marks_codex_summary_count_unknown_without_sessions(
@@ -354,6 +354,7 @@ def test_transcript_marks_codex_summary_count_unknown_without_sessions(
     assert "[missing: Codex sessions (not collected)]" in output
     assert "steps with a reasoning summary: unknown of unknown" in output
     assert "steps with a reasoning summary: 0 of 0" not in output
+    assert "reasoning summaries: unavailable" not in output
 
 
 def test_transcript_marks_summary_unknown_when_session_has_no_response(
@@ -370,6 +371,7 @@ def test_transcript_marks_summary_unknown_when_session_has_no_response(
     output = capsys.readouterr().out
     assert "Reasoning summary: [unknown: no assistant response]" in output
     assert "steps with a reasoning summary: unknown of 1" in output
+    assert "reasoning summaries: unavailable" not in output
 
 
 def test_transcript_marks_partial_sapiens_summary_evidence_unknown(

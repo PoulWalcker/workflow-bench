@@ -208,8 +208,8 @@ best-effort-masked reasoning summary, a no-summary marker when the response is
 readable, or an unknown marker when response evidence is missing. A Trial footer
 shows the requested setting from the saved Trial config (or `unknown`) and the
 number of steps with a summary (also `unknown` when sessions are missing or
-incomplete). It shows an unavailable marker when no summary appears
-and the setting is not `none`. Encrypted reasoning is never shown. Sapiens
+incomplete). It shows an unavailable marker when the measured summary count is
+zero and the setting is not `none`. Encrypted reasoning is never shown. Sapiens
 captures a bounded state snapshot in its Harbor agent log for speaker names,
 delegations and transitions. Older Trials without that snapshot show missing-data
 markers. Node prompts show a short excerpt by default; add `--full-prompts` to
