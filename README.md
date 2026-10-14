@@ -268,6 +268,21 @@ These three attempts per task are descriptive, not a general reliability estimat
 The public IFEval, LiveBench and AIME instances may be present in model training
 data; the two logic grids were generated for this run.
 
+## First L2 report (2026-10-14)
+
+The five-task L2 run completed 30 planned Trials in 15 jobs: Sapiens passed
+12/15 and direct Codex passed 13/15. Both used `openai/gpt-6.1-sol`, base
+reasoning `medium`, summaries `auto`, web search disabled, the same 1800-second
+agent limit and provider allowlist, and Codex CLI 0.162.1. Sapiens used pinned
+revision `71e93cb3de00183c263ec440919b313cf92ed8af` and delegated in 0/15
+assessed Trials. The report also preserves two earlier cancelled `infra_error`
+Trials that started before required checks; they are excluded from pass rates and
+the procedural violation is documented in the ignored local evidence at
+`runs/m3-07/`. Reproducible reports are `runs/m3-07-report.json` and
+`runs/m3-07-report.md`. These three attempts per task are descriptive. The
+public Terminal-Bench tasks may be present in model training data, and their
+rebased task conditions differ from the published benchmark.
+
 ## Navigation
 
 | Document | Owner |
