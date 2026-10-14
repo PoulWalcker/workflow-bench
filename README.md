@@ -196,11 +196,20 @@ uv run --locked wb compare --transcript "$PWD"/runs/m1b-05-sapiens/sapiens-live-
 ```
 
 The first command prints a JSON report and exits 0: one outcome per Trial and, per
-task and configuration, counts, pass rate and medians. With the readiness controls
-above it shows `oracle` with pass rate 1.0 and `nop` with 0.0. A directory that is not
-a Harbor job exits 2. `--format summary` prints one JSON record per Trial with native
-phase timing, the same outcome class as the report, verifier criteria, token counts,
-artifact status and paths to diagnostic files.
+task and configuration, counts, pass rate over `pass`/`fail`, `pass_hat_k` for fixed
+`k = 3` (null below three valid Trials), failed and unknown criterion counts, session
+effort and reasoning-summary presence, and medians. Configuration includes the
+requested reasoning-summary and web-search settings. Unknown and infrastructure
+outcomes remain separate. When a task has at least two configurations, the report
+labels their comparison `comparable` or lists all reason codes for unequal or missing
+conditions; it gives no better/worse verdict. The per-level section reports covered
+tasks, mean task pass rate over those tasks, unknown/infra counts and criterion failures.
+Level is `unknown` if the recorded task directory is missing or its Harbor digest no
+longer matches the Trial lock. Markdown presents the same descriptive metrics.
+With the readiness controls above, `oracle` has pass rate 1.0 and `nop` has 0.0. A
+directory that is not a Harbor job exits 2. `--format summary` prints one JSON record
+per Trial with native phase timing, the same outcome class as the report, verifier
+criteria, token counts, artifact status and paths to diagnostic files.
 `--transcript` prints a read-only Markdown conversation for each saved Trial: the
 task, Sapiens decision nodes or Codex messages, tool calls and results, time and
 tokens when recorded, and the verifier result. Each step shows a bounded,

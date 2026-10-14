@@ -4,6 +4,8 @@ Exact-value masking applies only to exported Sapiens state. Check transcripts
 before sharing them.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -11,10 +13,12 @@ import stat
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
-from workflow_bench.comparison import SummaryReport, TrialSummary
 from workflow_bench.data import DataError, decode_json, read_json
+
+if TYPE_CHECKING:
+    from workflow_bench.comparison import SummaryReport, TrialSummary
 
 _MAX_SESSION_BYTES = 4 * 1024 * 1024
 _MAX_SESSION_COUNT = 256
@@ -77,7 +81,7 @@ def render_trial_transcript(
     """Show one Trial's conversation and independently recorded verifier result."""
     agent_dir = trial_dir / "agent"
     state, state_marker = _read_state(agent_dir / "sapiens-state.json")
-    sessions, session_marker = _read_sessions(agent_dir / "sessions")
+    sessions, session_marker = read_sessions(agent_dir / "sessions")
     is_sapiens = (
         _harness_name(trial_dir) == "sapiens"
         or state is not None
@@ -213,7 +217,8 @@ def _harness_name(trial_dir: Path) -> str | None:
     return name if isinstance(name, str) else None
 
 
-def _read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
+def read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
+    """Read saved Codex sessions within the transcript's safety bounds."""
     if not directory.is_dir() or directory.is_symlink():
         return [], "not collected"
     try:
