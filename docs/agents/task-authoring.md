@@ -52,6 +52,12 @@ Also set `[environment] network_mode` explicitly (`no-network` unless the task n
 service) and keep Harbor's other timeouts finite. Model-provider access belongs to the run's
 configuration, not the task.
 
+For a task derived from an external benchmark, keep provenance in `[metadata]`: benchmark
+name, pinned instance key, dataset URL and revision, checker source URL and commit, license,
+attribution, and deviations from the original prompt or evaluation. Use a neutral task
+directory name and keep the source name out of `instruction.md` so the task does not cue recall
+of a published answer. Review checks this convention; `wb check-task` does not enforce it.
+
 ## Environment and services
 
 `environment/Dockerfile` builds `FROM` the shared `agents` image (tag in

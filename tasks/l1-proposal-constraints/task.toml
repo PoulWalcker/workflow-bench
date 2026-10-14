@@ -1,0 +1,26 @@
+schema_version = "1.4"
+artifacts = ["/work/output"]
+
+[metadata]
+level = "L1"
+horizon = "single"
+benchmark = "IFEval"
+instance_key = "1300"
+dataset_url = "https://huggingface.co/datasets/google/IFEval"
+dataset_revision = "966cd89545d6b6acfd7638bc708b98261ca58e84"
+checker_source_url = "https://github.com/google-research/google-research/blob/e6890f85757dd84e27ca6df2dd30651dafad28e0/instruction_following_eval/instructions.py"
+checker_commit = "e6890f85757dd84e27ca6df2dd30651dafad28e0"
+license = "Apache-2.0"
+attribution = "Google Research IFEval dataset and instruction-following evaluation checker"
+deviations = "Answer written to /work/output/response.md; strict mode only"
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0
