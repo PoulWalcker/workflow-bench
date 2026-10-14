@@ -1,0 +1,30 @@
+schema_version = "1.4"
+artifacts = ["/work/output"]
+
+[metadata]
+level = "L1"
+horizon = "single"
+benchmark = "LiveBench"
+category = "data_analysis"
+task = "tablejoin"
+question_id = "d89584191190995d5cb7307c938dbfb201e3af17ed7f666c2afae0fe2ad55985"
+release_date = "2024-06-24"
+dataset_url = "https://huggingface.co/datasets/livebench/data_analysis"
+dataset_revision = "31b9661ff678df9958e2f7fa228427f4c858c1a1"
+checker_source_url = "https://github.com/LiveBench/LiveBench/blob/84c46678ef4760a62941e327ea03d22054293899/livebench/process_results/data_analysis/tablejoin/utils.py"
+checker_commit = "84c46678ef4760a62941e327ea03d22054293899"
+license = "Apache-2.0"
+attribution = "LiveBench data_analysis dataset and its original tablejoin question"
+deviations = "The two prompt tables are CSV files; the answer is a JSON file instead of a Python dictionary reply; verdict requires the exact mapping instead of LiveBench pair scoring."
+contamination_risk = "The public 2024-06-24 question and answer may be present in model training data; this task does not control for contamination."
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0
