@@ -138,7 +138,7 @@ def _run_case(case: Case, candidate: bytes, runtime_root: Path) -> Criterion:
                     cwd=working_dir,
                     stdout=stdout,
                     stderr=stderr,
-                    env={**os.environ, "LD_LIBRARY_PATH": "/usr/local/lib"},
+                    env={"LD_LIBRARY_PATH": "/usr/local/lib"},
                     start_new_session=True,
                     preexec_fn=partial(
                         _drop_privileges, runtime_root, working_dir.name
