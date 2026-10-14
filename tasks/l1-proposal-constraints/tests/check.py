@@ -33,15 +33,17 @@ def main() -> None:
             answer is not None and len(re.findall(r"\w+", answer)) >= 250,
         ),
     ):
+        if answer is None:
+            reason_code = "no_answer"
+        elif follows_rule:
+            reason_code = "pass"
+        else:
+            reason_code = "rule_failed"
         criteria.append(
             {
                 "criterion_id": criterion_id,
                 "status": "pass" if follows_rule else "fail",
-                "reason_code": "no_answer"
-                if answer is None
-                else "pass"
-                if follows_rule
-                else "rule_failed",
+                "reason_code": reason_code,
             }
         )
     evaluation = write_evaluation(VERIFIER_DIR, criteria)
