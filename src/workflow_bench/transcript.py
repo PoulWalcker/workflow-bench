@@ -219,11 +219,12 @@ def read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str |
 
 
 def read_sapiens_state(path: Path) -> tuple[SapiensState | None, str | None]:
-    """Read a bounded saved snapshot, returning a safe marker when unavailable.
+    """Read a bounded saved snapshot, returning None as marker when valid.
 
-    A missing file has marker ``not collected``. Malformed JSON has marker
-    ``invalid JSON``; invalid structure has ``invalid``. Unsafe or unreadable
-    files have marker ``unreadable``.
+    A missing, non-file or symlink path has marker ``not collected``. Files
+    exceeding the size limit have ``too large``; unsafe or unreadable files
+    have ``unreadable``. Malformed JSON has ``invalid JSON``; invalid structure
+    has ``invalid``.
     """
     if not path.is_file() or path.is_symlink():
         return None, "not collected"
@@ -245,7 +246,7 @@ def read_sapiens_state(path: Path) -> tuple[SapiensState | None, str | None]:
         ):
             return None, "invalid"
     truncated = state.get("truncated")
-    if truncated is not None and (
+    if "truncated" in state and (
         not isinstance(truncated, dict)
         or not all(
             key in {"agents", "turns", "workloads", "calls", "decisions"}

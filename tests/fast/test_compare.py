@@ -421,6 +421,42 @@ def test_compare_marks_malformed_decision_nodes_unknown(
     assert "a|injected" not in capsys.readouterr().out
 
 
+def test_compare_marks_invalid_truncation_metadata_unknown(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "invalid-truncation", criteria=_criteria("pass"), harness="sapiens")
+    _state(
+        job,
+        "invalid-truncation",
+        {
+            "agents": [{"id": "chief"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [{"addressedTo": "chief", "causedBy": None}],
+                    "decisions": [{"agent": "chief", "node": "Execution"}],
+                }
+            ],
+            "truncated": None,
+        },
+    )
+    status, report = _compare([job], capsys)
+    assert status == 0
+    assert report["pairs"][0]["trials"][0]["delegation"] == {
+        "status": "invalid",
+        "sapi": None,
+        "delegations": None,
+        "specialists_created": None,
+        "steps_by_node": None,
+    }
+    assert report["pairs"][0]["delegation"] == {
+        "known": 0,
+        "delegated": 0,
+        "unknown": 1,
+    }
+
+
 def test_compare_marks_oversized_state_unknown(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
