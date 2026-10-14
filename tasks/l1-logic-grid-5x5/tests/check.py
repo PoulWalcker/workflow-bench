@@ -4,6 +4,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from workflow_bench.contracts import Criterion
 from workflow_bench.data import DataError, read_json
@@ -12,30 +13,13 @@ from workflow_bench.evaluation import write_evaluation
 ANSWER_PATH = Path("/work/output/solution.json")
 EXPECTED_PATH = Path("/tests/expected/solution.json")
 VERIFIER_DIR = Path("/logs/verifier")
-
-
-def _read_candidate(expected: dict) -> tuple[dict | None, str]:
-    if not ANSWER_PATH.exists() and not ANSWER_PATH.is_symlink():
-        return None, "missing_answer"
-    try:
-        candidate = read_json(ANSWER_PATH, "solution.json")
-    except (DataError, OSError):
-        return None, "invalid_answer"
-    if not isinstance(candidate, dict) or set(candidate) != set(expected):
-        return None, "wrong_keys"
-    for house, expected_values in expected.items():
-        values = candidate[house]
-        if not isinstance(values, dict) or set(values) != set(expected_values):
-            return None, "wrong_keys"
-        if not all(isinstance(value, str) for value in values.values()):
-            return None, "invalid_values"
-    return candidate, "pass"
+Grid = dict[str, dict[str, str]]
 
 
 def main() -> None:
     """Write one format Criterion and one Criterion per house."""
     started = time.monotonic()
-    expected = read_json(EXPECTED_PATH, "expected/solution.json")
+    expected = cast(Grid, read_json(EXPECTED_PATH, "expected/solution.json"))
     candidate, answer_reason = _read_candidate(expected)
     criteria: list[Criterion] = [
         {
@@ -68,6 +52,25 @@ def main() -> None:
         f"at={timestamp} phase=verifier result={evaluation['verdict']} "
         f"duration={time.monotonic() - started:.3f}s criteria={len(criteria)}\n"
     )
+
+
+def _read_candidate(expected: Grid) -> tuple[Grid | None, str]:
+    """Return a validated grid or None, with the answer_file reason code."""
+    if not ANSWER_PATH.exists() and not ANSWER_PATH.is_symlink():
+        return None, "missing_answer"
+    try:
+        candidate: object = read_json(ANSWER_PATH, "solution.json")
+    except (DataError, OSError):
+        return None, "invalid_answer"
+    if not isinstance(candidate, dict) or set(candidate) != set(expected):
+        return None, "wrong_keys"
+    for house, expected_values in expected.items():
+        values = candidate[house]
+        if not isinstance(values, dict) or set(values) != set(expected_values):
+            return None, "wrong_keys"
+        if not all(isinstance(value, str) for value in values.values()):
+            return None, "invalid_values"
+    return cast(Grid, candidate), "pass"
 
 
 if __name__ == "__main__":

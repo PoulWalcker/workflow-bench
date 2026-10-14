@@ -4,6 +4,22 @@ import itertools
 import json
 import sys
 from pathlib import Path
+from typing import NotRequired, TypedDict
+
+
+class Clue(TypedDict):
+    type: str
+    a: list[str]
+    b: NotRequired[list[str]]
+    house: NotRequired[int]
+
+
+class Puzzle(TypedDict):
+    attributes: dict[str, list[str]]
+    clues: list[Clue]
+
+
+Grid = dict[str, dict[str, str]]
 
 PUZZLE_PATH = Path(__file__).with_name("puzzle.json")
 ANSWER_PATH = Path("/work/output/solution.json")
@@ -25,7 +41,7 @@ def satisfies(kind: str, left: int, right: int) -> bool:
 
 
 def solutions(
-    puzzle: dict, limit: int | None = None
+    puzzle: Puzzle, limit: int | None = None
 ) -> list[dict[str, tuple[int, ...]]]:
     """Enumerate satisfying attribute permutations, optionally stopping at limit."""
     attributes = puzzle["attributes"]
@@ -103,9 +119,7 @@ def solutions(
     return found
 
 
-def grid(
-    puzzle: dict, assignment: dict[str, tuple[int, ...]]
-) -> dict[str, dict[str, str]]:
+def grid(puzzle: Puzzle, assignment: dict[str, tuple[int, ...]]) -> Grid:
     """Render the unique assignment in the public answer shape."""
     size = len(next(iter(puzzle["attributes"].values())))
     houses = {f"House {house}": {} for house in range(1, size + 1)}
@@ -117,7 +131,7 @@ def grid(
 
 def main() -> None:
     """Reject non-unique clues and write the unique solution."""
-    puzzle = json.loads(PUZZLE_PATH.read_text())
+    puzzle: Puzzle = json.loads(PUZZLE_PATH.read_text())
     assignments = solutions(puzzle)
     if len(assignments) != 1:
         sys.exit(f"expected one solution, found {len(assignments)}")
