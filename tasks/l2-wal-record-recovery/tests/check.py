@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict
 
 from workflow_bench.contracts import Criterion
 from workflow_bench.data import DataError, read_json
@@ -15,10 +15,16 @@ UNREADABLE = object()
 type Status = Literal["pass", "fail", "unknown", "not_applicable"]
 
 
+class ExpectedRecords(TypedDict):
+    ids: list[int]
+    updated_values: dict[str, int]
+    names: dict[str, str]
+
+
 def main() -> None:
     """Write one Criterion per upstream test and the collateral applicability."""
-    expected = json.loads(EXPECTED.read_text())
-    exists = ANSWER.exists() or ANSWER.is_symlink()
+    expected: ExpectedRecords = json.loads(EXPECTED.read_text())
+    exists = ANSWER.exists()
     try:
         records = read_json(ANSWER, "recovered.json")
     except (DataError, OSError):
@@ -47,7 +53,7 @@ def main() -> None:
     write_evaluation(VERIFIER_DIR, criteria)
 
 
-def _assess_records(records: object, expected: dict[str, object]) -> list[Criterion]:
+def _assess_records(records: object, expected: ExpectedRecords) -> list[Criterion]:
     """Assess each upstream assertion without trusting the candidate JSON shape."""
     is_nonempty_list = isinstance(records, list) and bool(records)
     valid = _criterion(
