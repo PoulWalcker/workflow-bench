@@ -1,0 +1,32 @@
+schema_version = "1.4"
+artifacts = ["/app"]
+
+[metadata]
+level = "L2"
+horizon = "single"
+benchmark = "Terminal-Bench 2.1"
+instance = "password-recovery"
+hub_reference = "terminal-bench/terminal-bench-2-1"
+upstream_content_digest = "9b5c6bdce0cf03f075b21f6a7af5030b825ce07d7b16b37610f3964217ab84a4"
+dataset_url = "https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1"
+dataset_revision = "9b5c6bdce0cf03f075b21f6a7af5030b825ce07d7b16b37610f3964217ab84a4"
+checker_source_url = "https://github.com/harbor-framework/terminal-bench-2/tree/2fd12b88aafdd04a52c298e3940bcb189f9766d6/tasks/password-recovery/tests"
+checker_commit = "2fd12b88aafdd04a52c298e3940bcb189f9766d6"
+license = "Apache-2.0"
+attribution = "Terminal-Bench 2.1 password-recovery by Harsh Raj"
+difficulty = "hard"
+empirical_rank = "41/89 (arXiv 2601.11868, Appendix A.3)"
+collateral_check = "added by Workflow Bench"
+deviations = "Seeded task data and fixed timestamps replace random and date-derived build inputs; existing /app/varsea files must stay unchanged; agent timeout 1800 s instead of 900 s; no network during trial; no CPU or memory limits; separate stdlib verifier replaces upstream pytest with a 1 MiB answer read limit; final /app workspace collected."
+contamination_risk = "The public Terminal-Bench task and tests may be present in model training data."
+
+[environment]
+build_timeout_sec = 900.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0
