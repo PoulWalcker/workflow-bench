@@ -1,8 +1,13 @@
 """Offline report of Trial outcomes per task and configuration from Harbor job dirs."""
 
+import hashlib
 import logging
+import math
+import os
 import statistics
 import time
+import tomllib
+import warnings
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -12,14 +17,31 @@ from typing import Literal, TypedDict, cast
 
 from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
+from harbor.models.task.config import TaskConfig as HarborTaskConfig
 from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.trial.artifact_manifest import ArtifactManifest
+from harbor.models.trial.config import AgentConfig as HarborAgentConfig
+from harbor.models.trial.config import EnvironmentConfig as HarborEnvironmentConfig
 from harbor.models.trial.result import TimingInfo, TrialResult
+from harbor.publisher.packager import Packager
+from harbor.trial.network_policy import (
+    resolve_agent_env_baseline,
+    resolve_agent_phase_policy,
+)
 
 from workflow_bench.contracts import Evaluation
 from workflow_bench.data import DataError, read_bytes, read_json, validate_contract
+from workflow_bench.pricing import (
+    PriceEntry,
+    PriceEstimateLabel,
+    estimate_cost_usd,
+    price_estimate_label,
+)
+from workflow_bench.transcript import read_sessions
 
 LOGGER = logging.getLogger(__name__)
+_MAX_TASK_DIGEST_ENTRIES = 4096
+_MAX_TASK_DIGEST_BYTES = 64 * 1024 * 1024
 
 type Outcome = Literal["pass", "fail", "unknown", "infra_error"]
 # Sortable identity; an optional part is (known, value) so unknown sorts first.
@@ -33,12 +55,17 @@ class Configuration(TypedDict):
         model: ``provider/name`` as Harbor recorded it, or None without a model.
         reasoning: Reasoning effort from the agent's native options, or None
             when the job did not record one.
+        reasoning_summary: Requested setting from inline config or native option;
+            None when unrecorded.
+        web_search: Inline native setting, or None when unrecorded.
     """
 
     harness: str
     harness_version: str
     model: str | None
     reasoning: str | None
+    reasoning_summary: str | None
+    web_search: str | None
 
 
 class TrialOutcome(TypedDict):
@@ -55,6 +82,14 @@ class TrialOutcome(TypedDict):
     outcome: Outcome
     reason: str | None
     exception: str | None
+
+
+class TrialCost(TypedDict):
+    """One Trial's API list-price estimate, independent of its outcome."""
+
+    job: str
+    trial: str
+    cost_usd: float | None
 
 
 # Functional form: ``pass`` is a Python keyword.
@@ -76,6 +111,14 @@ class Median(TypedDict):
     known: int
 
 
+class CostSummary(TypedDict):
+    """Median and sum over Trials with a known API list-price estimate."""
+
+    median: float | None
+    total: float | None
+    known: int
+
+
 class PairReport(TypedDict):
     """Metrics of one (task, configuration) pair.
 
@@ -87,6 +130,16 @@ class PairReport(TypedDict):
         agent_sec: Duration of the agent's execution phase, over every Trial
             of the pair, whatever its outcome.
         input_tokens: Input tokens including cached ones, as Harbor records.
+        session_count: Original Harbor Sapiens metadata median, retained for v0.
+        sessions: Median from readable Codex sessions, falling back to validated
+            Harbor session metadata when sessions are unavailable.
+        session_efforts: Number of sessions observing each effort value; a
+            session may contribute to more than one value if effort changed.
+        session_evidence_missing_trials: Trials whose session files could not
+            be read; their effort and summary presence are not inferred as zero.
+        cost_usd: Median and total over Trials with complete token facts and a
+            matching explicit API price; None without a known estimate.
+        trial_costs: Per-Trial estimates without changing outcome records.
     """
 
     task: str
@@ -100,8 +153,20 @@ class PairReport(TypedDict):
     input_tokens: Median
     cached_tokens: Median
     output_tokens: Median
+    cost_usd: CostSummary
+    trial_costs: list[TrialCost]
     session_count: Median
+    sessions: Median
     trials: list[TrialOutcome]
+    valid: int
+    pass_hat_k: float | None
+    failed_criteria: dict[str, dict[str, int]]
+    session_efforts: dict[str, int]
+    xhigh_sessions: int
+    unknown_effort_sessions: int
+    sessions_with_summary: int
+    session_evidence_missing_trials: int
+    level: str
 
 
 class IncompleteTrial(TypedDict):
@@ -112,11 +177,36 @@ class IncompleteTrial(TypedDict):
     reason: str
 
 
+class TaskComparison(TypedDict):
+    """A task's equal-condition decision across configurations."""
+
+    task: str
+    status: Literal["comparable", "incomparable"]
+    reasons: list[str]
+
+
+class LevelReport(TypedDict):
+    """Coverage and outcomes for one configuration at one verified level."""
+
+    configuration: Configuration
+    level: str
+    tasks: int
+    covered_tasks: int
+    mean_pass_rate: float | None
+    unknown: int
+    infra_error: int
+    failed_criteria: dict[str, dict[str, int]]
+
+
 class ComparisonReport(TypedDict):
-    """Reported pairs and Trials without a readable Harbor result."""
+    """Per-pair metrics, condition decisions and level summaries from saved jobs."""
 
     pairs: list[PairReport]
     incomplete_trials: list[IncompleteTrial]
+    pass_hat_k: int
+    comparisons: list[TaskComparison]
+    levels: list[LevelReport]
+    price_estimate: PriceEstimateLabel
 
 
 class PhaseSummary(TypedDict):
@@ -208,13 +298,60 @@ class _Trial:
     input_tokens: int | None
     cached_tokens: int | None
     output_tokens: int | None
+    cost_usd: float | None
     session_count: int | None
+    effective_session_count: int | None
+    failed_criteria: dict[str, dict[str, int]]
+    session_efforts: dict[str, int]
+    unknown_effort_sessions: int
+    sessions_with_summary: int
+    has_session_evidence: bool
+    level: str
+    task_digest: str | None
+    agent_timeout_sec: float | None
+    agent_network: tuple[str, ...] | None
 
 
-def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
+@dataclass(frozen=True)
+class _SessionObservations:
+    """Counts from bounded saved sessions, with None count when unreadable."""
+
+    count: int | None
+    efforts: dict[str, int]
+    unknown_effort: int
+    with_summary: int
+    has_evidence: bool
+
+
+@dataclass(frozen=True)
+class _RecordedConditions:
+    """Selected native Trial-lock facts before task-directory verification."""
+
+    task_digest: str | None
+    task_path: Path | None
+    override_timeout_sec: float | None
+    trial_agent: HarborAgentConfig | None
+    trial_environment: HarborEnvironmentConfig | None
+    timeout_multiplier: float | None
+
+
+@dataclass(frozen=True)
+class _EffectiveConditions:
+    """Comparable conditions and level after the task digest check."""
+
+    level: str
+    task_digest: str | None
+    agent_timeout_sec: float | None
+    agent_network: tuple[str, ...] | None
+
+
+def compare(
+    job_dirs: Sequence[Path], *, prices: Mapping[str, PriceEntry] | None = None
+) -> ComparisonReport:
     """Return the report of every Trial in the given Harbor job directories.
 
-    Reads only native files; the same files give the same report. Every
+    Reads only native files and optional validated prices; the same files give
+    the same report. Every
     subdirectory of a job directory is a Trial, as Harbor lays them out; one
     without a readable ``result.json`` is listed as incomplete, outside the
     pairs.
@@ -243,7 +380,7 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
                     {"job": job_dir.name, "trial": trial_dir.name, "reason": error.code}
                 )
                 continue
-            trials.append(_measure_trial(job_dir.name, trial_dir, result))
+            trials.append(_measure_trial(job_dir.name, trial_dir, result, prices))
     groups: dict[_Key, list[_Trial]] = {}
     for trial in trials:
         groups.setdefault(_pair_key(trial), []).append(trial)
@@ -256,7 +393,14 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
         len(incomplete),
         time.monotonic() - started,
     )
-    return {"pairs": pairs, "incomplete_trials": incomplete}
+    return {
+        "pairs": pairs,
+        "incomplete_trials": incomplete,
+        "pass_hat_k": 3,
+        "comparisons": _comparison_reports(trials),
+        "levels": _level_reports(trials),
+        "price_estimate": price_estimate_label(prices),
+    }
 
 
 def summarize(job_dirs: Sequence[Path], report: ComparisonReport) -> SummaryReport:
@@ -304,19 +448,89 @@ def render_markdown(report: ComparisonReport) -> str:
     sections: dict[_Key, list[PairReport]] = {}
     for pair in report["pairs"]:
         sections.setdefault(_configuration_key(pair["configuration"]), []).append(pair)
-    lines = ["# Workflow Bench report"]
+    lines = [
+        "# Workflow Bench report",
+        "",
+        "Pass^3 (k=3) = C(pass, 3) / C(valid, 3); unknown when valid < 3.",
+        "",
+        (
+            f"Cost: {report['price_estimate']['label']}; source: "
+            f"{_or_unknown(report['price_estimate']['source_url'])}."
+        ),
+        f"Limit: {report['price_estimate']['limits']}.",
+    ]
     for key in sorted(sections):
         pairs = sections[key]
         lines += ["", f"## {_configuration_title(pairs[0]['configuration'])}", ""]
+        headers = [
+            "Task",
+            "Checksum",
+            "Trials",
+            "Pass/valid",
+            "Fail",
+            "Unknown",
+            "Infra error",
+            "Pass rate",
+            "Pass^3 (k=3)",
+            "Failed criteria",
+            "Median agent s",
+            "Median tokens in / cached / out",
+            "Median sessions",
+            "Base effort",
+            "xhigh sessions",
+            "Sessions with summary",
+            "Session evidence missing Trials",
+            "Estimated cost USD median / total / known",
+        ]
         lines += [
-            (
-                "| Task | Checksum | Trials | Pass | Fail | Unknown | Infra error "
-                "| Pass rate | Median agent s | Median tokens in / cached / out |"
-                " Median sessions |"
-            ),
-            "|---|---|---|---|---|---|---|---|---|---|---|",
+            f"| {' | '.join(headers)} |",
+            f"| {' | '.join('---' for _ in headers)} |",
         ]
         lines += [_markdown_row(pair) for pair in pairs]
+    lines += [
+        "",
+        "## Trial cost estimates",
+        "",
+        "| Job | Trial | Estimated cost USD |",
+        "|---|---|---|",
+    ]
+    for pair in report["pairs"]:
+        for trial in pair["trial_costs"]:
+            cost_text = _format_cost(trial["cost_usd"])
+            lines.append(f"| {trial['job']} | {trial['trial']} | {cost_text} |")
+    if report["comparisons"]:
+        lines += [
+            "",
+            "## Comparison",
+            "",
+            "| Task | Status | Reasons |",
+            "|---|---|---|",
+        ]
+        for comparison in report["comparisons"]:
+            reasons = comparison["reasons"]
+            reason_text = ", ".join(reasons) if reasons else "—"
+            lines.append(
+                f"| {comparison['task']} | {comparison['status']} | {reason_text} |"
+            )
+    lines += [
+        "",
+        "## Per-level summary",
+        "",
+        (
+            "| Configuration | Level | Tasks | Covered tasks | Mean pass rate | "
+            "Unknown | Infra error | Failed criteria |"
+        ),
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for level in report["levels"]:
+        rate = level["mean_pass_rate"]
+        rate_text = "unknown" if rate is None else f"{rate:.2f}"
+        lines.append(
+            f"| {_configuration_title(level['configuration'])} | {level['level']} "
+            f"| {level['tasks']} | {level['covered_tasks']} | {rate_text} "
+            f"| {level['unknown']} | {level['infra_error']} "
+            f"| {_format_failed_criteria(level['failed_criteria'])} |"
+        )
     if report["incomplete_trials"]:
         lines += ["", "## Incomplete trials", "", "| Job | Trial | Reason |"]
         lines.append("|---|---|---|")
@@ -358,7 +572,11 @@ def _summarize_trial(
         "agent_logs": str(trial_dir / "agent"),
     }
     return {
-        **outcome,
+        "job": outcome["job"],
+        "trial": outcome["trial"],
+        "outcome": outcome["outcome"],
+        "reason": outcome["reason"],
+        "exception": outcome["exception"],
         "phases": {
             "environment_setup": _phase_summary(result.environment_setup),
             "agent_setup": _phase_summary(result.agent_setup),
@@ -442,7 +660,12 @@ def _read_result(trial_dir: Path) -> TrialResult:
         raise DataError("result_invalid", trial_dir.name) from None
 
 
-def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
+def _measure_trial(
+    job: str,
+    trial_dir: Path,
+    result: TrialResult,
+    prices: Mapping[str, PriceEntry] | None,
+) -> _Trial:
     outcome, reason = _classify(trial_dir, result)
     exception = result.exception_info
     execution = result.agent_execution
@@ -454,10 +677,25 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
     ):
         agent_sec = (execution.finished_at - execution.started_at).total_seconds()
     usage = result.agent_result
+    configuration = _configuration(result)
+    model = configuration["model"]
+    model_price = None if prices is None or model is None else prices.get(model)
+    cost_usd = None
+    if model_price is not None and usage is not None:
+        cost_usd = estimate_cost_usd(
+            usage.n_input_tokens,
+            usage.n_cache_tokens,
+            usage.n_output_tokens,
+            model_price,
+        )
+    failed_criteria = _failed_criteria(trial_dir, result)
+    session_observations = _observe_sessions(trial_dir)
+    conditions = _effective_conditions(trial_dir)
+    recorded_session_count = _reported_session_count(usage)
     return _Trial(
         task=result.task_name,
         task_checksum=result.task_checksum,
-        configuration=_configuration(result),
+        configuration=configuration,
         outcome={
             "job": job,
             "trial": trial_dir.name,
@@ -469,7 +707,165 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
         input_tokens=None if usage is None else usage.n_input_tokens,
         cached_tokens=None if usage is None else usage.n_cache_tokens,
         output_tokens=None if usage is None else usage.n_output_tokens,
-        session_count=_reported_session_count(usage),
+        cost_usd=cost_usd,
+        session_count=recorded_session_count,
+        effective_session_count=(
+            session_observations.count
+            if session_observations.count is not None
+            else recorded_session_count
+        ),
+        failed_criteria=failed_criteria,
+        session_efforts=session_observations.efforts,
+        unknown_effort_sessions=session_observations.unknown_effort,
+        sessions_with_summary=session_observations.with_summary,
+        has_session_evidence=session_observations.has_evidence,
+        level=conditions.level,
+        task_digest=conditions.task_digest,
+        agent_timeout_sec=conditions.agent_timeout_sec,
+        agent_network=conditions.agent_network,
+    )
+
+
+def _failed_criteria(trial_dir: Path, result: TrialResult) -> dict[str, dict[str, int]]:
+    """Count checked criterion statuses once per Trial and status.
+
+    A separate verifier result establishes the producer of the evaluation;
+    the candidate can write the same path before that verifier begins.
+    """
+    failed_criteria: dict[str, dict[str, int]] = {}
+    if (
+        result.agent_execution is None
+        or not _has_collected_artifacts(trial_dir)
+        or result.verifier is None
+        or result.verifier_environment_mode != VerifierEnvironmentMode.SEPARATE
+        or result.verifier_result is None
+    ):
+        return failed_criteria
+    try:
+        evaluation = read_evaluation(trial_dir / "verifier" / "evaluation.json")
+    except (OSError, DataError):
+        evaluation = None
+    if evaluation is not None:
+        observed: set[tuple[str, str]] = set()
+        for criterion in evaluation["criteria"]:
+            status = criterion["status"]
+            key = (criterion["criterion_id"], status)
+            if status in {"fail", "unknown"} and key not in observed:
+                observed.add(key)
+                counts = failed_criteria.setdefault(
+                    criterion["criterion_id"], {"fail": 0, "unknown": 0}
+                )
+                counts[status] += 1
+    return failed_criteria
+
+
+def _observe_sessions(trial_dir: Path) -> _SessionObservations:
+    """Count each observed effort once per session and reasoning summary presence."""
+    sessions, session_marker = read_sessions(trial_dir / "agent" / "sessions")
+    session_efforts: dict[str, int] = {}
+    unknown_effort_sessions = 0
+    sessions_with_summary = 0
+    for rows in sessions:
+        observed_efforts: set[str] = set()
+        has_summary = False
+        for row in rows:
+            payload = row.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            effort = payload.get("effort")
+            if row.get("type") == "turn_context" and isinstance(effort, str):
+                if effort in {"none", "minimal", "low", "medium", "high", "xhigh"}:
+                    observed_efforts.add(effort)
+            if (
+                row.get("type") == "response_item"
+                and payload.get("type") == "reasoning"
+            ):
+                fragments = payload.get("summary")
+                if isinstance(fragments, list) and any(
+                    isinstance(fragment, dict)
+                    and isinstance(fragment.get("text"), str)
+                    and bool(fragment["text"].strip())
+                    for fragment in fragments
+                ):
+                    has_summary = True
+        if not observed_efforts:
+            unknown_effort_sessions += 1
+        for effort in observed_efforts:
+            session_efforts[effort] = session_efforts.get(effort, 0) + 1
+        sessions_with_summary += has_summary
+    return _SessionObservations(
+        count=len(sessions) if session_marker is None else None,
+        efforts=session_efforts,
+        unknown_effort=unknown_effort_sessions,
+        with_summary=sessions_with_summary,
+        has_evidence=session_marker is None,
+    )
+
+
+def _effective_conditions(trial_dir: Path) -> _EffectiveConditions:
+    """Combine saved lock and digest-checked task settings for comparison."""
+    recorded = _trial_conditions(trial_dir)
+    task_config = _verified_task_config(recorded.task_path, recorded.task_digest)
+    metadata = task_config.get("metadata") if task_config is not None else None
+    recorded_level = metadata.get("level") if isinstance(metadata, dict) else None
+    level = (
+        recorded_level
+        if isinstance(recorded_level, str)
+        and recorded_level in {"L1", "L2", "L3a", "L3b"}
+        else "unknown"
+    )
+    base_timeout_sec = recorded.override_timeout_sec
+    if base_timeout_sec is None and task_config is not None:
+        task_agent = task_config.get("agent")
+        task_timeout = (
+            task_agent.get("timeout_sec") if isinstance(task_agent, dict) else None
+        )
+        base_timeout_sec = _positive_finite(task_timeout)
+    agent_timeout_sec: float | None = None
+    if (
+        base_timeout_sec is not None
+        and recorded.trial_agent is not None
+        and recorded.timeout_multiplier is not None
+    ):
+        max_timeout = recorded.trial_agent.max_timeout_sec
+        cap = _positive_finite(max_timeout) if max_timeout is not None else None
+        if max_timeout is None or cap is not None:
+            resolved = min(base_timeout_sec, cap or math.inf)
+            resolved *= recorded.timeout_multiplier
+            if math.isfinite(resolved) and resolved > 0:
+                agent_timeout_sec = resolved
+    agent_network: tuple[str, ...] | None = None
+    if (
+        task_config is not None
+        and recorded.trial_agent is not None
+        and recorded.trial_environment is not None
+    ):
+        try:
+            task_definition = HarborTaskConfig.model_validate(task_config)
+            if task_definition.steps is None:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message="Run-specific allowlist host",
+                        category=UserWarning,
+                    )
+                    baseline = resolve_agent_env_baseline(
+                        task_definition, recorded.trial_environment
+                    )
+                    policy = resolve_agent_phase_policy(
+                        task_definition, recorded.trial_agent, baseline
+                    )
+                agent_network = (
+                    policy.network_mode.value,
+                    *sorted(policy.allowed_hosts),
+                )
+        except ValueError:
+            pass
+    return _EffectiveConditions(
+        level=level,
+        task_digest=recorded.task_digest,
+        agent_timeout_sec=agent_timeout_sec,
+        agent_network=agent_network,
     )
 
 
@@ -480,6 +876,201 @@ def _reported_session_count(context: AgentContext | None) -> int | None:
     if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
         return count
     return None
+
+
+def _trial_conditions(trial_dir: Path) -> _RecordedConditions:
+    """Read recorded task identity and agent conditions from a Trial lock."""
+    try:
+        lock = read_json(trial_dir / "lock.json", "lock")
+    except (OSError, DataError):
+        return _RecordedConditions(None, None, None, None, None, None)
+    if not isinstance(lock, dict):
+        return _RecordedConditions(None, None, None, None, None, None)
+    task = lock.get("task")
+    agent = lock.get("agent")
+    if not isinstance(task, dict) or not isinstance(agent, dict):
+        return _RecordedConditions(None, None, None, None, None, None)
+    digest = task.get("digest")
+    task_path = task.get("path")
+    timeout = agent.get("override_timeout_sec")
+    timeout_sec = _positive_finite(timeout)
+    multiplier = lock.get("agent_timeout_multiplier")
+    if multiplier is None:
+        multiplier = lock.get("timeout_multiplier", 1.0)
+    try:
+        trial_agent = HarborAgentConfig.model_validate(agent)
+        trial_environment = HarborEnvironmentConfig.model_validate(
+            lock.get("environment", {})
+        )
+    except ValueError:
+        trial_agent = None
+        trial_environment = None
+    return _RecordedConditions(
+        task_digest=digest if isinstance(digest, str) else None,
+        task_path=Path(task_path) if isinstance(task_path, str) else None,
+        override_timeout_sec=timeout_sec,
+        trial_agent=trial_agent,
+        trial_environment=trial_environment,
+        timeout_multiplier=_positive_finite(multiplier),
+    )
+
+
+def _positive_finite(value: object) -> float | None:
+    """Return a usable positive, finite saved number or unknown."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) and number > 0 else None
+
+
+def _verified_task_config(
+    task_path: Path | None, digest: str | None
+) -> dict[str, object] | None:
+    """Read task settings only when Harbor's directory digest still matches."""
+    if task_path is None or digest is None:
+        return None
+    try:
+        if task_path.is_symlink() or not task_path.is_dir():
+            return None
+        actual_digest = _bounded_task_digest(task_path)
+        if actual_digest is None or digest != f"sha256:{actual_digest}":
+            return None
+        task_config = tomllib.loads(
+            read_bytes(task_path / "task.toml", "task.toml").decode("utf-8")
+        )
+    except (OSError, ValueError, UnicodeError):
+        return None
+    return task_config
+
+
+def _bounded_task_digest(task_path: Path) -> str | None:
+    """Hash Harbor's selected task files within fixed entry and byte caps.
+
+    The initial walk bounds Harbor's file selection. The second cap bounds
+    bytes actually read if a file changes between its size check and hashing.
+    """
+    root = task_path.resolve()
+    pending = [root]
+    entries_seen = 0
+    bytes_seen = 0
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                entries_seen += 1
+                if entries_seen > _MAX_TASK_DIGEST_ENTRIES or entry.is_symlink():
+                    return None
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False):
+                    bytes_seen += entry.stat(follow_symlinks=False).st_size
+                    if bytes_seen > _MAX_TASK_DIGEST_BYTES:
+                        return None
+                else:
+                    return None
+    outer = hashlib.sha256()
+    bytes_read = 0
+    for file_path in Packager.collect_files(root):
+        file_hash = hashlib.sha256()
+        with file_path.open("rb") as stream:
+            while chunk := stream.read(
+                min(1024 * 1024, _MAX_TASK_DIGEST_BYTES - bytes_read + 1)
+            ):
+                bytes_read += len(chunk)
+                if bytes_read > _MAX_TASK_DIGEST_BYTES:
+                    return None
+                file_hash.update(chunk)
+        relative = file_path.relative_to(root).as_posix()
+        outer.update(f"{relative}\0{file_hash.hexdigest()}\n".encode())
+    return outer.hexdigest()
+
+
+def _level_reports(trials: Sequence[_Trial]) -> list[LevelReport]:
+    """Summarize each configuration and verified level without a total score."""
+    groups: dict[tuple[_Key, str], list[_Trial]] = {}
+    for trial in trials:
+        groups.setdefault(
+            (_configuration_key(trial.configuration), trial.level), []
+        ).append(trial)
+    reports: list[LevelReport] = []
+    for key in sorted(groups):
+        members = groups[key]
+        task_groups: dict[tuple[str, str], list[_Trial]] = {}
+        for trial in members:
+            task_groups.setdefault((trial.task, trial.task_checksum), []).append(trial)
+        task_reports = [_pair_report(group) for group in task_groups.values()]
+        rates = [
+            pair["pass_rate"] for pair in task_reports if pair["pass_rate"] is not None
+        ]
+        criteria: dict[str, dict[str, int]] = {}
+        for pair in task_reports:
+            for criterion_id, statuses in pair["failed_criteria"].items():
+                totals = criteria.setdefault(criterion_id, {"fail": 0, "unknown": 0})
+                for status, count in statuses.items():
+                    totals[status] += count
+        reports.append(
+            {
+                "configuration": members[0].configuration,
+                "level": key[1],
+                "tasks": len(task_reports),
+                "covered_tasks": len(rates),
+                "mean_pass_rate": statistics.mean(rates) if rates else None,
+                "unknown": sum(pair["counts"]["unknown"] for pair in task_reports),
+                "infra_error": sum(
+                    pair["counts"]["infra_error"] for pair in task_reports
+                ),
+                "failed_criteria": {name: criteria[name] for name in sorted(criteria)},
+            }
+        )
+    return reports
+
+
+def _comparison_reports(trials: Sequence[_Trial]) -> list[TaskComparison]:
+    """Compare only tasks measured by two or more configurations."""
+    tasks: dict[str, dict[_Key, list[_Trial]]] = {}
+    for trial in trials:
+        configurations = tasks.setdefault(trial.task, {})
+        configurations.setdefault(_configuration_key(trial.configuration), []).append(
+            trial
+        )
+    comparisons: list[TaskComparison] = []
+    for task in sorted(tasks):
+        configurations = tasks[task]
+        if len(configurations) < 2:
+            continue
+        groups = list(configurations.values())
+        reasons = []
+        digests = {trial.task_digest for group in groups for trial in group}
+        if None in digests or len(digests) != 1:
+            reasons.append("task_digest_differs")
+        if any(
+            sum(trial.outcome["outcome"] in {"pass", "fail"} for trial in group) < 2
+            for group in groups
+        ):
+            reasons.append("insufficient_valid_trials")
+        models = {group[0].configuration["model"] for group in groups}
+        if None in models or len(models) != 1:
+            reasons.append("model_differs")
+        efforts = {group[0].configuration["reasoning"] for group in groups}
+        if None in efforts or len(efforts) != 1:
+            reasons.append("reasoning_effort_differs")
+        timeouts = {trial.agent_timeout_sec for group in groups for trial in group}
+        if None in timeouts or len(timeouts) != 1:
+            reasons.append("agent_timeout_differs")
+        networks = {trial.agent_network for group in groups for trial in group}
+        if None in networks or len(networks) != 1:
+            reasons.append("agent_network_differs")
+        comparisons.append(
+            {
+                "task": task,
+                "status": "incomparable" if reasons else "comparable",
+                "reasons": reasons,
+            }
+        )
+    return comparisons
 
 
 def _classify(trial_dir: Path, result: TrialResult) -> tuple[Outcome, str | None]:
@@ -542,7 +1133,37 @@ def _configuration(result: TrialResult) -> Configuration:
         "harness_version": result.agent_info.version,
         "model": model,
         "reasoning": _reasoning(result.config.agent.kwargs),
+        "reasoning_summary": _reasoning_summary(result.config.agent.kwargs),
+        "web_search": _web_search(result.config.agent.kwargs),
     }
+
+
+def _reasoning_summary(kwargs: Mapping[str, object]) -> str | None:
+    """Return the requested summary setting from saved effective options."""
+    config = kwargs.get("config")
+    setting = (
+        config.get("model_reasoning_summary") if isinstance(config, Mapping) else None
+    )
+    if isinstance(setting, str) and setting in {"auto", "concise", "detailed", "none"}:
+        return setting
+    setting = kwargs.get("reasoning_summary")
+    return (
+        setting
+        if isinstance(setting, str)
+        and setting in {"auto", "concise", "detailed", "none"}
+        else None
+    )
+
+
+def _web_search(kwargs: Mapping[str, object]) -> str | None:
+    """Return the saved native web search setting, if explicitly recorded."""
+    config = kwargs.get("config")
+    setting = config.get("web_search") if isinstance(config, Mapping) else None
+    return (
+        setting
+        if isinstance(setting, str) and setting in {"disabled", "cached", "live"}
+        else None
+    )
 
 
 def _reasoning(kwargs: Mapping[str, object]) -> str | None:
@@ -573,6 +1194,8 @@ def _configuration_key(configuration: Configuration) -> _Key:
         configuration["harness_version"],
         _unknown_first(configuration["model"]),
         _unknown_first(configuration["reasoning"]),
+        _unknown_first(configuration["reasoning_summary"]),
+        _unknown_first(configuration["web_search"]),
     )
 
 
@@ -593,6 +1216,15 @@ def _pair_report(trials: Sequence[_Trial]) -> PairReport:
         "infra_error": _count(outcomes, "infra_error"),
     }
     known = counts["pass"] + counts["fail"]
+    failed_criteria: dict[str, dict[str, int]] = {}
+    session_efforts: dict[str, int] = {}
+    for trial in trials:
+        for criterion_id, statuses in trial.failed_criteria.items():
+            totals = failed_criteria.setdefault(criterion_id, {"fail": 0, "unknown": 0})
+            for status, count in statuses.items():
+                totals[status] += count
+        for effort, count in trial.session_efforts.items():
+            session_efforts[effort] = session_efforts.get(effort, 0) + count
     first = trials[0]
     return {
         "task": first.task,
@@ -606,8 +1238,39 @@ def _pair_report(trials: Sequence[_Trial]) -> PairReport:
         "input_tokens": _median([trial.input_tokens for trial in trials]),
         "cached_tokens": _median([trial.cached_tokens for trial in trials]),
         "output_tokens": _median([trial.output_tokens for trial in trials]),
+        "cost_usd": _cost_summary([trial.cost_usd for trial in trials]),
+        "trial_costs": [
+            {
+                "job": trial.outcome["job"],
+                "trial": trial.outcome["trial"],
+                "cost_usd": trial.cost_usd,
+            }
+            for trial in trials
+        ],
         "session_count": _median([trial.session_count for trial in trials]),
+        "sessions": _median([trial.effective_session_count for trial in trials]),
         "trials": outcomes,
+        "valid": known,
+        "pass_hat_k": (
+            math.comb(counts["pass"], 3) / math.comb(known, 3) if known >= 3 else None
+        ),
+        "failed_criteria": {
+            key: failed_criteria[key] for key in sorted(failed_criteria)
+        },
+        "session_efforts": {
+            key: session_efforts[key] for key in sorted(session_efforts)
+        },
+        "xhigh_sessions": session_efforts.get("xhigh", 0),
+        "unknown_effort_sessions": sum(
+            trial.unknown_effort_sessions for trial in trials
+        ),
+        "sessions_with_summary": sum(trial.sessions_with_summary for trial in trials),
+        "session_evidence_missing_trials": sum(
+            not trial.has_session_evidence for trial in trials
+        ),
+        "level": first.level
+        if all(trial.level == first.level for trial in trials)
+        else "unknown",
     }
 
 
@@ -623,11 +1286,22 @@ def _median(values: Sequence[float | None]) -> Median:
     }
 
 
+def _cost_summary(values: Sequence[float | None]) -> CostSummary:
+    known = [value for value in values if value is not None]
+    return {
+        "median": float(statistics.median(known)) if known else None,
+        "total": sum(known) if known else None,
+        "known": len(known),
+    }
+
+
 def _configuration_title(configuration: Configuration) -> str:
     return (
         f"{configuration['harness']} {configuration['harness_version']}, "
         f"model {_or_unknown(configuration['model'])}, "
-        f"reasoning {_or_unknown(configuration['reasoning'])}"
+        f"reasoning {_or_unknown(configuration['reasoning'])}, "
+        f"reasoning summary {_or_unknown(configuration['reasoning_summary'])}, "
+        f"web search {_or_unknown(configuration['web_search'])}"
     )
 
 
@@ -643,23 +1317,58 @@ def _markdown_row(pair: PairReport) -> str:
         _format_count(pair[metric]["median"])
         for metric in ("input_tokens", "cached_tokens", "output_tokens")
     )
+    missing_sessions = pair["session_evidence_missing_trials"]
+
+    def observed_sessions(count: int) -> str:
+        if missing_sessions:
+            noun = "Trial" if missing_sessions == 1 else "Trials"
+            return f"{count} observed; {missing_sessions} {noun} missing"
+        return str(count)
+
     cells = [
         pair["task"],
         pair["task_checksum"][:12],
         str(counts["trials"]),
-        str(counts["pass"]),
+        f"{counts['pass']}/{pair['valid']}",
         str(counts["fail"]),
         str(counts["unknown"]),
         str(counts["infra_error"]),
         "unknown" if pass_rate is None else f"{pass_rate:.2f}",
+        "unknown" if pair["pass_hat_k"] is None else f"{pair['pass_hat_k']:.2f}",
+        _format_failed_criteria(pair["failed_criteria"]),
         "unknown" if agent_sec is None else f"{agent_sec:.1f}",
         tokens,
-        _format_count(pair["session_count"]["median"]),
+        _format_count(pair["sessions"]["median"]),
+        _or_unknown(pair["configuration"]["reasoning"]),
+        observed_sessions(pair["xhigh_sessions"]),
+        observed_sessions(pair["sessions_with_summary"]),
+        str(missing_sessions),
+        " / ".join(
+            (
+                _format_cost(pair["cost_usd"]["median"]),
+                _format_cost(pair["cost_usd"]["total"]),
+                str(pair["cost_usd"]["known"]),
+            )
+        ),
     ]
     return f"| {' | '.join(cells)} |"
+
+
+def _format_failed_criteria(criteria: dict[str, dict[str, int]]) -> str:
+    """Render the validated failure and unknown counts by criterion ID."""
+    if not criteria:
+        return "—"
+    return ", ".join(
+        f"{criterion_id} fail:{counts['fail']} unknown:{counts['unknown']}"
+        for criterion_id, counts in sorted(criteria.items())
+    )
 
 
 def _format_count(value: float | None) -> str:
     if value is None:
         return "unknown"
     return f"{value:.0f}" if value.is_integer() else f"{value:.1f}"
+
+
+def _format_cost(value: float | None) -> str:
+    return "unknown" if value is None else f"{value:.8f}"

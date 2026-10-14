@@ -11,14 +11,14 @@ from pathlib import Path
 from typing import Literal, TypedDict, cast, override
 
 from harbor.agents.capabilities import AgentCapabilities
-from harbor.environments.base import BaseEnvironment
+from harbor.environments.base import BaseEnvironment, ExecResult
 from harbor.models.agent.context import AgentContext
 
 from workflow_bench.composer import SessionSafeCodex, collect_sapiens_usage
 from workflow_bench.contracts import JsonValue
 from workflow_bench.data import MAX_JSON_BYTES, DataError, decode_json
 from workflow_bench.harbor import DeadlineDockerEnvironment
-from workflow_bench.observability import format_phase_line
+from workflow_bench.observability import format_phase_line, format_sapiens_cli_line
 
 SAPIENS_REVISION = "71e93cb3de00183c263ec440919b313cf92ed8af"
 HOST_PORT = 4174
@@ -34,6 +34,75 @@ class _CliResponse(TypedDict):
 
 
 type CompletionDecision = Literal["working", "completed", "agent_outcome"]
+
+
+class SapiensTransitionTracker:
+    """Return safe turn and workload state changes across public host snapshots."""
+
+    _TURN_STATES = {
+        "queued",
+        "running",
+        "output_pending",
+        "done",
+        "failed",
+        "interrupted",
+    }
+    _WORKLOAD_STATES = {
+        "Running",
+        "Queued",
+        "Delegated",
+        "Completed",
+        "WaitingForAdmin",
+        "Failed",
+        "Interrupted",
+        "Unresolved",
+    }
+
+    def __init__(self, *, trial: str) -> None:
+        self._trial = trial
+        self._states: dict[tuple[str, str], str] = {}
+
+    def observe(
+        self, snapshot: Mapping[str, object], observed_at: datetime
+    ) -> list[str]:
+        """Return changed states, mapping unrecognized names to ``other``.
+
+        Each first observed state is a change from ``none``. Repeated snapshots
+        yield no lines.
+        """
+        timestamp = observed_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        lines = []
+        for kind, records, field, vocabulary in (
+            ("turn", snapshot.get("turns"), "status", self._TURN_STATES),
+            ("workload", snapshot.get("workloads"), "state", self._WORKLOAD_STATES),
+        ):
+            if not isinstance(records, list):
+                continue
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                identifier, current = record.get("id"), record.get(field)
+                if not isinstance(identifier, str) or not isinstance(current, str):
+                    continue
+                key = (kind, identifier)
+                previous = self._states.get(key)
+                if previous == current:
+                    continue
+                self._states[key] = current
+                safe_id = (
+                    identifier
+                    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", identifier)
+                    else "other"
+                )
+                prior_name = previous if previous in vocabulary else "other"
+                if previous is None:
+                    prior_name = "none"
+                current_name = current if current in vocabulary else "other"
+                lines.append(
+                    f"at={timestamp} phase=sapiens-transition trial={self._trial} "
+                    f"kind={kind} id={safe_id} from={prior_name} to={current_name}"
+                )
+        return lines
 
 
 class SapiensCompletion:
@@ -254,8 +323,8 @@ class SapiensInstalledAgent(SessionSafeCodex):
         if started.return_code:
             raise RuntimeError("sapiens_host_start_failed")
         for _ in range(50):
-            ready = await environment.exec(
-                command=CLI + "doctor", env=env, timeout_sec=6
+            ready = await self._sapiens_cli(
+                environment, "doctor", CLI + "doctor", env, timeout_sec=6
             )
             if ready.return_code == 0:
                 (self.logs_dir / "sapiens-doctor.json").write_text(ready.stdout or "")
@@ -264,9 +333,13 @@ class SapiensInstalledAgent(SessionSafeCodex):
         else:
             raise RuntimeError("sapiens_host_unavailable")
         # Submission and observation are separate; never repeat an uncertain write.
-        accepted = await environment.exec(
-            command=CLI + "chat " + shlex.quote(self.render_instruction(instruction)),
-            env=env,
+        submitted_argument = self.render_instruction(instruction)
+        accepted = await self._sapiens_cli(
+            environment,
+            "chat",
+            CLI + "chat " + shlex.quote(submitted_argument),
+            env,
+            submitted_argument=submitted_argument,
         )
         (self.logs_dir / "sapiens-accepted.json").write_text(accepted.stdout or "")
         receipt = self._response(accepted.stdout)
@@ -288,6 +361,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
             turn_id,
         )
         completion = SapiensCompletion()
+        transitions = SapiensTransitionTracker(trial=self.logs_dir.parent.name)
         state_command = "python -c " + shlex.quote(
             "import sys,urllib.request; "
             f"sys.stdout.buffer.write(urllib.request.urlopen('{HOST_URL}/api/state',"
@@ -309,6 +383,8 @@ class SapiensInstalledAgent(SessionSafeCodex):
             if not isinstance(snapshot, dict):
                 raise RuntimeError("sapiens_state_invalid")
             decision = completion.observe(snapshot)
+            for line in transitions.observe(snapshot, datetime.now(UTC)):
+                self.logger.info(line)
             if decision != "working":
                 break
             await asyncio.sleep(0.2)
@@ -414,6 +490,39 @@ class SapiensInstalledAgent(SessionSafeCodex):
             completion.quiet_ticks,
         )
         return decision
+
+    async def _sapiens_cli(
+        self,
+        environment: BaseEnvironment,
+        subcommand: Literal["doctor", "chat"],
+        command: str,
+        env: dict[str, str],
+        *,
+        timeout_sec: int | None = None,
+        submitted_argument: str | None = None,
+    ) -> ExecResult:
+        """Run one CLI attempt and log its sanitized result even if it raises."""
+        started = time.monotonic()
+        response: ExecResult | None = None
+        try:
+            response = await environment.exec(
+                command=command, env=env, timeout_sec=timeout_sec
+            )
+            return response
+        finally:
+            self.logger.info(
+                format_sapiens_cli_line(
+                    subcommand,
+                    response.return_code if response is not None else None,
+                    time.monotonic() - started,
+                    (response.stdout or response.stderr)
+                    if response is not None
+                    else None,
+                    datetime.now(UTC),
+                    trial=self.logs_dir.parent.name,
+                    submitted_argument=submitted_argument,
+                )
+            )
 
     @staticmethod
     def _response(stdout: str | None) -> _CliResponse:

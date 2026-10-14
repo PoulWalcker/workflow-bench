@@ -1,0 +1,27 @@
+schema_version = "1.4"
+artifacts = ["/work/output"]
+
+[metadata]
+level = "L1"
+horizon = "single"
+benchmark = "ZebraLogic method"
+instance_key = "original-5x5-seed-2026101407"
+source_url = "https://arxiv.org/abs/2502.01100"
+license = "Original puzzle; no dataset content copied"
+attribution = "Generated following ZebraLogic Algorithm 1 (Lin et al. 2025, arXiv:2502.01100)"
+deviations = "Fresh attribute values and clues; answer written to /work/output/solution.json; one criterion per house"
+size = "5x5"
+search_space = 24883200000
+seed = 2026101407
+generation_date = "2026-10-14"
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0

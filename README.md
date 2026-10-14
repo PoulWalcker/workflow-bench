@@ -104,8 +104,11 @@ late writer on timeout and cancellation. Repeat the native job with a fresh
 
 Native Harbor owns configuration: agent `model_name`, `kwargs.version`,
 `kwargs.reasoning_effort` (CLI `-k reasoning_effort=low`) and `kwargs.config`
-(Codex TOML mapping); MCP servers belong to the task. The example deliberately has
-no live credentials. An authorized subscription job must replace its empty-provider
+(Codex TOML mapping); MCP servers belong to the task. Both example jobs set
+`kwargs.config.model_reasoning_summary: auto` as one source for the effective
+Codex config in either harness. This requested summary setting is part of the
+measured configuration. The example deliberately has no live credentials. An
+authorized subscription job must replace its empty-provider
 config, select permitted provider networking, set an explicit
 `agents[].env.CODEX_AUTH_JSON_PATH` in the job,
 and keep finite Trial limits. It must first pass readiness and a fresh
@@ -133,7 +136,9 @@ retry. It supplies both Harbor's reasoning option and Sapiens' required
 Its empty loopback provider and explicit empty credential settings make it a
 model-free configuration/control example. The fast configuration test verifies
 Harbor builds `SapiensInstalledAgent` with these settings; the Sapiens execution
-controls are a separate integration path.
+controls are a separate integration path. Its `kwargs.config.model_reasoning_summary`
+requests `auto` through the same effective Codex config as the direct example;
+Harbor's separate `kwargs.reasoning_summary` option does not reach Sapiens.
 
 Run the opted-in Sapiens controls with:
 
@@ -154,6 +159,17 @@ in `wb compare`; absent or malformed usage remains unknown. Pinned Sapiens may
 raise reasoning effort to `xhigh` internally in deep mode, regardless of the
 job's configured base effort. The example uses normal mode.
 
+`trial.log` labels Docker phase lines `env=agent` or `env=verifier`. After a
+separate verifier runs, it records a host-side `phase=verifier` line from validated
+`evaluation.json` with the verdict, criterion count and failed criterion ids.
+Missing or invalid evaluation is logged as `unavailable`; it does not change the
+Trial outcome. Sapiens Trials also log each adapter `doctor`/`chat` CLI attempt
+with exit code, duration and a masked output excerpt of at most 200 characters,
+plus observed turn and workload state changes from `/api/state`. The submitted
+chat instruction is excluded from CLI lines. The existing
+`agent/sapiens-host.txt` captures host stdout and stderr. These are diagnostics;
+the pinned host revision exposes no log-level option in `python -m sapiens --help`.
+
 An authorized local smoke on 2026-10-14 ran one Sapiens Trial on `l1-basket-total`
 with Sapiens revision `71e93cb3de00183c263ec440919b313cf92ed8af`, Codex CLI
 0.162.1, `openai/gpt-6.1-sol`, low reasoning and ChatGPT subscription authentication.
@@ -163,7 +179,7 @@ The recorded sessions all used low effort; no delegation was observed. The termi
 state was `Completed`, with no observed premature finish.
 The ignored local Harbor evidence is in
 `runs/m1b-05-sapiens/sapiens-live-smoke-20261014`, with reports at
-`runs/m1b-05-compare.json` and `runs/m1b-05-summary.txt`. This single smoke result
+`runs/m1b-05-compare.json` and `runs/m1b-05-summary.json`. This single smoke result
 does not estimate reliability or a per-Trial subscription charge.
 
 ## Report
@@ -177,18 +193,50 @@ uv run --locked wb compare --format markdown "$PWD"/runs/readiness/check-*
 uv run --locked wb compare --format summary /tmp/workflow-bench-codex/codex-empty-provider
 uv run --locked wb compare --transcript "$PWD"/runs/m1a-06-codex/codex-live-smoke-20261013
 uv run --locked wb compare --transcript "$PWD"/runs/m1b-05-sapiens/sapiens-live-smoke-20261014
+uv run --locked wb compare --prices prices/openai-api-2026-10-14.json "$PWD"/runs/m1b-05-sapiens/sapiens-live-smoke-20261014
 ```
 
 The first command prints a JSON report and exits 0: one outcome per Trial and, per
-task and configuration, counts, pass rate and medians. With the readiness controls
-above it shows `oracle` with pass rate 1.0 and `nop` with 0.0. A directory that is not
-a Harbor job exits 2. `--format summary` prints one JSON record per Trial with native
-phase timing, the same outcome class as the report, verifier criteria, token counts,
-artifact status and paths to diagnostic files.
+task and configuration, counts, pass rate over `pass`/`fail`, `pass_hat_k` for fixed
+`k = 3` (null below three valid Trials), failed and unknown criterion counts from
+evaluations confirmed by a separate Harbor verifier result, session
+effort and reasoning-summary presence, and medians. Configuration includes the
+requested reasoning-summary and web-search settings. Unknown and infrastructure
+outcomes remain separate. When a task has at least two configurations, the report
+labels their comparison `comparable` or lists all reason codes for unequal or missing
+conditions; it gives no better/worse verdict. The per-level section reports covered
+tasks, mean task pass rate over those tasks, unknown/infra counts and criterion failures.
+Level is `unknown` if the recorded task directory is missing, exceeds the bounded
+digest read (4096 entries or 64 MiB), or its Harbor digest no longer matches the Trial
+lock. Markdown presents the same descriptive metrics and marks observed session counts
+when session evidence is missing.
+
+JSON and Markdown include an estimated USD cost per Trial and the
+median, total and known Trial count per task × configuration. The tracked
+[price file](prices/openai-api-2026-10-14.json) records the Standard short-context
+OpenAI API list prices retrieved on 2026-10-14, by Harbor model id. The report
+labels estimates with that date and source URL. It uses Harbor's input tokens
+(including cached), cached input tokens and output tokens; the same formula applies
+to Codex and Sapiens: `((input - cached) × input_rate + cached × cached_rate +
+output × output_rate) / 1,000,000`. A missing price, missing token count or cached count greater
+than input gives `unknown`; without `--prices`, every cost is `unknown`. Cache-write
+tokens and the long-context band are not modelled. These figures estimate API list
+price, not a ChatGPT subscription charge.
+
+With the readiness controls above, `oracle` has pass rate 1.0 and `nop` has 0.0. A
+directory that is not a Harbor job exits 2. `--format summary` prints one JSON record
+per Trial with native phase timing, the same outcome class as the report, verifier
+criteria, token counts, artifact status and paths to diagnostic files.
 `--transcript` prints a read-only Markdown conversation for each saved Trial: the
 task, Sapiens decision nodes or Codex messages, tool calls and results, time and
-tokens when recorded, and the verifier result. Sapiens captures a bounded
-state snapshot in its Harbor agent log for speaker names,
+tokens when recorded, and the verifier result. Each step shows a bounded,
+best-effort-masked reasoning summary, a no-summary marker when the response is
+readable, or an unknown marker when response evidence is missing. A Trial footer
+shows the requested setting from the saved Trial config (or `unknown`) and the
+number of steps with a summary (also `unknown` when sessions are missing or
+incomplete). It shows an unavailable marker when the measured summary count is
+zero and the setting is not `none`. Encrypted reasoning is never shown. Sapiens
+captures a bounded state snapshot in its Harbor agent log for speaker names,
 delegations and transitions. Older Trials without that snapshot show missing-data
 markers. Node prompts show a short excerpt by default; add `--full-prompts` to
 show their full text. The Sapiens state export masks every occurrence of each
@@ -196,6 +244,19 @@ string value of at least 16 characters in the run's `auth.json`, plus
 `OPENAI_API_KEY` when set; export reads `$CODEX_HOME/auth.json` in the container.
 Transcripts use only best-effort pattern masking for credential and account-ID
 forms. Every transcript starts with a notice to check it before sharing.
+
+## First L1 report (2026-10-14)
+
+The first five-task L1 run completed 30 Trials in 15 jobs: Sapiens and direct Codex
+each passed 3/3 on every task. Both used `openai/gpt-6.1-sol`, base reasoning
+`medium`, reasoning summaries `auto`, web search disabled, the same 1800-second
+agent limit and provider allowlist, and Codex CLI 0.162.1. Sapiens used pinned
+revision `71e93cb3de00183c263ec440919b313cf92ed8af`; no session used `xhigh`.
+The ignored local evidence is in `runs/m2-09/`, with the reproducible JSON and
+Markdown reports at `runs/m2-09-report.json` and `runs/m2-09-report.md`.
+These three attempts per task are descriptive, not a general reliability estimate.
+The public IFEval, LiveBench and AIME instances may be present in model training
+data; the two logic grids were generated for this run.
 
 ## Navigation
 

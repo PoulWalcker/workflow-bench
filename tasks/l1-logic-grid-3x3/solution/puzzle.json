@@ -1,0 +1,73 @@
+{
+  "attributes": {
+    "Name": [
+      "Ada",
+      "Felix",
+      "Gina"
+    ],
+    "Drink": [
+      "water",
+      "tea",
+      "coffee"
+    ],
+    "Food": [
+      "pie",
+      "pasta",
+      "soup"
+    ]
+  },
+  "clues": [
+    {
+      "type": "found_at",
+      "a": [
+        "Drink",
+        "water"
+      ],
+      "house": 1
+    },
+    {
+      "type": "side_by_side",
+      "a": [
+        "Drink",
+        "coffee"
+      ],
+      "b": [
+        "Food",
+        "pie"
+      ]
+    },
+    {
+      "type": "side_by_side",
+      "a": [
+        "Name",
+        "Ada"
+      ],
+      "b": [
+        "Food",
+        "pie"
+      ]
+    },
+    {
+      "type": "same_house",
+      "a": [
+        "Name",
+        "Gina"
+      ],
+      "b": [
+        "Drink",
+        "water"
+      ]
+    },
+    {
+      "type": "direct_left",
+      "a": [
+        "Drink",
+        "coffee"
+      ],
+      "b": [
+        "Food",
+        "soup"
+      ]
+    }
+  ]
+}

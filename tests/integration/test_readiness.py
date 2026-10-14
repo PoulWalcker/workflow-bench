@@ -40,6 +40,14 @@ def test_trivial_task_is_ready(
         ("oracle", "pass"),
         ("nop", "fail"),
     ]
+    log_paths = list(tmp_path.glob("check-*/l1-basket-total__*/trial.log"))
+    assert len(log_paths) == 2
+    for log_path in log_paths:
+        log = log_path.read_text()
+        assert "phase=environment_start" in log
+        assert "env=agent" in log
+        assert "env=verifier" in log
+        assert "phase=verifier" in log
 
 
 def test_task_whose_no_op_passes_is_not_ready(

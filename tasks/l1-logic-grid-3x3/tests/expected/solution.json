@@ -1,0 +1,17 @@
+{
+  "House 1": {
+    "Name": "Gina",
+    "Drink": "water",
+    "Food": "pie"
+  },
+  "House 2": {
+    "Name": "Ada",
+    "Drink": "coffee",
+    "Food": "pasta"
+  },
+  "House 3": {
+    "Name": "Felix",
+    "Drink": "tea",
+    "Food": "soup"
+  }
+}

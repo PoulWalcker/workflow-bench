@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -16,7 +17,50 @@ from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
 
 from workflow_bench.composer import collect_sapiens_usage
-from workflow_bench_integrations.sapiens import SapiensCompletion, SapiensInstalledAgent
+from workflow_bench_integrations.sapiens import (
+    SapiensCompletion,
+    SapiensInstalledAgent,
+    SapiensTransitionTracker,
+)
+
+
+def test_state_transition_lines_report_only_observed_changes() -> None:
+    tracker = SapiensTransitionTracker(trial="basket__abc")
+    at = datetime(2026, 1, 1, tzinfo=UTC)
+    first = {
+        "turns": [{"id": "turn1", "status": "queued"}],
+        "workloads": [{"id": "work1", "state": "Queued"}],
+    }
+    second = {
+        "turns": [{"id": "turn1", "status": "running"}],
+        "workloads": [{"id": "work1", "state": "Running"}],
+    }
+    unknown = {
+        "turns": [{"id": "turn1", "status": "fixture-secret-state"}],
+        "workloads": [{"id": "work1", "state": "fixture-secret-state"}],
+    }
+
+    assert tracker.observe(first, at) == [
+        (
+            "at=2026-01-01T00:00:00Z phase=sapiens-transition trial=basket__abc "
+            "kind=turn id=turn1 from=none to=queued"
+        ),
+        (
+            "at=2026-01-01T00:00:00Z phase=sapiens-transition trial=basket__abc "
+            "kind=workload id=work1 from=none to=Queued"
+        ),
+    ]
+    assert tracker.observe(first, at) == []
+    assert [line.rsplit(" ", 2)[-2:] for line in tracker.observe(second, at)] == [
+        ["from=queued", "to=running"],
+        ["from=Queued", "to=Running"],
+    ]
+    unknown_lines = tracker.observe(unknown, at)
+    assert [line.rsplit(" ", 1)[-1] for line in unknown_lines] == [
+        "to=other",
+        "to=other",
+    ]
+    assert all("fixture-secret-state" not in line for line in unknown_lines)
 
 
 def test_direct_chief_reply_finishes_after_two_distinct_quiet_pulses() -> None:
@@ -279,6 +323,7 @@ def test_sapiens_example_builds_agent_with_native_model_and_reasoning(
     assert agent.version() == "0.162.1"
     assert isinstance(agent.config_source, dict)
     assert agent.config_source["model_reasoning_effort"] == "low"
+    assert agent._build_effective_config()["model_reasoning_summary"] == "auto"
     assert config.agents[0].kwargs["reasoning_effort"] == "low"
     assert config.jobs_dir.is_absolute()
     assert (

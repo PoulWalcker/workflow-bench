@@ -15,7 +15,7 @@ from harbor.environments.docker.docker import (
     _sanitize_docker_compose_project_name,
 )
 
-from workflow_bench.observability import format_phase_line
+from workflow_bench.observability import format_phase_line, format_verifier_summary
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +29,9 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         self.cleanup_timeout_sec = cleanup_timeout_sec
         self.cancel_writer: Callable[[], Awaitable[None]] | None = self._stop_writer
         self._is_stopping_writer = False
+        # Harbor names agent sessions *__env and separate verifier sessions differently.
+        self._role = "agent" if self.session_id.endswith("__env") else "verifier"
+        self._verifier_summary_logged = False
 
     @override
     async def start(self, force_build: bool) -> None:
@@ -40,13 +43,15 @@ class DeadlineDockerEnvironment(DockerEnvironment):
             phase_result = "completed"
         finally:
             self.logger.info(
+                "%s env=%s",
                 format_phase_line(
                     "environment_start",
                     phase_result,
                     time.monotonic() - started,
                     datetime.now(UTC),
                     trial=self.trial_paths.trial_dir.name,
-                )
+                ),
+                self._role,
             )
 
     @override
@@ -78,22 +83,34 @@ class DeadlineDockerEnvironment(DockerEnvironment):
         finally:
             self._is_stopping_writer = was_stopping
             self.logger.info(
+                "%s env=%s",
                 format_phase_line(
                     "environment_stop",
                     phase_result,
                     time.monotonic() - started,
                     datetime.now(UTC),
                     trial=self.trial_paths.trial_dir.name,
-                )
+                ),
+                self._role,
             )
             if delete:
                 self.logger.info(
+                    "%s env=%s",
                     format_phase_line(
                         "cleanup",
                         cleanup_result,
                         time.monotonic() - started,
                         datetime.now(UTC),
                         trial=self.trial_paths.trial_dir.name,
+                    ),
+                    self._role,
+                )
+            if self._role == "verifier" and not self._verifier_summary_logged:
+                self._verifier_summary_logged = True
+                self.logger.info(
+                    format_verifier_summary(
+                        self.trial_paths.trial_dir / "verifier" / "evaluation.json",
+                        datetime.now(UTC),
                     )
                 )
 

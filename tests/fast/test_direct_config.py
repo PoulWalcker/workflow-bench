@@ -23,6 +23,7 @@ def test_example_builds_pinned_direct_agent_without_ambient_credentials(
     assert agent.mcp_servers == []
     assert isinstance(agent.config_source, dict)
     assert agent.config_source["model_provider"] == "empty"
+    assert agent._build_effective_config()["model_reasoning_summary"] == "auto"
     assert config.agents[0].env == {
         "CODEX_AUTH_JSON_PATH": "",
         "CODEX_FORCE_AUTH_JSON": "FALSE",

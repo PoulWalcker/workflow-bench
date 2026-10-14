@@ -4,6 +4,8 @@ Exact-value masking applies only to exported Sapiens state. Check transcripts
 before sharing them.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -11,10 +13,12 @@ import stat
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
-from workflow_bench.comparison import SummaryReport, TrialSummary
 from workflow_bench.data import DataError, decode_json, read_json
+
+if TYPE_CHECKING:
+    from workflow_bench.comparison import SummaryReport, TrialSummary
 
 _MAX_SESSION_BYTES = 4 * 1024 * 1024
 _MAX_SESSION_COUNT = 256
@@ -40,6 +44,11 @@ _SECRET = re.compile(
     re.IGNORECASE,
 )
 _NODE = re.compile(r"decision at node ([A-Za-z][A-Za-z0-9_]*)")
+
+
+def mask_sensitive_text(value: str) -> str:
+    """Replace recognized credential and account patterns in diagnostic text."""
+    return _SECRET.sub("[REDACTED]", value)
 
 
 class SapiensState(TypedDict):
@@ -72,7 +81,7 @@ def render_trial_transcript(
     """Show one Trial's conversation and independently recorded verifier result."""
     agent_dir = trial_dir / "agent"
     state, state_marker = _read_state(agent_dir / "sapiens-state.json")
-    sessions, session_marker = _read_sessions(agent_dir / "sessions")
+    sessions, session_marker = read_sessions(agent_dir / "sessions")
     is_sapiens = (
         _harness_name(trial_dir) == "sapiens"
         or state is not None
@@ -99,13 +108,40 @@ def render_trial_transcript(
                 lines.append(
                     "[missing: Sapiens state truncated (" + ", ".join(omitted) + ")]"
                 )
-        lines += _sapiens_steps(
+        sapiens_lines, unmatched_count = _sapiens_steps(
             sessions, state, names, should_show_full_prompts=should_show_full_prompts
         )
+        lines += sapiens_lines
     else:
         lines += _codex_steps(sessions)
+        unmatched_count = 0
     if session_marker:
         lines.append(f"[missing: Codex sessions ({session_marker})]")
+    observed_summary_steps = sum(bool(_reasoning_summaries(rows)) for rows in sessions)
+    summary_steps: int | str = (
+        "unknown"
+        if session_marker
+        or unmatched_count
+        or any(not _has_response_evidence(rows) for rows in sessions)
+        else observed_summary_steps
+    )
+    decisions = _state_decisions(state) if is_sapiens else []
+    if is_sapiens and state is not None and state.get("truncated", {}).get("decisions"):
+        step_count: int | str = "unknown"
+    elif is_sapiens and state is not None:
+        step_count = max(len(sessions), len(decisions))
+    elif session_marker:
+        step_count = "unknown"
+    else:
+        step_count = len(sessions)
+    summary_setting = _summary_setting(trial_dir)
+    lines += [
+        "",
+        f"Reasoning summary setting: {summary_setting}",
+        f"steps with a reasoning summary: {summary_steps} of {step_count}",
+    ]
+    if summary_setting != "none" and summary_steps == 0:
+        lines.append("reasoning summaries: unavailable")
     evaluation = summary["evaluation"]
     lines += ["", "## Verifier"]
     if evaluation is None:
@@ -134,6 +170,50 @@ def render_trial_transcript(
         f"Sessions: {session_count if session_count is not None else 'unknown'}",
     ]
     return "\n".join(lines)
+
+
+def read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
+    """Read bounded saved Codex sessions and their evidence status.
+
+    A None marker means all discovered sessions were read. A string marker
+    means session evidence is unavailable, unsafe, incomplete or invalid;
+    callers must not interpret the empty session list as a measured zero.
+    """
+    if not directory.is_dir() or directory.is_symlink():
+        return [], "not collected"
+    try:
+        paths, marker = _session_paths(directory)
+    except OSError:
+        return [], "unreadable"
+    if marker:
+        return [], marker
+    if not paths:
+        return [], "empty"
+    if len(paths) > _MAX_SESSION_COUNT:
+        return [], "too many"
+    sessions = []
+    total_bytes = 0
+    try:
+        for path in paths:
+            content = _bounded_file(
+                path, min(_MAX_SESSION_BYTES, _MAX_ALL_SESSIONS_BYTES - total_bytes)
+            )
+            if content is None:
+                return [], "unsafe or too large"
+            total_bytes += len(content)
+            rows = [
+                decode_json(line, "session")
+                for line in content.splitlines()
+                if line.strip()
+            ]
+            if not all(isinstance(row, dict) for row in rows):
+                return [], "invalid"
+            sessions.append(cast(list[dict[str, object]], rows))
+    except (OSError, DataError):
+        return [], "unreadable"
+    return sorted(
+        sessions, key=lambda rows: str(rows[0].get("timestamp", "")) if rows else ""
+    ), None
 
 
 def _read_state(path: Path) -> tuple[SapiensState | None, str | None]:
@@ -179,44 +259,6 @@ def _harness_name(trial_dir: Path) -> str | None:
         return None
     name = agent_info.get("name")
     return name if isinstance(name, str) else None
-
-
-def _read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
-    if not directory.is_dir() or directory.is_symlink():
-        return [], "not collected"
-    try:
-        paths, marker = _session_paths(directory)
-    except OSError:
-        return [], "unreadable"
-    if marker:
-        return [], marker
-    if not paths:
-        return [], "empty"
-    if len(paths) > _MAX_SESSION_COUNT:
-        return [], "too many"
-    sessions = []
-    total_bytes = 0
-    try:
-        for path in paths:
-            content = _bounded_file(
-                path, min(_MAX_SESSION_BYTES, _MAX_ALL_SESSIONS_BYTES - total_bytes)
-            )
-            if content is None:
-                return [], "unsafe or too large"
-            total_bytes += len(content)
-            rows = [
-                decode_json(line, "session")
-                for line in content.splitlines()
-                if line.strip()
-            ]
-            if not all(isinstance(row, dict) for row in rows):
-                return [], "invalid"
-            sessions.append(cast(list[dict[str, object]], rows))
-    except (OSError, DataError):
-        return [], "unreadable"
-    return sorted(
-        sessions, key=lambda rows: str(rows[0].get("timestamp", "")) if rows else ""
-    ), None
 
 
 def _bounded_file(path: Path, limit: int) -> bytes | None:
@@ -303,12 +345,13 @@ def _sapiens_steps(
     names: dict[str, str],
     *,
     should_show_full_prompts: bool,
-) -> list[str]:
+) -> tuple[list[str], int]:
+    """Render steps and count state decisions without an aligned session."""
     lines = ["## Sapiens steps"]
     decisions = _state_decisions(state)
-    aligned, unmatched_count = _aligned_decisions(sessions, decisions)
+    aligned, unmatched = _aligned_decisions(sessions, decisions)
     if not sessions:
-        for index, decision in enumerate(decisions, 1):
+        for index, decision in unmatched:
             agent_id = decision.get("agent")
             speaker = (
                 names.get(agent_id, "Unknown Sapi")
@@ -322,6 +365,7 @@ def _sapiens_steps(
                 f"### {index}. {_safe(speaker)} — {node}",
                 f"Time: {at}; Tokens: [missing: token count]",
                 "[missing: node prompt and Codex session]",
+                "Reasoning summary: [unknown: no aligned Codex session]",
             ]
             response = decision.get("response")
             if isinstance(response, dict):
@@ -362,6 +406,13 @@ def _sapiens_steps(
                 )
         else:
             lines.append("[missing: node prompt]")
+        summaries = _reasoning_summaries(rows)
+        if summaries:
+            lines += [f"Reasoning summary: {summary}" for summary in summaries]
+        elif _has_response_evidence(rows):
+            lines.append("Reasoning summary: [no summary]")
+        else:
+            lines.append("Reasoning summary: [unknown: no assistant response]")
         responses = _messages(rows, "assistant")
         response = _decision_response(responses)
         if response:
@@ -381,10 +432,27 @@ def _sapiens_steps(
                     + " → "
                     + _safe(str(transition.get("after", "?")))
                 )
-    if sessions and unmatched_count:
+    if sessions and unmatched:
         lines.append(
-            f"[missing: Codex session for {unmatched_count} Sapiens decision(s)]"
+            f"[missing: Codex session for {len(unmatched)} Sapiens decision(s)]"
         )
+        for index, decision in unmatched:
+            agent_id = decision.get("agent")
+            speaker = (
+                names.get(agent_id, "Unknown Sapi")
+                if isinstance(agent_id, str)
+                else "Unknown Sapi"
+            )
+            node = _safe(str(decision.get("node", "unknown node")))
+            lines += [
+                "",
+                f"### State decision {index}. {_safe(speaker)} — {node}",
+                "[missing: aligned Codex session]",
+                "Reasoning summary: [unknown: no aligned Codex session]",
+            ]
+            response = decision.get("response")
+            if isinstance(response, dict):
+                lines += _decision_lines(response)
     if state is not None:
         lines += _delegations(state, names)
         reply = _final_turn_reply(state)
@@ -400,7 +468,7 @@ def _sapiens_steps(
         else:
             lines += ["", "Final reply: [missing: turn output]"]
         lines.append("[missing: Sapiens delegation and transitions from state]")
-    return lines
+    return lines, len(unmatched)
 
 
 def _decision_lines(response: dict[str, object]) -> list[str]:
@@ -430,6 +498,13 @@ def _codex_steps(sessions: list[list[dict[str, object]]]) -> list[str]:
             f"### Session {index}",
             f"Time: {_time(rows)}; Tokens: {_tokens(rows)}",
         ]
+        summaries = _reasoning_summaries(rows)
+        if summaries:
+            lines += [f"Reasoning summary: {summary}" for summary in summaries]
+        elif _has_response_evidence(rows):
+            lines.append("Reasoning summary: [no summary]")
+        else:
+            lines.append("Reasoning summary: [unknown: no assistant response]")
         for row in rows:
             payload = row.get("payload")
             if not isinstance(payload, dict) or row.get("type") != "response_item":
@@ -465,6 +540,63 @@ def _codex_steps(sessions: list[list[dict[str, object]]]) -> list[str]:
     if not has_final_reply:
         lines.append("Final reply: [missing: final message]")
     return lines
+
+
+def _reasoning_summaries(rows: list[dict[str, object]]) -> list[str]:
+    """Return at most four masked, bounded summary fragments from one session."""
+    summaries = []
+    for row in rows:
+        payload = row.get("payload")
+        if (
+            row.get("type") != "response_item"
+            or not isinstance(payload, dict)
+            or payload.get("type") != "reasoning"
+        ):
+            continue
+        fragments = payload.get("summary")
+        if not isinstance(fragments, list):
+            continue
+        for fragment in fragments:
+            text = fragment.get("text") if isinstance(fragment, dict) else None
+            if not isinstance(text, str) or not text.strip():
+                continue
+            summaries.append(_safe(text)[:500])
+            if len(summaries) == 4:
+                return summaries
+    return summaries
+
+
+def _has_response_evidence(rows: list[dict[str, object]]) -> bool:
+    """Tell an observed response without a summary from a missing response."""
+    for row in rows:
+        payload = row.get("payload")
+        if row.get("type") != "response_item" or not isinstance(payload, dict):
+            continue
+        kind = payload.get("type")
+        if kind in {"reasoning", "custom_tool_call", "function_call"} or (
+            kind == "message" and payload.get("role") == "assistant"
+        ):
+            return True
+    return False
+
+
+def _summary_setting(trial_dir: Path) -> str:
+    """Read the requested mode from saved Trial config, or return unknown."""
+    try:
+        trial_config = read_json(trial_dir / "config.json", "config")
+    except (OSError, DataError):
+        return "unknown"
+    if not isinstance(trial_config, dict):
+        return "unknown"
+    agent = trial_config.get("agent")
+    kwargs = agent.get("kwargs") if isinstance(agent, dict) else None
+    config = kwargs.get("config") if isinstance(kwargs, dict) else None
+    setting = (
+        config.get("model_reasoning_summary") if isinstance(config, dict) else None
+    )
+    if isinstance(setting, str) and setting in {"auto", "concise", "detailed", "none"}:
+        return setting
+    return "unknown"
 
 
 def _node_prompt(rows: list[dict[str, object]]) -> str | None:
@@ -540,8 +672,8 @@ def _state_decisions(state: SapiensState | None) -> list[dict[str, object]]:
 
 def _aligned_decisions(
     sessions: list[list[dict[str, object]]], decisions: list[dict[str, object]]
-) -> tuple[list[dict[str, object] | None], int]:
-    """Attach transitions only where agent/node occurrence counts agree."""
+) -> tuple[list[dict[str, object] | None], list[tuple[int, dict[str, object]]]]:
+    """Align certain transitions and return the remaining state decisions."""
     keys = []
     for rows in sessions:
         prompt = _node_prompt(rows)
@@ -577,7 +709,12 @@ def _aligned_decisions(
         else:
             aligned.append(None)
         seen[key] += 1
-    return aligned, len(decisions) - len(used)
+    unmatched = [
+        (index + 1, decision)
+        for index, decision in enumerate(decisions)
+        if index not in used
+    ]
+    return aligned, unmatched
 
 
 def _delegations(state: SapiensState, names: dict[str, str]) -> list[str]:
@@ -706,7 +843,7 @@ def _display(value: object, depth: int = 0) -> str:
 
 def _safe(value: str) -> str:
     return (
-        _SECRET.sub("[REDACTED]", value)
+        mask_sensitive_text(value)
         .replace("\n", " ")
         .replace("\r", " ")
         .replace("|", "\\|")
