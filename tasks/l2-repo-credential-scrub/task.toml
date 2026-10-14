@@ -1,0 +1,34 @@
+schema_version = "1.4"
+artifacts = ["/app"]
+
+[metadata]
+level = "L2"
+horizon = "single"
+benchmark = "Terminal-Bench 2.1"
+instance = "sanitize-git-repo"
+hub_reference = "terminal-bench/terminal-bench-2-1"
+upstream_content_digest = "6e86297715fae62cd499fbdd27013e11a38d05d7e05b7f661cb50b4ecead128f"
+dataset_url = "https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1"
+dataset_revision = "6e86297715fae62cd499fbdd27013e11a38d05d7e05b7f661cb50b4ecead128f"
+checker_source_url = "https://github.com/harbor-framework/terminal-bench-2/tree/2fd12b88aafdd04a52c298e3940bcb189f9766d6/tasks/sanitize-git-repo/tests"
+checker_commit = "2fd12b88aafdd04a52c298e3940bcb189f9766d6"
+source_repo_url = "https://github.com/jeffreywpli/test-secret-removal"
+source_repo_commit = "8df3c81f7a9c8df2fb2ed417ff7d6afdfec2492e"
+license = "Apache-2.0 (Terminal-Bench task); MIT (dclm test repository)"
+attribution = "Terminal-Bench 2.1 sanitize-git-repo by jeffreywpli; dclm test repository copyright 2024 mlfoundations"
+difficulty = "medium"
+empirical_rank = "57/89 (arXiv 2601.11868, Appendix A.3)"
+collateral_check = "added by Workflow Bench"
+deviations = "Agent timeout 1800 s instead of 900 s; no network during trial; no CPU or memory limits; separate stdlib and git CLI verifier replaces pytest and GitPython; final /app workspace collected."
+contamination_risk = "The public Terminal-Bench task and test repository may be present in model training data."
+
+[environment]
+build_timeout_sec = 900.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0

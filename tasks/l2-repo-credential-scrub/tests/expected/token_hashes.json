@@ -1,0 +1,24 @@
+{
+  "tokens": [
+    {
+      "length": 20,
+      "sha256": "878d8287ad709407a9a0863a372e05781463c1352f190093a271e242d1777966"
+    },
+    {
+      "length": 40,
+      "sha256": "f4b31e2e389d96163c4edad37d0550e2fa14945b2573d71cbe2da267899ed7f8"
+    },
+    {
+      "length": 40,
+      "sha256": "03aafb028d538b06c4341bf8cf2a692a3c6d1f36e34e0e0b376f407c6117a246"
+    },
+    {
+      "length": 35,
+      "sha256": "98fcd0be55157d89898648bec3a74af3dd9ad96c2f579577faa24a7540eff461"
+    },
+    {
+      "length": 37,
+      "sha256": "c867521fb91b082ccec87278fe43634af455cd8c656d533f32f2b1db1de7b067"
+    }
+  ]
+}
