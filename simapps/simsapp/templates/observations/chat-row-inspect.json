@@ -1,0 +1,57 @@
+{
+  "actions": [
+    "AXCancel",
+    "AXPress",
+    "AXScrollDownByPage",
+    "AXScrollToVisible",
+    "AXScrollUpByPage",
+    "AXShowMenu",
+    "Name:\u200eArchive\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eMore\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eRead\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eUnpin\nTarget:0x0\nSelector:(null)"
+  ],
+  "attributes": [
+    "AXActivationPoint",
+    "AXChildren",
+    "AXChildrenInNavigationOrder",
+    "AXCustomActions",
+    "AXCustomContent",
+    "AXCustomRotors",
+    "AXDescription",
+    "AXEnabled",
+    "AXFocused",
+    "AXFrame",
+    "AXHelp",
+    "AXIdentifier",
+    "AXLanguage",
+    "AXLinkedUIElements",
+    "AXParent",
+    "AXPosition",
+    "AXRole",
+    "AXRoleDescription",
+    "AXSelected",
+    "AXSize",
+    "AXSubrole",
+    "AXTopLevelUIElement",
+    "AXUserInputLabels",
+    "AXValue",
+    "AXWindow"
+  ],
+  "description": "Alice Morgan: Hello Alice! 09:30",
+  "enabled": 1,
+  "focused": false,
+  "path": "0.0.0.1.0.0.1",
+  "pid": 0,
+  "position": {
+    "x": 100,
+    "y": 239
+  },
+  "role": "AXButton",
+  "selected": 0,
+  "size": {
+    "height": 69,
+    "width": 595
+  },
+  "value": "Alice Morgan: Hello Alice! 09:30"
+}

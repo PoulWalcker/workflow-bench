@@ -1,0 +1,19 @@
+{
+  "description": "\u200eSearch",
+  "enabled": 1,
+  "focused": true,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 336,
+    "y": 152
+  },
+  "role": "AXStaticText",
+  "selected": 0,
+  "size": {
+    "height": 32,
+    "width": 343
+  },
+  "subrole": "AXSearchField",
+  "value": "Missing Fictional Alice Contact"
+}

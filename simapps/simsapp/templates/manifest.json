@@ -1,0 +1,938 @@
+{
+  "schema_version": 1,
+  "baseline": "b48ee524",
+  "source_root": "docs/research/blindly-simsapp",
+  "fictional_people": [
+    "Alice Morgan",
+    "David Brown",
+    "Emma Wilson",
+    "Bob Carter",
+    "Sophia Taylor",
+    "James Anderson",
+    "Olivia Harris",
+    "Liam Walker",
+    "Mia Thompson",
+    "Noah Lewis",
+    "Grace Clark",
+    "Henry Hall",
+    "Ava Young"
+  ],
+  "fictional_messages": [
+    "Hello Alice!",
+    "Can we meet tomorrow?",
+    "Yes, tomorrow works for me.",
+    "See you tomorrow!",
+    "Thank you, Alice!"
+  ],
+  "provenance": {
+    "structure": "OBSERVED",
+    "fictional_content": "RECONSTRUCTED",
+    "unavailable_behavior": "UNKNOWN"
+  },
+  "environment": {
+    "pid": 0,
+    "identifier": "fixture-redacted-id",
+    "coordinate_translation": {
+      "x": 100,
+      "y": 61
+    }
+  },
+  "states": [
+    {
+      "id": "chat-list",
+      "tree": "chat-list",
+      "status": "OBSERVED"
+    },
+    {
+      "id": "search",
+      "tree": "search-focused",
+      "status": "OBSERVED"
+    },
+    {
+      "id": "results-0",
+      "tree": "results-zero",
+      "status": "OBSERVED",
+      "visible_candidates": 0
+    },
+    {
+      "id": "results-1-fragment",
+      "fragment": "single-result",
+      "status": "RECONSTRUCTED",
+      "note": "One extracted candidate for reuse; a complete exactly-one-results screen is UNKNOWN."
+    },
+    {
+      "id": "results-N",
+      "tree": "results-many",
+      "status": "OBSERVED",
+      "chat_candidates": 3,
+      "unlabelled_group_candidates": 1,
+      "message_candidates": 4,
+      "note": "Candidate categories follow visible grouping; The additional group heading was redacted; its category is UNKNOWN. Hidden underlying list persists."
+    },
+    {
+      "id": "result-sheet",
+      "tree": "result-sheet",
+      "status": "OBSERVED"
+    },
+    {
+      "id": "cleared-list",
+      "tree": "list-cleared",
+      "status": "OBSERVED"
+    },
+    {
+      "id": "conversation-history",
+      "tree": "conversation",
+      "status": "OBSERVED"
+    },
+    {
+      "id": "composer-empty",
+      "tree": "conversation",
+      "fragment": "composer",
+      "status": "OBSERVED",
+      "note": "No value key was serialized; no draft write was performed."
+    },
+    {
+      "id": "Send-menu",
+      "fragment": "send-menu-item",
+      "status": "OBSERVED",
+      "note": "Menu item only; no composer Send button or send effect verified."
+    },
+    {
+      "id": "composer-draft-and-Send",
+      "status": "UNKNOWN"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "search",
+      "to": "results-0",
+      "action": "keyboard type after verified focus",
+      "status": "OBSERVED",
+      "evidence": [
+        "search-focus-result",
+        "query-zero-result",
+        "search-zero-inspect"
+      ],
+      "note": "Intermediate activation/focus steps omitted; not an atomic transition."
+    },
+    {
+      "from": "results-0",
+      "to": "results-0",
+      "action": "guarded Return",
+      "status": "OBSERVED",
+      "evidence": [
+        "search-return-exit"
+      ],
+      "note": "Exit 77; rejection reason UNKNOWN, not a successful search submission."
+    },
+    {
+      "from": "search",
+      "to": "results-N",
+      "action": "fresh search focus and keyboard replacement",
+      "status": "OBSERVED",
+      "evidence": [
+        "query-many-result",
+        "search-many-inspect"
+      ],
+      "note": "Not a direct edge from the saved empty search tree; clearing and reacquisition occurred in between."
+    },
+    {
+      "from": "results-N",
+      "to": "result-sheet",
+      "action": "AXPress",
+      "status": "OBSERVED",
+      "evidence": [
+        "result-press"
+      ],
+      "note": "Exposed a sheet, not confirmed conversation opening."
+    },
+    {
+      "from": "result-sheet",
+      "to": "results-N",
+      "action": "Cancel AXPress",
+      "status": "OBSERVED",
+      "evidence": [
+        "cancel-sheet"
+      ],
+      "note": "Dismissal observed in research; destination tree not copied from the immediate after capture."
+    },
+    {
+      "from": "cleared-list",
+      "to": "conversation-history",
+      "action": "fresh ordinary chat AXPress then composer focus",
+      "status": "OBSERVED",
+      "evidence": [
+        "open-chat",
+        "focus-composer"
+      ],
+      "note": "Conversation tree is the later focus capture; reads are separate, not atomic snapshots."
+    },
+    {
+      "from": "composer-empty",
+      "to": "composer-draft-and-Send",
+      "action": "write draft or Send",
+      "status": "UNKNOWN",
+      "evidence": []
+    }
+  ],
+  "templates": [
+    {
+      "id": "chat-row",
+      "tree": "list-cleared",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/3",
+      "slots": [
+        {
+          "pointer": "/description",
+          "example": "Bob Carter: See you tomorrow! 09:30",
+          "status": "RECONSTRUCTED"
+        },
+        {
+          "pointer": "/value",
+          "example": "Bob Carter: See you tomorrow! 09:30",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "selected-chat-row",
+      "tree": "conversation",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/3",
+      "slots": [
+        {
+          "pointer": "/description",
+          "example": "Bob Carter: See you tomorrow! 09:30",
+          "status": "RECONSTRUCTED"
+        },
+        {
+          "pointer": "/value",
+          "example": "Bob Carter: See you tomorrow! 09:30",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "single-result",
+      "tree": "results-many",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/1",
+      "slots": [
+        {
+          "pointer": "/description",
+          "example": "Alice Morgan",
+          "status": "RECONSTRUCTED"
+        },
+        {
+          "pointer": "/value",
+          "example": "Alice Morgan",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "message-result",
+      "tree": "results-many",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/8",
+      "slots": [
+        {
+          "pointer": "/children/0/description",
+          "example": "Alice Morgan: See you tomorrow! 09:30",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "history-message",
+      "tree": "conversation",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/0/children/4",
+      "slots": [
+        {
+          "pointer": "/description",
+          "example": "Thank you, Alice! 09:30",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "history-message-long",
+      "tree": "conversation",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/0/children/6",
+      "slots": [
+        {
+          "pointer": "/description",
+          "example": "Can we meet tomorrow? 09:30",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "search-query",
+      "tree": "results-zero",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/1/children/3",
+      "slots": [
+        {
+          "pointer": "/value",
+          "example": "Missing Fictional Alice Contact",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "date-heading",
+      "tree": "conversation",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/0/children/5",
+      "slots": [
+        {
+          "pointer": "/children/0/description",
+          "example": "Monday, January 5, 2026",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "search-field",
+      "tree": "search-focused",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/1/children/3",
+      "slots": []
+    },
+    {
+      "id": "composer",
+      "tree": "conversation",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/2",
+      "slots": [
+        {
+          "pointer": "/description",
+          "example": "Message",
+          "status": "RECONSTRUCTED"
+        }
+      ]
+    },
+    {
+      "id": "voice-button",
+      "tree": "conversation",
+      "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/4",
+      "slots": []
+    },
+    {
+      "id": "send-menu-item",
+      "tree": "conversation",
+      "pointer": "/tree/children/1/children/4/children/0/children/17",
+      "slots": []
+    }
+  ],
+  "safe_strings": [
+    "",
+    "0",
+    "0.0",
+    "0.0.0",
+    "0.0.0.0",
+    "0.0.0.1",
+    "0.0.0.1.0.0.0.1",
+    "0.0.0.1.0.0.0.3",
+    "0.0.0.1.0.0.1",
+    "0.0.0.1.0.1.3",
+    "0.0.0.1.1.1.0.4",
+    "0.0.0.1.1.1.0.6",
+    "0.0.0.1.1.1.2",
+    "0.0.1",
+    "0.0.1.0",
+    "0.0.1.1",
+    "0.4.0.0.1",
+    "1",
+    "2",
+    "2.0",
+    "2.0.0",
+    "3",
+    "3.0",
+    "3.0.0",
+    "3.0.0.0",
+    "3.0.0.1",
+    "3.0.1",
+    "3.0.1.0",
+    "3.0.1.1",
+    "AXActivationPoint",
+    "AXApplication",
+    "AXButton",
+    "AXCancel",
+    "AXChildren",
+    "AXChildrenInNavigationOrder",
+    "AXCloseButton",
+    "AXCustomActions",
+    "AXCustomContent",
+    "AXCustomRotors",
+    "AXDescription",
+    "AXEnabled",
+    "AXEnhancedUserInterface",
+    "AXExtrasMenuBar",
+    "AXFocused",
+    "AXFocusedUIElement",
+    "AXFocusedWindow",
+    "AXFrame",
+    "AXFrontmost",
+    "AXFullScreenButton",
+    "AXFunctionRowTopLevelElements",
+    "AXGroup",
+    "AXHeading",
+    "AXHelp",
+    "AXHidden",
+    "AXIdentifier",
+    "AXLanguage",
+    "AXLink",
+    "AXLinkedUIElements",
+    "AXMainWindow",
+    "AXMenu",
+    "AXMenuBar",
+    "AXMenuBarItem",
+    "AXMenuItem",
+    "AXMinimizeButton",
+    "AXNumberOfCharacters",
+    "AXParent",
+    "AXPlaceholderValue",
+    "AXPosition",
+    "AXPreferredLanguage",
+    "AXPress",
+    "AXRole",
+    "AXRoleDescription",
+    "AXScrollDownByPage",
+    "AXScrollToVisible",
+    "AXScrollUpByPage",
+    "AXSearchField",
+    "AXSelected",
+    "AXSelectedText",
+    "AXSelectedTextRange",
+    "AXSelectedTextRanges",
+    "AXSheet",
+    "AXShowMenu",
+    "AXSize",
+    "AXStandardWindow",
+    "AXStaticText",
+    "AXSubrole",
+    "AXTextArea",
+    "AXTitle",
+    "AXTopLevelUIElement",
+    "AXUserInputLabels",
+    "AXValue",
+    "AXVisibleCharacterRange",
+    "AXVisibleChildren",
+    "AXWindow",
+    "AXWindows",
+    "AXZoomButton",
+    "Alice Mo",
+    "Alice Morgan",
+    "Alice Morgan Project Group",
+    "Alice Morgan Study Group",
+    "Alice Morgan: Hello Alice! 09:30",
+    "Alice Morgan: See you tomorrow! 09:30",
+    "Alice Morgan: Thank you, Alice! 09:30",
+    "Alice Morgan: Yes, tomorrow works for me. 09:30",
+    "Ava Young: Yes, tomorrow works for me. 09:30",
+    "Bob Carter",
+    "Bob Carter: See you tomorrow! 09:30",
+    "Bring All to Front",
+    "Can we meet tomorrow? 09:30",
+    "Close",
+    "Conversation history",
+    "David Brown: Can we meet tomorrow? 09:30",
+    "Edit",
+    "Emma Wilson",
+    "Emma Wilson: Yes, tomorrow works for me. 09:30",
+    "File",
+    "Grace Clark: Hello Alice! 09:30",
+    "Hello Alice! 09:30",
+    "Help",
+    "Henry Hall: Can we meet tomorrow? 09:30",
+    "James Anderson: Hello Alice! 09:30",
+    "Liam Walker: Yes, tomorrow works for me. 09:30",
+    "Message",
+    "Mia Thompson: See you tomorrow! 09:30",
+    "Minimize",
+    "Missing Fictional Alice Contact",
+    "Monday, January 5, 2026",
+    "Name:\u200eArchive\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eMore\nTarget:0x0\nSelector:(null)",
+    "Name:\u200ePin\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eRead\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eUnpin\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eUnread\nTarget:0x0\nSelector:(null)",
+    "Noah Lewis: Thank you, Alice! 09:30",
+    "Olivia Harris: Can we meet tomorrow? 09:30",
+    "See you tomorrow! 09:30",
+    "Sophia Taylor: Thank you, Alice! 09:30",
+    "Thank you, Alice! 09:30",
+    "Unspecified control",
+    "Unspecified group",
+    "Unspecified heading",
+    "Unspecified link",
+    "Unspecified menu item",
+    "Unspecified text",
+    "View",
+    "SimsApp",
+    "Window",
+    "Yes, tomorrow works for me. 09:30",
+    "Zoom",
+    "_AXElementForTextInsertionAndDeletion",
+    "auxiliary-direct-AX-read-only-not-Blindly4",
+    "fixture-redacted-id",
+    "iOSContentGroup",
+    "\u200eArchived",
+    "\u200eBack",
+    "\u200eCalls",
+    "\u200eCancel",
+    "\u200eChat",
+    "\u200eChats",
+    "\u200eClear text",
+    "\u200eCommunities",
+    "\u200eEdit",
+    "\u200eMessages",
+    "\u200eNew Chat",
+    "\u200eNext Chat",
+    "\u200eNo results",
+    "\u200ePrevious Chat",
+    "\u200eSearch",
+    "\u200eSend",
+    "\u200eSettings",
+    "\u200eUpdates",
+    "\u200eVoice message",
+    "\u200eSimsApp"
+  ],
+  "files": [
+    {
+      "id": "chat-list",
+      "kind": "tree",
+      "file": "trees/chat-list.json",
+      "source": {
+        "file": "01-activated/tree.json",
+        "pointer": ""
+      },
+      "structure_sha256": "648ea7bee5f27a460e158363acd2d672614aa6d06f58cc29800b5ba08ae5f930",
+      "sha256": "062e98643f45ffb6f5f8babf4f6fed76c60da2ee9d29453289ef0a220fa7f25f"
+    },
+    {
+      "id": "search-focused",
+      "kind": "tree",
+      "file": "trees/search-focused.json",
+      "source": {
+        "file": "07-search-focus-after/tree.json",
+        "pointer": ""
+      },
+      "structure_sha256": "94903b897e2acd3020991423f0aadbe7ae499d443878c571c3990c32a7726f39",
+      "sha256": "da002f421802abbff3a2eba2bcc60522c076d942b0dc99fb275b48e00c69ae7e"
+    },
+    {
+      "id": "results-zero",
+      "kind": "tree",
+      "file": "trees/results-zero.json",
+      "source": {
+        "file": "10-query-settled-after/tree.json",
+        "pointer": ""
+      },
+      "structure_sha256": "9f1e517061b03641ba8796fbbf6c37acff92050ac6a6fed708384c11da7c80ec",
+      "sha256": "f3201f1ac91315dcd087e21aa24fea0f24078897834a32eaff547aa3334289aa"
+    },
+    {
+      "id": "results-many",
+      "kind": "tree",
+      "file": "trees/results-many.json",
+      "source": {
+        "file": "16-search-brand-fresh-after/tree.json",
+        "pointer": ""
+      },
+      "structure_sha256": "6b33677de5b73c27bcf4a76b1af7537973a1045608d788e71b21156b345392ef",
+      "sha256": "e4e45668c40d324af1f3404d397636f8d681f53a5ee79cd185d5ab609bdbcca1"
+    },
+    {
+      "id": "result-sheet",
+      "kind": "tree",
+      "file": "trees/result-sheet.json",
+      "source": {
+        "file": "17-open-search-result-after/tree.json",
+        "pointer": ""
+      },
+      "structure_sha256": "d91e01c9dfaddb30a886d349090cf7c21315a7b07bd89621618b566ff4b79c00",
+      "sha256": "eb4323e00433adff50bbcbef409ca8aa314f7d36cbd77ae23f45ce4fffd338f4"
+    },
+    {
+      "id": "list-cleared",
+      "kind": "tree",
+      "file": "trees/list-cleared.json",
+      "source": {
+        "file": "20-clear-search-final-after/tree.json",
+        "pointer": ""
+      },
+      "structure_sha256": "6a89189be6a928fef06adf3f5bf12672870aaa56550a3ee347e3268c51e5384b",
+      "sha256": "b60525b479dfb7e632f7d018d0025ecd747f805d0f06d10c0e87291552f8dbae"
+    },
+    {
+      "id": "conversation",
+      "kind": "tree",
+      "file": "trees/conversation.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": ""
+      },
+      "structure_sha256": "c56fe122de251b96a92f6cb50602375fbfe097803ceb3b6a4159490861a4581d",
+      "sha256": "e8511afec2d48cde0c87f08bb22648738e3d88a56ccc8ef26c961781df22e98f"
+    },
+    {
+      "id": "root-inspect",
+      "kind": "observation",
+      "file": "observations/root-inspect.json",
+      "source": {
+        "file": "01-activated/inspect-root.json",
+        "pointer": ""
+      },
+      "structure_sha256": "a23086e2ebf1a7ce847dc4f1a621347e76bb11a1989c9e73db507068ab2c047c",
+      "sha256": "2ec9b107d201d4b12c8edb380aad43b3730dbb94620bd771b7de904deb5272b4"
+    },
+    {
+      "id": "search-empty-inspect",
+      "kind": "observation",
+      "file": "observations/search-empty-inspect.json",
+      "source": {
+        "file": "07-search-focus-after/focused.json",
+        "pointer": ""
+      },
+      "structure_sha256": "6c96091dbeef7d24809656d0b1cfb47da3c771ab2cd6c46c92d4e1516cef86aa",
+      "sha256": "4337d4cd70cd42441fc01d112964f3a2a54e5e6336cd56b524c2384d6e474b12"
+    },
+    {
+      "id": "search-zero-inspect",
+      "kind": "observation",
+      "file": "observations/search-zero-inspect.json",
+      "source": {
+        "file": "10-query-settled-after/focused.json",
+        "pointer": ""
+      },
+      "structure_sha256": "da52dee38a22a5f125ddaeee76da9124a52e8ef0fbb7515bda1af5758dfc4c7a",
+      "sha256": "b9a4d24a698173be9552d53777a7d07f89a89576fabd61a4ed8909b2b1ba59af"
+    },
+    {
+      "id": "search-many-inspect",
+      "kind": "observation",
+      "file": "observations/search-many-inspect.json",
+      "source": {
+        "file": "16-search-brand-fresh-after/focused.json",
+        "pointer": ""
+      },
+      "structure_sha256": "da52dee38a22a5f125ddaeee76da9124a52e8ef0fbb7515bda1af5758dfc4c7a",
+      "sha256": "67f7e05ce0a85a949da642509d008f8345e9bdc60ec12324eb38024cef6c1b49"
+    },
+    {
+      "id": "composer-inspect",
+      "kind": "observation",
+      "file": "observations/composer-inspect.json",
+      "source": {
+        "file": "25-composer-focus-after/focused.json",
+        "pointer": ""
+      },
+      "structure_sha256": "9d184a69ad6e56c361e71eb3e97145c06989b83b1536c24ed6b263f7d85c30f6",
+      "sha256": "48040d5cfb0ed740f1f723929a1b3ba07ae7117a08d1a0751abfc69acf71f92b"
+    },
+    {
+      "id": "chat-row-inspect",
+      "kind": "observation",
+      "file": "observations/chat-row-inspect.json",
+      "source": {
+        "file": "01-activated/find-AXButton.json",
+        "pointer": "/matches/2"
+      },
+      "structure_sha256": "24ee6de1acfa9b273abde65ade3c3bd3288dde91567f4f50d58ecbb4656b328a",
+      "sha256": "614b4f3a83524732c9988e9624b5a70bfbf5a13d2d4676547fccbee47be19739"
+    },
+    {
+      "id": "result-row-inspect",
+      "kind": "observation",
+      "file": "observations/result-row-inspect.json",
+      "source": {
+        "file": "16-search-brand-fresh-after/find-AXButton.json",
+        "pointer": "/matches/1"
+      },
+      "structure_sha256": "a11266f1bcc19ba392995d59d55d52a0769680afdd8841d73f091c061ae7ed9a",
+      "sha256": "9bf8da430ae01b6ac278e5236c5a659f7e5c42386c70f9ded57269a32d1776ff"
+    },
+    {
+      "id": "message-0-inspect",
+      "kind": "observation",
+      "file": "observations/message-0-inspect.json",
+      "source": {
+        "file": "27-history-read/inspect-message-0.json",
+        "pointer": ""
+      },
+      "structure_sha256": "ed7ee11cf0abc9da96cecbcaf58ef137d1859f5564409a9213a7639ef47f9571",
+      "sha256": "35043cea9e52b913725715a7aad1e0a9ee09d8310447767884db99234ec87073"
+    },
+    {
+      "id": "message-1-inspect",
+      "kind": "observation",
+      "file": "observations/message-1-inspect.json",
+      "source": {
+        "file": "27-history-read/inspect-message-1.json",
+        "pointer": ""
+      },
+      "structure_sha256": "25f9d58ce466beda1e1d3dad983c7c231da6777e44b6ddcb0c11bbabf813e224",
+      "sha256": "5e4a082798f26787662fcfb90ca73e62eac04ea1dd06d1292db024dfad8a4518"
+    },
+    {
+      "id": "message-0-actions",
+      "kind": "observation",
+      "file": "observations/message-0-actions.json",
+      "source": {
+        "file": "27-history-read/actions-message-0.json",
+        "pointer": ""
+      },
+      "structure_sha256": "9b5fda6b374182ac9aee4d88a7dba86ad4d2223793265299e0b0dc33c3127205",
+      "sha256": "9b5fda6b374182ac9aee4d88a7dba86ad4d2223793265299e0b0dc33c3127205"
+    },
+    {
+      "id": "message-1-actions",
+      "kind": "observation",
+      "file": "observations/message-1-actions.json",
+      "source": {
+        "file": "27-history-read/actions-message-1.json",
+        "pointer": ""
+      },
+      "structure_sha256": "0d733b3a27891b4da08c6dc328821255f8f4f7bf1319cd38897a394d8058d38d",
+      "sha256": "0d733b3a27891b4da08c6dc328821255f8f4f7bf1319cd38897a394d8058d38d"
+    },
+    {
+      "id": "search-relations",
+      "kind": "observation",
+      "file": "observations/search-relations.json",
+      "source": {
+        "file": "13-ax-relations-activated/relations.json",
+        "pointer": ""
+      },
+      "structure_sha256": "2fde5f6461f84a5463783d423226b11e07052bd00aa509fc9845126a7b6b953e",
+      "sha256": "2fde5f6461f84a5463783d423226b11e07052bd00aa509fc9845126a7b6b953e"
+    },
+    {
+      "id": "composer-relations",
+      "kind": "observation",
+      "file": "observations/composer-relations.json",
+      "source": {
+        "file": "26-composer-ax-read/relations.json",
+        "pointer": ""
+      },
+      "structure_sha256": "87013201324f9440fe7f50ef4d75aaa65092113f14f103a1a8c574abe6cac2a0",
+      "sha256": "87013201324f9440fe7f50ef4d75aaa65092113f14f103a1a8c574abe6cac2a0"
+    },
+    {
+      "id": "search-focus-result",
+      "kind": "observation",
+      "file": "observations/search-focus-result.json",
+      "source": {
+        "file": "09-query-focused/focus-result.json",
+        "pointer": ""
+      },
+      "structure_sha256": "5c7e6ca5a0779232a4e7ff0e4c035ddfb83348ff52782301bd1fb9841bee79de",
+      "sha256": "5c7e6ca5a0779232a4e7ff0e4c035ddfb83348ff52782301bd1fb9841bee79de"
+    },
+    {
+      "id": "query-zero-result",
+      "kind": "observation",
+      "file": "observations/query-zero-result.json",
+      "source": {
+        "file": "10-query-settled/result.json",
+        "pointer": ""
+      },
+      "structure_sha256": "f658b73977100ef7f5c1d28672b66302c631444962f69bffbc04c3650dbed837",
+      "sha256": "4c8dc0adde495aac70347f217d13c7cba0ed6400ba91c0f02581a7ee04cabd49"
+    },
+    {
+      "id": "query-many-result",
+      "kind": "observation",
+      "file": "observations/query-many-result.json",
+      "source": {
+        "file": "16-search-brand-fresh/result.json",
+        "pointer": ""
+      },
+      "structure_sha256": "e6e904cab124315592238d13aefc8167c5416fc3947475723573c9d2fd326bcf",
+      "sha256": "39049162bee81922e228114f7121d1e95af3408e1510677276efa34e9fe8bb1f"
+    },
+    {
+      "id": "search-return-exit",
+      "kind": "observation",
+      "file": "observations/search-return-exit.json",
+      "source": {
+        "file": "12-search-submit/result.json",
+        "pointer": "/exit_code"
+      },
+      "structure_sha256": "a88a7902cb4ef697ba0b6759c50e8c10297ff58f942243de19b984841bfe1f73",
+      "sha256": "a88a7902cb4ef697ba0b6759c50e8c10297ff58f942243de19b984841bfe1f73"
+    },
+    {
+      "id": "result-press",
+      "kind": "observation",
+      "file": "observations/result-press.json",
+      "source": {
+        "file": "17-open-search-result/result.json",
+        "pointer": ""
+      },
+      "structure_sha256": "c2137db0594bef5b84d7938114e86fbaff18926efce637d11d18646e0241db2c",
+      "sha256": "c2137db0594bef5b84d7938114e86fbaff18926efce637d11d18646e0241db2c"
+    },
+    {
+      "id": "cancel-sheet",
+      "kind": "observation",
+      "file": "observations/cancel-sheet.json",
+      "source": {
+        "file": "19-cancel-sheet/result.json",
+        "pointer": ""
+      },
+      "structure_sha256": "edc44353837f918ee2ae663b49d62781267be06e1fcb5d183e756a8fdd718cb4",
+      "sha256": "edc44353837f918ee2ae663b49d62781267be06e1fcb5d183e756a8fdd718cb4"
+    },
+    {
+      "id": "open-chat",
+      "kind": "observation",
+      "file": "observations/open-chat.json",
+      "source": {
+        "file": "24-open-visible-chat/result.json",
+        "pointer": ""
+      },
+      "structure_sha256": "d4e0e29d34e3d5cc5db2ef26f535a1805ade8595eca1aff55f5a268ffc399178",
+      "sha256": "d4e0e29d34e3d5cc5db2ef26f535a1805ade8595eca1aff55f5a268ffc399178"
+    },
+    {
+      "id": "focus-composer",
+      "kind": "observation",
+      "file": "observations/focus-composer.json",
+      "source": {
+        "file": "25-composer-focus/result.json",
+        "pointer": ""
+      },
+      "structure_sha256": "9714cab1815614c54634d2737fe0f3fc08009ac0d6e5195627c06aad3914c27f",
+      "sha256": "9714cab1815614c54634d2737fe0f3fc08009ac0d6e5195627c06aad3914c27f"
+    },
+    {
+      "id": "chat-row",
+      "kind": "fragment",
+      "file": "fragments/chat-row.json",
+      "source": {
+        "file": "20-clear-search-final-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/3"
+      },
+      "structure_sha256": "e24df23536ace95488e6aaf968477b521fdc2f845b880adb0241b96414bb1c56",
+      "sha256": "291dcd7ea735fbb3a67fa64b9cd4071c311ab304657e23e3fbc31798f8231f09"
+    },
+    {
+      "id": "selected-chat-row",
+      "kind": "fragment",
+      "file": "fragments/selected-chat-row.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/3"
+      },
+      "structure_sha256": "00dc56a89f890878c3057acc62a0199baa2e0d0a873851ea98af0536f1f8f1e8",
+      "sha256": "2de011978cc203bcd7254e0d6889f11ce4dde84839d4d8e1d5ce3e4adf4e3b85"
+    },
+    {
+      "id": "single-result",
+      "kind": "fragment",
+      "file": "fragments/single-result.json",
+      "source": {
+        "file": "16-search-brand-fresh-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/1"
+      },
+      "structure_sha256": "6e6a867e4daea37e71f3ac2bdeb8a1306454bb01fddde7db2133b8b6d54a3bb0",
+      "sha256": "77dc823b6cf9f04878f32c58bd0a9f49834e688b2c33e4d80691603fc05cb4bc"
+    },
+    {
+      "id": "message-result",
+      "kind": "fragment",
+      "file": "fragments/message-result.json",
+      "source": {
+        "file": "16-search-brand-fresh-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/0/children/0/children/8"
+      },
+      "structure_sha256": "1fb3e918b48c70a5437ebc3d58be9ed24385cc0978208e58b45c9b5fc8aa80f7",
+      "sha256": "5b3939ff42347f0555140e7e3b464101f750da460f9f29712e06c2138267dd4e"
+    },
+    {
+      "id": "history-message",
+      "kind": "fragment",
+      "file": "fragments/history-message.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/0/children/4"
+      },
+      "structure_sha256": "09ef5d224b7cac589140736d1047deaf338fd392191f0bd2c1ce9f26441cc1b2",
+      "sha256": "82cba89319f069dfd2eca29ea6433b14966fcadab586a4459aee925294c37c19"
+    },
+    {
+      "id": "history-message-long",
+      "kind": "fragment",
+      "file": "fragments/history-message-long.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/0/children/6"
+      },
+      "structure_sha256": "7b7816f9ac71cc7c23486839b094be4962548d5596d15dce8b11f21e32257713",
+      "sha256": "3d6fe48f0360e912767c62f8b005c7fc75930284808e233ad571407699927230"
+    },
+    {
+      "id": "search-query",
+      "kind": "fragment",
+      "file": "fragments/search-query.json",
+      "source": {
+        "file": "10-query-settled-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/1/children/3"
+      },
+      "structure_sha256": "0312bc8164e89fc359d1019eee936647efa5bf2e736aca1ce0326ee306230ca3",
+      "sha256": "28d5985b04692a29549151b92f51cabf8005f724438da8c2c1bd7434d2460a2a"
+    },
+    {
+      "id": "date-heading",
+      "kind": "fragment",
+      "file": "fragments/date-heading.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/0/children/5"
+      },
+      "structure_sha256": "6f23bf224abeff3e38d1c384d0dcad5371c55f91a10ee835f7bc75e328c085bf",
+      "sha256": "3502031e7d929adbe358bbc2934a5f1afa0959453d34b99606c9bf1460775795"
+    },
+    {
+      "id": "search-field",
+      "kind": "fragment",
+      "file": "fragments/search-field.json",
+      "source": {
+        "file": "07-search-focus-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/0/children/1/children/3"
+      },
+      "structure_sha256": "68ec284583bcdc71b0f8aae8f9110c753db9c24d06b50a70ebbda0531035cc30",
+      "sha256": "4140ab21744dc4c7866562151737b7e7e882ee6783de66ac358ebb0de9fc4d20"
+    },
+    {
+      "id": "composer",
+      "kind": "fragment",
+      "file": "fragments/composer.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/2"
+      },
+      "structure_sha256": "d3814802966576298bed0ec1e693d7c37931801ce10fb2429be3aabe852c72d8",
+      "sha256": "adfb9306fd22fcaab8bda46339577b42ce12528f1f413be7a2328709915f0591"
+    },
+    {
+      "id": "voice-button",
+      "kind": "fragment",
+      "file": "fragments/voice-button.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": "/tree/children/0/children/0/children/0/children/1/children/1/children/1/children/4"
+      },
+      "structure_sha256": "a1c9cc711f779e4d6f11aec90c068b163be6f40b175ac13ad234db44b1743ec5",
+      "sha256": "aac5f7ade814d957a626efa1bbd82d10bda32f5e555c145c829d94bd7c996a50"
+    },
+    {
+      "id": "send-menu-item",
+      "kind": "fragment",
+      "file": "fragments/send-menu-item.json",
+      "source": {
+        "file": "25-composer-focus-after/tree.json",
+        "pointer": "/tree/children/1/children/4/children/0/children/17"
+      },
+      "structure_sha256": "fe9ad092b6647705f9ef7d422b6865da0b0cfda9b4928198a40e1f979d141a11",
+      "sha256": "f4753d99a7d861ae24e5ed691d4d518d8611d83201b036f440c633acbb7d89eb"
+    }
+  ]
+}

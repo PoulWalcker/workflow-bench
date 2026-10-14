@@ -1,0 +1,57 @@
+{
+  "actions": [
+    "AXCancel",
+    "AXPress",
+    "AXScrollToVisible",
+    "AXShowMenu"
+  ],
+  "attributes": [
+    "AXActivationPoint",
+    "AXChildren",
+    "AXChildrenInNavigationOrder",
+    "AXCustomActions",
+    "AXCustomContent",
+    "AXCustomRotors",
+    "AXDescription",
+    "AXEnabled",
+    "AXFocused",
+    "AXFrame",
+    "AXHelp",
+    "AXIdentifier",
+    "AXLanguage",
+    "AXLinkedUIElements",
+    "AXNumberOfCharacters",
+    "AXParent",
+    "AXPlaceholderValue",
+    "AXPosition",
+    "AXRole",
+    "AXRoleDescription",
+    "AXSelected",
+    "AXSelectedText",
+    "AXSelectedTextRange",
+    "AXSelectedTextRanges",
+    "AXSize",
+    "AXSubrole",
+    "AXTopLevelUIElement",
+    "AXUserInputLabels",
+    "AXValue",
+    "AXVisibleCharacterRange",
+    "AXWindow",
+    "_AXElementForTextInsertionAndDeletion"
+  ],
+  "description": "Message",
+  "enabled": 1,
+  "focused": true,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 744.5,
+    "y": 858.5
+  },
+  "role": "AXTextArea",
+  "selected": 0,
+  "size": {
+    "height": 21,
+    "width": 502.5
+  }
+}

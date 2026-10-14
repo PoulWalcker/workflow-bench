@@ -1,0 +1,172 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        },
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        },
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        },
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        },
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        },
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        },
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        },
+        {
+          "enabled": true,
+          "focused": false,
+          "identifier": "fixture-redacted-id",
+          "pid": 0,
+          "position": {
+            "x": 100,
+            "y": 1230
+          },
+          "role": "AXMenuItem",
+          "selected": false,
+          "size": {
+            "height": 0,
+            "width": 0
+          },
+          "title": "Unspecified menu item"
+        }
+      ],
+      "enabled": true,
+      "focused": false,
+      "pid": 0,
+      "position": {
+        "x": 100,
+        "y": 1230
+      },
+      "role": "AXMenu",
+      "selected": false,
+      "size": {
+        "height": 0,
+        "width": 0
+      }
+    }
+  ],
+  "enabled": true,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 100,
+    "y": 1230
+  },
+  "role": "AXMenuItem",
+  "selected": false,
+  "size": {
+    "height": 0,
+    "width": 0
+  },
+  "title": "\u200eSend"
+}

@@ -1,0 +1,57 @@
+{
+  "actions": [
+    "AXCancel",
+    "AXPress",
+    "AXScrollToVisible",
+    "AXScrollUpByPage",
+    "AXShowMenu"
+  ],
+  "attributes": [
+    "AXActivationPoint",
+    "AXChildren",
+    "AXChildrenInNavigationOrder",
+    "AXCustomActions",
+    "AXCustomContent",
+    "AXCustomRotors",
+    "AXDescription",
+    "AXEnabled",
+    "AXFocused",
+    "AXFrame",
+    "AXHelp",
+    "AXIdentifier",
+    "AXLanguage",
+    "AXLinkedUIElements",
+    "AXNumberOfCharacters",
+    "AXParent",
+    "AXPosition",
+    "AXRole",
+    "AXRoleDescription",
+    "AXSelected",
+    "AXSelectedText",
+    "AXSelectedTextRange",
+    "AXSelectedTextRanges",
+    "AXSize",
+    "AXSubrole",
+    "AXTopLevelUIElement",
+    "AXUserInputLabels",
+    "AXValue",
+    "AXVisibleCharacterRange",
+    "AXWindow"
+  ],
+  "description": "Thank you, Alice! 09:30",
+  "enabled": 1,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "pid": 0,
+  "position": {
+    "x": 809.5,
+    "y": 209
+  },
+  "role": "AXStaticText",
+  "selected": 0,
+  "size": {
+    "height": 48,
+    "width": 377
+  },
+  "value": ""
+}

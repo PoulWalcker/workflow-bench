@@ -1,0 +1,58 @@
+{
+  "actions": [
+    "AXCancel",
+    "AXPress",
+    "AXScrollDownByPage",
+    "AXScrollToVisible",
+    "AXScrollUpByPage",
+    "AXShowMenu",
+    "Name:\u200eArchive\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eMore\nTarget:0x0\nSelector:(null)",
+    "Name:\u200ePin\nTarget:0x0\nSelector:(null)",
+    "Name:\u200eUnread\nTarget:0x0\nSelector:(null)"
+  ],
+  "attributes": [
+    "AXActivationPoint",
+    "AXChildren",
+    "AXChildrenInNavigationOrder",
+    "AXCustomActions",
+    "AXCustomContent",
+    "AXCustomRotors",
+    "AXDescription",
+    "AXEnabled",
+    "AXFocused",
+    "AXFrame",
+    "AXHelp",
+    "AXIdentifier",
+    "AXLanguage",
+    "AXLinkedUIElements",
+    "AXParent",
+    "AXPosition",
+    "AXRole",
+    "AXRoleDescription",
+    "AXSelected",
+    "AXSize",
+    "AXSubrole",
+    "AXTopLevelUIElement",
+    "AXUserInputLabels",
+    "AXValue",
+    "AXWindow"
+  ],
+  "description": "Alice Morgan",
+  "enabled": 1,
+  "focused": false,
+  "identifier": "fixture-redacted-id",
+  "path": "0.0.0.1.0.0.0.1",
+  "pid": 0,
+  "position": {
+    "x": 100,
+    "y": 247
+  },
+  "role": "AXButton",
+  "selected": 0,
+  "size": {
+    "height": 68,
+    "width": 595
+  },
+  "value": "Alice Morgan"
+}

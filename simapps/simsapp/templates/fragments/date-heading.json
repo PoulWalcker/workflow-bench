@@ -1,0 +1,34 @@
+{
+  "children": [
+    {
+      "description": "Monday, January 5, 2026",
+      "enabled": 1,
+      "focused": false,
+      "pid": 0,
+      "position": {
+        "x": 963,
+        "y": 273
+      },
+      "role": "AXStaticText",
+      "selected": 0,
+      "size": {
+        "height": 14,
+        "width": 69.5
+      }
+    }
+  ],
+  "description": "",
+  "enabled": 1,
+  "focused": false,
+  "pid": 0,
+  "position": {
+    "x": 695.5,
+    "y": 263
+  },
+  "role": "AXHeading",
+  "selected": 0,
+  "size": {
+    "height": 34,
+    "width": 604.5
+  }
+}

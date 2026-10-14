@@ -1,0 +1,27 @@
+{
+  "actions": [],
+  "attributes": [
+    "AXChildren",
+    "AXChildrenInNavigationOrder",
+    "AXEnhancedUserInterface",
+    "AXExtrasMenuBar",
+    "AXFocusedUIElement",
+    "AXFocusedWindow",
+    "AXFrame",
+    "AXFrontmost",
+    "AXFunctionRowTopLevelElements",
+    "AXHidden",
+    "AXMainWindow",
+    "AXMenuBar",
+    "AXPosition",
+    "AXPreferredLanguage",
+    "AXRole",
+    "AXRoleDescription",
+    "AXSize",
+    "AXTitle",
+    "AXWindows"
+  ],
+  "pid": 0,
+  "role": "AXApplication",
+  "title": "SimsApp"
+}
