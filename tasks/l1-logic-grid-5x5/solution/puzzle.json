@@ -1,0 +1,244 @@
+{
+  "attributes": {
+    "Name": [
+      "Clara",
+      "Damon",
+      "Hugo",
+      "Ada",
+      "Felix"
+    ],
+    "Drink": [
+      "milk",
+      "juice",
+      "tea",
+      "cocoa",
+      "lemonade"
+    ],
+    "Flower": [
+      "iris",
+      "tulip",
+      "aster",
+      "dahlia",
+      "lily"
+    ],
+    "Animal": [
+      "dog",
+      "horse",
+      "falcon",
+      "otter",
+      "cat"
+    ],
+    "Food": [
+      "pie",
+      "soup",
+      "rice",
+      "pasta",
+      "curry"
+    ]
+  },
+  "clues": [
+    {
+      "type": "right_of",
+      "a": [
+        "Name",
+        "Damon"
+      ],
+      "b": [
+        "Flower",
+        "iris"
+      ]
+    },
+    {
+      "type": "direct_left",
+      "a": [
+        "Flower",
+        "dahlia"
+      ],
+      "b": [
+        "Food",
+        "soup"
+      ]
+    },
+    {
+      "type": "same_house",
+      "a": [
+        "Flower",
+        "iris"
+      ],
+      "b": [
+        "Food",
+        "rice"
+      ]
+    },
+    {
+      "type": "not_same_house",
+      "a": [
+        "Drink",
+        "juice"
+      ],
+      "b": [
+        "Flower",
+        "aster"
+      ]
+    },
+    {
+      "type": "same_house",
+      "a": [
+        "Name",
+        "Hugo"
+      ],
+      "b": [
+        "Food",
+        "pie"
+      ]
+    },
+    {
+      "type": "not_at",
+      "a": [
+        "Drink",
+        "juice"
+      ],
+      "house": 2
+    },
+    {
+      "type": "right_of",
+      "a": [
+        "Name",
+        "Damon"
+      ],
+      "b": [
+        "Drink",
+        "tea"
+      ]
+    },
+    {
+      "type": "one_between",
+      "a": [
+        "Name",
+        "Hugo"
+      ],
+      "b": [
+        "Flower",
+        "aster"
+      ]
+    },
+    {
+      "type": "not_at",
+      "a": [
+        "Flower",
+        "aster"
+      ],
+      "house": 3
+    },
+    {
+      "type": "direct_right",
+      "a": [
+        "Animal",
+        "dog"
+      ],
+      "b": [
+        "Food",
+        "pasta"
+      ]
+    },
+    {
+      "type": "left_of",
+      "a": [
+        "Name",
+        "Damon"
+      ],
+      "b": [
+        "Drink",
+        "lemonade"
+      ]
+    },
+    {
+      "type": "direct_left",
+      "a": [
+        "Drink",
+        "cocoa"
+      ],
+      "b": [
+        "Food",
+        "soup"
+      ]
+    },
+    {
+      "type": "side_by_side",
+      "a": [
+        "Drink",
+        "juice"
+      ],
+      "b": [
+        "Animal",
+        "falcon"
+      ]
+    },
+    {
+      "type": "two_between",
+      "a": [
+        "Name",
+        "Ada"
+      ],
+      "b": [
+        "Animal",
+        "horse"
+      ]
+    },
+    {
+      "type": "left_of",
+      "a": [
+        "Name",
+        "Ada"
+      ],
+      "b": [
+        "Flower",
+        "tulip"
+      ]
+    },
+    {
+      "type": "same_house",
+      "a": [
+        "Flower",
+        "tulip"
+      ],
+      "b": [
+        "Animal",
+        "otter"
+      ]
+    },
+    {
+      "type": "not_same_house",
+      "a": [
+        "Name",
+        "Felix"
+      ],
+      "b": [
+        "Drink",
+        "milk"
+      ]
+    },
+    {
+      "type": "right_of",
+      "a": [
+        "Name",
+        "Ada"
+      ],
+      "b": [
+        "Flower",
+        "dahlia"
+      ]
+    },
+    {
+      "type": "not_same_house",
+      "a": [
+        "Name",
+        "Clara"
+      ],
+      "b": [
+        "Food",
+        "curry"
+      ]
+    }
+  ]
+}
