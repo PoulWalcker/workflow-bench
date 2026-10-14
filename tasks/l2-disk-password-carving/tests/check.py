@@ -1,5 +1,6 @@
 """Assess recovered password guesses and preservation of the evidence files."""
 
+import codecs
 import errno
 import hashlib
 import json
@@ -51,16 +52,68 @@ def _password_found(answer: bytes | ReadProblem) -> Criterion:
         return _criterion("password_found", "fail", "no_answer")
     if answer == "unavailable":
         return _criterion("password_found", "unknown", "answer_unavailable")
+    expected = (EXPECTED / "password.txt").read_text().strip()
     if answer == "too_large":
-        return _criterion("password_found", "unknown", "answer_too_large")
+        found = _scan_large_answer(expected)
+        if found == "unavailable":
+            return _criterion("password_found", "unknown", "answer_unavailable")
+        if found == "invalid":
+            return _criterion("password_found", "fail", "invalid_answer")
+        if not found:
+            return _criterion("password_found", "fail", "password_missing")
+        return _criterion("password_found", "pass", "pass")
     try:
         guesses = answer.decode("utf-8").strip().split("\n")
     except UnicodeDecodeError:
         return _criterion("password_found", "fail", "invalid_answer")
-    expected = (EXPECTED / "password.txt").read_text().strip()
     if expected not in guesses:
         return _criterion("password_found", "fail", "password_missing")
     return _criterion("password_found", "pass", "pass")
+
+
+def _scan_large_answer(expected: str) -> bool | Literal["invalid", "unavailable"]:
+    """Match complete lines with bounded memory, including file-edge whitespace."""
+    descriptor = _open_regular(APP, "recovered_passwords.txt")
+    if isinstance(descriptor, str):
+        return "unavailable"
+    found = False
+    prefix: str | None = ""
+    at_start = True
+    trailing_candidate = False
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            while True:
+                chunk = stream.read(65536)
+                decoded = decoder.decode(chunk, final=not chunk)
+                for character in decoded:
+                    if at_start and character.isspace():
+                        continue
+                    at_start = False
+                    if trailing_candidate and not character.isspace():
+                        trailing_candidate = False
+                    if character == "\n":
+                        if prefix == expected:
+                            found = True
+                        prefix = ""
+                    elif prefix is not None:
+                        if (
+                            len(prefix) < len(expected)
+                            and character == expected[len(prefix)]
+                        ):
+                            prefix += character
+                        elif prefix == expected and character.isspace():
+                            trailing_candidate = True
+                            prefix = None
+                        else:
+                            prefix = None
+                if not chunk:
+                    break
+    except UnicodeDecodeError:
+        return "invalid"
+    except OSError:
+        return "unavailable"
+    return found or prefix == expected or trailing_candidate
 
 
 def _no_collateral_changes() -> Criterion:
@@ -86,6 +139,23 @@ def _no_collateral_changes() -> Criterion:
 
 def _read_regular(root: Path, relative: str, max_bytes: int) -> bytes | ReadProblem:
     """Read a bounded file while rejecting symlinks in its entire path."""
+    descriptor = _open_regular(root, relative)
+    if isinstance(descriptor, str):
+        return descriptor
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            content = stream.read(max_bytes + 1)
+    except OSError:
+        return "unavailable"
+    if len(content) > max_bytes:
+        return "too_large"
+    return content
+
+
+def _open_regular(
+    root: Path, relative: str
+) -> int | Literal["missing_or_invalid", "unavailable"]:
+    """Open a regular file without following candidate-controlled symlinks."""
     components = Path(relative).parts
     try:
         directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -105,17 +175,19 @@ def _read_regular(root: Path, relative: str, max_bytes: int) -> bytes | ReadProb
             )
         finally:
             os.close(directory)
-        with os.fdopen(descriptor, "rb") as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                return "missing_or_invalid"
-            content = stream.read(max_bytes + 1)
+        try:
+            is_regular = stat.S_ISREG(os.fstat(descriptor).st_mode)
+        except OSError:
+            os.close(descriptor)
+            raise
+        if not is_regular:
+            os.close(descriptor)
+            return "missing_or_invalid"
     except OSError as error:
         if error.errno in (errno.ENOENT, errno.ENOTDIR, errno.ELOOP):
             return "missing_or_invalid"
         return "unavailable"
-    if len(content) > max_bytes:
-        return "too_large"
-    return content
+    return descriptor
 
 
 def _criterion(

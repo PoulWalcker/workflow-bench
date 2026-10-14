@@ -17,7 +17,7 @@ attribution = "Terminal-Bench 2.1 password-recovery by Harsh Raj"
 difficulty = "hard"
 empirical_rank = "41/89 (arXiv 2601.11868, Appendix A.3)"
 collateral_check = "added by Workflow Bench"
-deviations = "Seeded task data and fixed timestamps replace random and date-derived build inputs; existing /app/varsea files must stay unchanged; agent timeout 1800 s instead of 900 s; no network during trial; no CPU or memory limits; separate stdlib verifier replaces upstream pytest with a 1 MiB answer read limit; final /app workspace collected."
+deviations = "Seeded task data and fixed timestamps replace random and date-derived build inputs; existing /app/varsea files must stay unchanged; agent timeout 1800 s instead of 900 s; no network during trial; no CPU or memory limits; separate stdlib verifier replaces upstream pytest with bounded-memory answer scanning; final /app workspace collected."
 contamination_risk = "The public Terminal-Bench task and tests may be present in model training data."
 
 [environment]
