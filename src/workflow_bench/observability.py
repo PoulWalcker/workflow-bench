@@ -17,18 +17,20 @@ def format_sapiens_cli_line(
     observed_at: datetime,
     *,
     trial: str,
-    instruction: str | None = None,
+    submitted_argument: str | None = None,
 ) -> str:
     """Return one CLI line with a masked excerpt of at most 200 characters.
 
-    The submitted instruction is removed in raw and JSON-escaped forms.
+    The exact submitted chat argument is removed in raw and JSON-escaped forms.
     Pattern masking for other sensitive output remains best-effort.
     """
     timestamp = observed_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
     safe_output = output or ""
-    if instruction:
-        safe_output = safe_output.replace(instruction, "[REDACTED]")
-        safe_output = safe_output.replace(json.dumps(instruction)[1:-1], "[REDACTED]")
+    if submitted_argument:
+        safe_output = safe_output.replace(submitted_argument, "[REDACTED]")
+        safe_output = safe_output.replace(
+            json.dumps(submitted_argument)[1:-1], "[REDACTED]"
+        )
     excerpt = (
         mask_sensitive_text(safe_output).replace("\n", " ").replace("\r", " ")[:200]
     )

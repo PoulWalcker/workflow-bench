@@ -333,12 +333,13 @@ class SapiensInstalledAgent(SessionSafeCodex):
         else:
             raise RuntimeError("sapiens_host_unavailable")
         # Submission and observation are separate; never repeat an uncertain write.
+        submitted_argument = self.render_instruction(instruction)
         accepted = await self._sapiens_cli(
             environment,
             "chat",
-            CLI + "chat " + shlex.quote(self.render_instruction(instruction)),
+            CLI + "chat " + shlex.quote(submitted_argument),
             env,
-            instruction=instruction,
+            submitted_argument=submitted_argument,
         )
         (self.logs_dir / "sapiens-accepted.json").write_text(accepted.stdout or "")
         receipt = self._response(accepted.stdout)
@@ -498,7 +499,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
         env: dict[str, str],
         *,
         timeout_sec: int | None = None,
-        instruction: str | None = None,
+        submitted_argument: str | None = None,
     ) -> ExecResult:
         """Run one CLI attempt and log its sanitized result even if it raises."""
         started = time.monotonic()
@@ -519,7 +520,7 @@ class SapiensInstalledAgent(SessionSafeCodex):
                     else None,
                     datetime.now(UTC),
                     trial=self.logs_dir.parent.name,
-                    instruction=instruction,
+                    submitted_argument=submitted_argument,
                 )
             )
 

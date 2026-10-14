@@ -66,9 +66,9 @@ New environment and agent run-result diagnostics use UTC ISO 8601 `at=` timestam
 task verifier writes the same shape to its captured stdout after evaluation.
 The host verifier line reads only validated `evaluation.json`, reports the verdict,
 criterion count and failed ids, and uses `unavailable` if the file cannot be read.
-Sapiens CLI lines include a bounded excerpt after instruction removal and the
-existing best-effort pattern masking. Transition lines use only known state names
-or `other`, and omit unchanged polls. These lines are diagnostic and do not feed
+Sapiens CLI lines include a bounded excerpt after submitted chat argument removal
+and the existing best-effort pattern masking. Transition lines use only known state
+names or `other`, and omit unchanged polls. These lines are diagnostic and do not feed
 verdict or reward calculation.
 
 Schemas load through `importlib.resources`, without checkout/cwd lookup or remote

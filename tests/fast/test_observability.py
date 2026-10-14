@@ -89,7 +89,7 @@ def test_sapiens_cli_line_masks_instruction_and_secret() -> None:
         output,
         datetime(2026, 1, 1, tzinfo=UTC),
         trial="basket__abc",
-        instruction=instruction,
+        submitted_argument=instruction,
     )
 
     assert "at=2026-01-01T00:00:00Z phase=sapiens-cli" in line
@@ -100,3 +100,21 @@ def test_sapiens_cli_line_masks_instruction_and_secret() -> None:
     excerpt = json.loads(line.split("excerpt=", 1)[1])
     assert json.dumps(instruction)[1:-1] not in excerpt
     assert len(excerpt) <= 200
+
+
+def test_sapiens_cli_line_excludes_rendered_chat_argument() -> None:
+    submitted_argument = "TEMPLATE: WRITE FIXTURE ANSWER"
+    output = json.dumps({"error": submitted_argument}) + "\n" + submitted_argument
+
+    line = format_sapiens_cli_line(
+        "chat",
+        1,
+        0.5,
+        output,
+        datetime(2026, 1, 1, tzinfo=UTC),
+        trial="basket__abc",
+        submitted_argument=submitted_argument,
+    )
+
+    assert "subcommand=chat exit=1 duration=0.500s" in line
+    assert submitted_argument not in line
