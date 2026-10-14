@@ -1,5 +1,6 @@
 """Assess the async runner with the private upstream harness."""
 
+import errno
 import os
 import pwd
 import resource
@@ -11,6 +12,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
@@ -56,7 +58,10 @@ def main() -> None:
         )
     else:
         criteria = [_criterion("run_file_exists", "pass", "pass")]
-        criteria.extend(_run_case(case, candidate) for case in CASES)
+        with tempfile.TemporaryDirectory(prefix="async-runner-runtime-") as directory:
+            runtime_root = Path(directory)
+            _prepare_runtime(runtime_root)
+            criteria.extend(_run_case(case, candidate, runtime_root) for case in CASES)
     criteria.append(
         _criterion("no_collateral_changes", "not_applicable", "no_protected_state")
     )
@@ -72,18 +77,43 @@ def _read_candidate() -> bytes | None:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 return None
             content = stream.read(MAX_CANDIDATE_BYTES + 1)
-    except OSError:
-        return None
+    except OSError as error:
+        if error.errno in (
+            errno.ENOENT,
+            errno.ENOTDIR,
+            errno.EACCES,
+            errno.EPERM,
+            errno.ELOOP,
+        ):
+            return None
+        raise
     if len(content) > MAX_CANDIDATE_BYTES:
         return None
     return content
 
 
-def _run_case(case: Case, candidate: bytes) -> Criterion:
+def _prepare_runtime(runtime_root: Path) -> None:
+    """Copy the public Python runtime into a root that cannot reach private tests."""
+    (runtime_root / "usr/local/bin").mkdir(parents=True)
+    shutil.copy2(
+        Path(sys.executable).resolve(), runtime_root / sys.executable.lstrip("/")
+    )
+    shutil.copytree("/usr/local/lib", runtime_root / "usr/local/lib", symlinks=True)
+    shutil.copytree("/usr/lib", runtime_root / "usr/lib", symlinks=True)
+    os.symlink("usr/lib", runtime_root / "lib")
+    (runtime_root / "work").mkdir()
+    (runtime_root / "tmp").mkdir()
+    os.chmod(runtime_root / "tmp", 0o1777)
+    os.chmod(runtime_root, 0o755)
+
+
+def _run_case(case: Case, candidate: bytes, runtime_root: Path) -> Criterion:
     """Preserve upstream timings and counts while isolating one invocation."""
     status: Literal["pass", "fail", "unknown"] = "unknown"
     reason = "candidate_unavailable"
-    with tempfile.TemporaryDirectory(prefix="async-runner-") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="async-runner-", dir=runtime_root / "work"
+    ) as directory:
         working_dir = Path(directory)
         os.chmod(working_dir, 0o755)
         runner_copy = working_dir / "run.py"
@@ -108,8 +138,11 @@ def _run_case(case: Case, candidate: bytes) -> Criterion:
                     cwd=working_dir,
                     stdout=stdout,
                     stderr=stderr,
+                    env={**os.environ, "LD_LIBRARY_PATH": "/usr/local/lib"},
                     start_new_session=True,
-                    preexec_fn=_drop_privileges,
+                    preexec_fn=partial(
+                        _drop_privileges, runtime_root, working_dir.name
+                    ),
                 )
                 if case.is_cancelled:
                     time.sleep(0.5)
@@ -139,10 +172,12 @@ def _run_case(case: Case, candidate: bytes) -> Criterion:
     return _criterion(case.criterion_id, status, reason)
 
 
-def _drop_privileges() -> None:
-    """Cap captured file growth and run candidate Python as nobody."""
+def _drop_privileges(runtime_root: Path, working_name: str) -> None:
+    """Confine the candidate to its runtime and run it as nobody."""
     nobody = pwd.getpwnam("nobody")
     resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES))
+    os.chroot(runtime_root)
+    os.chdir(f"/work/{working_name}")
     os.setgroups([])
     os.setgid(nobody.pw_gid)
     os.setuid(nobody.pw_uid)

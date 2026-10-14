@@ -115,8 +115,9 @@ violation makes the verdict `fail` even when other criteria are unknown. Read ca
 as untrusted input (`workflow_bench.data.read_json` bounds size and rejects symlinks) and never
 execute them except under this rule: candidate code may run only in the separate verifier, as an
 unprivileged user in a fresh temporary directory holding copies of the candidate file and private
-test harness. Bound its execution time and captured output. After each run, kill all processes of
-that user and confirm none remain; otherwise mark affected Criteria unknown. Remove entries in
+test harness, isolated from the private checker and other verifier inputs. Bound its execution time
+and captured output. After each run, kill all processes of that user and confirm none remain;
+otherwise mark affected Criteria unknown. Remove entries in
 `/logs/verifier` that the verifier did not create, then write the evaluation last from the verifier
 process. A verifier crash leaves no evaluation, which Harbor records as a verifier error.
 
