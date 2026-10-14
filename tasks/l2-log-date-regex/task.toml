@@ -1,0 +1,34 @@
+schema_version = "1.4"
+artifacts = ["/app"]
+
+[metadata]
+level = "L2"
+horizon = "single"
+benchmark = "Terminal-Bench 2.1"
+instance = "regex-log"
+hub_reference = "terminal-bench/terminal-bench-2-1"
+upstream_content_digest = "802c16cfd132e6c457529cb864be5a757c1b23b6cadc57f2d01983cb0110292a"
+dataset_url = "https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1"
+dataset_revision = "802c16cfd132e6c457529cb864be5a757c1b23b6cadc57f2d01983cb0110292a"
+checker_source_url = "https://github.com/harbor-framework/terminal-bench-2/tree/2fd12b88aafdd04a52c298e3940bcb189f9766d6/regex-log/tests"
+checker_commit = "2fd12b88aafdd04a52c298e3940bcb189f9766d6"
+source_repo_url = "https://github.com/harbor-framework/terminal-bench-2"
+source_repo_commit = "2fd12b88aafdd04a52c298e3940bcb189f9766d6"
+license = "Apache-2.0"
+attribution = "Terminal-Bench 2.1 regex-log by Orfeas Menis Mastromichalakis"
+difficulty = "medium"
+empirical_rank = "11/89 (arXiv 2601.11868, Appendix A.3)"
+collateral_check = "not_applicable: empty workspace; added by Workflow Bench"
+deviations = "Agents base image replaces bare Ubuntu 24.04; schema 1.4 replaces 1.1; agent timeout 1800 s instead of 900 s; build timeout 900 s instead of 600 s; verifier timeout 120 s instead of 900 s; no network during trial; no CPU or memory limits; separate stdlib verifier replaces pytest; final /app workspace collected instead of no artifacts; regex matching runs with a finite subprocess timeout."
+contamination_risk = "The public Terminal-Bench task and tests may be present in model training data."
+
+[environment]
+build_timeout_sec = 900.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0
