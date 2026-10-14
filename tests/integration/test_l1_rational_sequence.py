@@ -38,7 +38,6 @@ IMAGE = "workflow-bench-agents:codex-0.162.1"
 def test_answer_criteria(
     tmp_path: Path, candidate: bytes | None, failed_criteria: set[str]
 ) -> None:
-    """The image verifier evaluates the submitted answer criteria."""
     output = tmp_path / "output"
     output.mkdir()
     if candidate is not None:
