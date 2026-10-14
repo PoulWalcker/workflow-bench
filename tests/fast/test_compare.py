@@ -1556,7 +1556,11 @@ def test_markdown_report_has_one_table_per_configuration(
         "reasoning summary unknown, web search unknown"
     )
     assert "| t1 | c1 | 3 | 1/2 | 1 | 0 | 1 | 0.50 | unknown |" in lines[codex + 4]
-    assert "17.5 | 200.5 / 20 / 20 | unknown | high | 0 | 0 |" in lines[codex + 4]
+    assert (
+        "17.5 | 200.5 / 20 / 20 | unknown | high | "
+        "0 observed; 3 Trials missing | 0 observed; 3 Trials missing | 3 |"
+        in lines[codex + 4]
+    )
     no_model = lines.index(
         "## codex 0.162.1, model unknown, reasoning unknown, "
         "reasoning summary unknown, web search unknown"
@@ -1587,6 +1591,15 @@ def test_compare_reports_reliability_criteria_and_observed_effort(
             },
         )
         _condition_lock(job, name, task)
+        if index == 1:
+            # A saved external verifier result confirms the producer even
+            # when its evaluation contains an unknown criterion.
+            result_path = job / name / "result.json"
+            saved_result = json.loads(result_path.read_text())
+            saved_result["verifier_result"] = VerifierResult(rewards={}).model_dump(
+                mode="json"
+            )
+            result_path.write_text(json.dumps(saved_result))
     for index, effort in enumerate(("low", "xhigh", None)):
         rows: list[dict[str, object]] = []
         if effort is not None:
@@ -1624,6 +1637,59 @@ def test_compare_reports_reliability_criteria_and_observed_effort(
     assert pair["sessions_with_summary"] == 1
     assert pair["configuration"]["reasoning_summary"] == "auto"
     assert report["levels"][0]["level"] == "L1"
+
+
+def test_compare_counts_criteria_only_after_trusted_verifier_result(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "job")
+    _trial(job, "checked", criteria=_criteria("fail"))
+    _trial(job, "skipped", criteria=_criteria("fail"), verifier="skipped")
+    _trial(job, "shared", criteria=_criteria("fail"), verifier_mode="shared")
+    _trial(job, "no-result", criteria=_criteria("unknown"), verifier="failed")
+
+    _, report = _compare([job], capsys)
+    [pair] = report["pairs"]
+    assert pair["failed_criteria"] == {"c0": {"fail": 1, "unknown": 0}}
+    assert {entry["trial"]: entry["outcome"] for entry in pair["trials"]} == {
+        "checked": "fail",
+        "skipped": "infra_error",
+        "shared": "infra_error",
+        "no-result": "unknown",
+    }
+
+
+def test_compare_counts_each_criterion_status_once_per_trial(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "job")
+    _trial(job, "duplicate", criteria=_criteria("fail"))
+    evaluation_path = job / "duplicate" / "verifier" / "evaluation.json"
+    evaluation = json.loads(evaluation_path.read_text())
+    evaluation["criteria"].append(dict(evaluation["criteria"][0]))
+    evaluation_path.write_text(json.dumps(evaluation))
+
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["failed_criteria"] == {"c0": {"fail": 1, "unknown": 0}}
+
+
+def test_markdown_marks_session_counts_incomplete_when_evidence_is_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "job")
+    _trial(job, "observed", criteria=_criteria("pass"), sessions=1)
+    _session(
+        job / "observed" / "agent",
+        "rollout.jsonl",
+        [{"type": "turn_context", "payload": {"effort": "xhigh"}}],
+    )
+    _trial(job, "missing", criteria=_criteria("pass"), sessions=2)
+
+    assert main(["compare", "--format", "markdown", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "Session evidence missing Trials" in output
+    assert "1 observed; 1 Trial missing" in output
+    assert "0 observed; 1 Trial missing" in output
 
 
 @pytest.mark.parametrize(
@@ -1735,6 +1801,112 @@ def test_compare_detects_insufficient_valid_model_and_effort(
     ]
 
 
+def test_compare_uses_trial_environment_hosts_in_agent_network(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    task = _task_directory(tmp_path / "task")
+    jobs = [_job(tmp_path, "codex-job"), _job(tmp_path, "sapiens-job")]
+    for job, harness in zip(jobs, ("codex", "sapiens"), strict=True):
+        for index in range(2):
+            name = f"trial-{index}"
+            _trial(
+                job,
+                name,
+                criteria=_criteria("pass"),
+                harness=harness,
+                kwargs={"reasoning_effort": "medium"},
+            )
+            _condition_lock(job, name, task, hosts=[])
+            lock_path = job / name / "lock.json"
+            lock = json.loads(lock_path.read_text())
+            lock["environment"] = {
+                "extra_allowed_hosts": ["provider.example"]
+                if harness == "sapiens"
+                else []
+            }
+            lock_path.write_text(json.dumps(lock))
+
+    _, report = _compare(jobs, capsys)
+    assert report["comparisons"] == [
+        {
+            "task": "t1",
+            "status": "incomparable",
+            "reasons": ["agent_network_differs"],
+        }
+    ]
+
+
+def test_compare_ignores_agent_hosts_under_explicit_public_policy(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    task = _task_directory(tmp_path / "task")
+    (task / "task.toml").write_text(
+        '[metadata]\nlevel = "L1"\n[environment]\nnetwork_mode = "no-network"\n'
+        '[agent]\ntimeout_sec = 600\nnetwork_mode = "public"\n'
+    )
+    jobs = [_job(tmp_path, "codex-job"), _job(tmp_path, "sapiens-job")]
+    for job, harness in zip(jobs, ("codex", "sapiens"), strict=True):
+        for index in range(2):
+            name = f"trial-{index}"
+            _trial(
+                job,
+                name,
+                criteria=_criteria("pass"),
+                harness=harness,
+                kwargs={"reasoning_effort": "medium"},
+            )
+            hosts = ["unused.example"] if harness == "sapiens" else []
+            _condition_lock(job, name, task, hosts=hosts)
+
+    _, report = _compare(jobs, capsys)
+    assert report["comparisons"] == [
+        {"task": "t1", "status": "comparable", "reasons": []}
+    ]
+
+
+def test_compare_uses_effective_agent_timeout_cap_and_multiplier(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    task = _task_directory(tmp_path / "task")
+    jobs = [_job(tmp_path, "codex-job"), _job(tmp_path, "sapiens-job")]
+    for job, harness in zip(jobs, ("codex", "sapiens"), strict=True):
+        for index in range(2):
+            name = f"trial-{index}"
+            _trial(
+                job,
+                name,
+                criteria=_criteria("pass"),
+                harness=harness,
+                kwargs={"reasoning_effort": "medium"},
+            )
+            _condition_lock(job, name, task)
+            if harness == "sapiens":
+                lock_path = job / name / "lock.json"
+                lock = json.loads(lock_path.read_text())
+                lock["agent"]["max_timeout_sec"] = 300
+                lock["timeout_multiplier"] = 2
+                lock_path.write_text(json.dumps(lock))
+
+    _, report = _compare(jobs, capsys)
+    assert report["comparisons"] == [
+        {"task": "t1", "status": "comparable", "reasons": []}
+    ]
+
+    for index in range(2):
+        lock_path = jobs[1] / f"trial-{index}" / "lock.json"
+        lock = json.loads(lock_path.read_text())
+        lock["agent_timeout_multiplier"] = 1
+        lock_path.write_text(json.dumps(lock))
+    _, changed = _compare(jobs, capsys)
+    assert changed["comparisons"] == [
+        {
+            "task": "t1",
+            "status": "incomparable",
+            "reasons": ["agent_timeout_differs"],
+        }
+    ]
+
+
 def test_level_summary_uses_verified_task_digest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1832,6 +2004,23 @@ def test_level_summary_assigns_each_trial_by_its_own_verified_level(
     assert levels["unknown"]["tasks"] == 1
     assert levels["unknown"]["covered_tasks"] == 0
     assert levels["unknown"]["unknown"] == 1
+
+
+def test_level_is_unknown_when_task_exceeds_digest_read_limit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    task = _task_directory(tmp_path / "task")
+    (task / "tests").mkdir()
+    with (task / "tests" / "large.bin").open("wb") as stream:
+        stream.seek(64 * 1024 * 1024)
+        stream.write(b"x")
+    job = _job(tmp_path, "job")
+    _trial(job, "trial", criteria=_criteria("pass"))
+    _condition_lock(job, "trial", task)
+
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["level"] == "unknown"
+    assert report["levels"][0]["level"] == "unknown"
 
 
 def test_summary_setting_is_part_of_the_saved_configuration(

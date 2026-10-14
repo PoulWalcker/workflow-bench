@@ -1,10 +1,13 @@
 """Offline report of Trial outcomes per task and configuration from Harbor job dirs."""
 
+import hashlib
 import logging
 import math
+import os
 import statistics
 import time
 import tomllib
+import warnings
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -14,16 +17,25 @@ from typing import Literal, TypedDict, cast
 
 from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
+from harbor.models.task.config import TaskConfig as HarborTaskConfig
 from harbor.models.task.config import VerifierEnvironmentMode
 from harbor.models.trial.artifact_manifest import ArtifactManifest
+from harbor.models.trial.config import AgentConfig as HarborAgentConfig
+from harbor.models.trial.config import EnvironmentConfig as HarborEnvironmentConfig
 from harbor.models.trial.result import TimingInfo, TrialResult
 from harbor.publisher.packager import Packager
+from harbor.trial.network_policy import (
+    resolve_agent_env_baseline,
+    resolve_agent_phase_policy,
+)
 
 from workflow_bench.contracts import Evaluation
 from workflow_bench.data import DataError, read_bytes, read_json, validate_contract
 from workflow_bench.transcript import read_sessions
 
 LOGGER = logging.getLogger(__name__)
+_MAX_TASK_DIGEST_ENTRIES = 4096
+_MAX_TASK_DIGEST_BYTES = 64 * 1024 * 1024
 
 type Outcome = Literal["pass", "fail", "unknown", "infra_error"]
 # Sortable identity; an optional part is (known, value) so unknown sorts first.
@@ -289,7 +301,9 @@ class _RecordedConditions:
     task_digest: str | None
     task_path: Path | None
     override_timeout_sec: float | None
-    extra_allowed_hosts: tuple[str, ...] | None
+    trial_agent: HarborAgentConfig | None
+    trial_environment: HarborEnvironmentConfig | None
+    timeout_multiplier: float | None
 
 
 @dataclass(frozen=True)
@@ -426,6 +440,7 @@ def render_markdown(report: ComparisonReport) -> str:
             "Base effort",
             "xhigh sessions",
             "Sessions with summary",
+            "Session evidence missing Trials",
         ]
         lines += [
             f"| {' | '.join(headers)} |",
@@ -602,7 +617,7 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
     ):
         agent_sec = (execution.finished_at - execution.started_at).total_seconds()
     usage = result.agent_result
-    failed_criteria = _failed_criteria(trial_dir)
+    failed_criteria = _failed_criteria(trial_dir, result)
     session_observations = _observe_sessions(trial_dir)
     conditions = _effective_conditions(trial_dir)
     recorded_session_count = _reported_session_count(usage)
@@ -639,17 +654,32 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
     )
 
 
-def _failed_criteria(trial_dir: Path) -> dict[str, dict[str, int]]:
-    """Count failure and unknown facts from a validated saved evaluation."""
+def _failed_criteria(trial_dir: Path, result: TrialResult) -> dict[str, dict[str, int]]:
+    """Count checked criterion statuses once per Trial and status.
+
+    A separate verifier result establishes the producer of the evaluation;
+    the candidate can write the same path before that verifier begins.
+    """
     failed_criteria: dict[str, dict[str, int]] = {}
+    if (
+        result.agent_execution is None
+        or not _has_collected_artifacts(trial_dir)
+        or result.verifier is None
+        or result.verifier_environment_mode != VerifierEnvironmentMode.SEPARATE
+        or result.verifier_result is None
+    ):
+        return failed_criteria
     try:
         evaluation = read_evaluation(trial_dir / "verifier" / "evaluation.json")
     except (OSError, DataError):
         evaluation = None
     if evaluation is not None:
+        observed: set[tuple[str, str]] = set()
         for criterion in evaluation["criteria"]:
             status = criterion["status"]
-            if status in {"fail", "unknown"}:
+            key = (criterion["criterion_id"], status)
+            if status in {"fail", "unknown"} and key not in observed:
+                observed.add(key)
                 counts = failed_criteria.setdefault(
                     criterion["criterion_id"], {"fail": 0, "unknown": 0}
                 )
@@ -712,38 +742,53 @@ def _effective_conditions(trial_dir: Path) -> _EffectiveConditions:
         and recorded_level in {"L1", "L2", "L3a", "L3b"}
         else "unknown"
     )
-    agent_timeout_sec = recorded.override_timeout_sec
-    if agent_timeout_sec is None and task_config is not None:
+    base_timeout_sec = recorded.override_timeout_sec
+    if base_timeout_sec is None and task_config is not None:
         task_agent = task_config.get("agent")
         task_timeout = (
             task_agent.get("timeout_sec") if isinstance(task_agent, dict) else None
         )
-        if isinstance(task_timeout, (int, float)) and not isinstance(
-            task_timeout, bool
-        ):
-            task_timeout_sec = float(task_timeout)
-            if math.isfinite(task_timeout_sec) and task_timeout_sec > 0:
-                agent_timeout_sec = task_timeout_sec
-    task_environment = (
-        task_config.get("environment") if task_config is not None else None
-    )
-    network_mode = (
-        task_environment.get("network_mode")
-        if isinstance(task_environment, dict)
-        else None
-    )
+        base_timeout_sec = _positive_finite(task_timeout)
+    agent_timeout_sec: float | None = None
+    if (
+        base_timeout_sec is not None
+        and recorded.trial_agent is not None
+        and recorded.timeout_multiplier is not None
+    ):
+        max_timeout = recorded.trial_agent.max_timeout_sec
+        cap = _positive_finite(max_timeout) if max_timeout is not None else None
+        if max_timeout is None or cap is not None:
+            resolved = min(base_timeout_sec, cap or math.inf)
+            resolved *= recorded.timeout_multiplier
+            if math.isfinite(resolved) and resolved > 0:
+                agent_timeout_sec = resolved
     agent_network: tuple[str, ...] | None = None
     if (
-        recorded.extra_allowed_hosts is not None
-        and isinstance(network_mode, str)
-        and network_mode
-        in {
-            "no-network",
-            "public",
-            "allowlist",
-        }
+        task_config is not None
+        and recorded.trial_agent is not None
+        and recorded.trial_environment is not None
     ):
-        agent_network = (network_mode, *recorded.extra_allowed_hosts)
+        try:
+            task_definition = HarborTaskConfig.model_validate(task_config)
+            if task_definition.steps is None:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message="Run-specific allowlist host",
+                        category=UserWarning,
+                    )
+                    baseline = resolve_agent_env_baseline(
+                        task_definition, recorded.trial_environment
+                    )
+                    policy = resolve_agent_phase_policy(
+                        task_definition, recorded.trial_agent, baseline
+                    )
+                agent_network = (
+                    policy.network_mode.value,
+                    *sorted(policy.allowed_hosts),
+                )
+        except ValueError:
+            pass
     return _EffectiveConditions(
         level=level,
         task_digest=recorded.task_digest,
@@ -766,36 +811,47 @@ def _trial_conditions(trial_dir: Path) -> _RecordedConditions:
     try:
         lock = read_json(trial_dir / "lock.json", "lock")
     except (OSError, DataError):
-        return _RecordedConditions(None, None, None, None)
+        return _RecordedConditions(None, None, None, None, None, None)
     if not isinstance(lock, dict):
-        return _RecordedConditions(None, None, None, None)
+        return _RecordedConditions(None, None, None, None, None, None)
     task = lock.get("task")
     agent = lock.get("agent")
     if not isinstance(task, dict) or not isinstance(agent, dict):
-        return _RecordedConditions(None, None, None, None)
+        return _RecordedConditions(None, None, None, None, None, None)
     digest = task.get("digest")
     task_path = task.get("path")
     timeout = agent.get("override_timeout_sec")
-    hosts = agent.get("extra_allowed_hosts")
-    timeout_sec: float | None = None
-    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
-        try:
-            converted = float(timeout)
-        except OverflowError:
-            pass
-        else:
-            if math.isfinite(converted) and converted > 0:
-                timeout_sec = converted
+    timeout_sec = _positive_finite(timeout)
+    multiplier = lock.get("agent_timeout_multiplier")
+    if multiplier is None:
+        multiplier = lock.get("timeout_multiplier", 1.0)
+    try:
+        trial_agent = HarborAgentConfig.model_validate(agent)
+        trial_environment = HarborEnvironmentConfig.model_validate(
+            lock.get("environment", {})
+        )
+    except ValueError:
+        trial_agent = None
+        trial_environment = None
     return _RecordedConditions(
         task_digest=digest if isinstance(digest, str) else None,
         task_path=Path(task_path) if isinstance(task_path, str) else None,
         override_timeout_sec=timeout_sec,
-        extra_allowed_hosts=(
-            tuple(sorted(cast(list[str], hosts)))
-            if isinstance(hosts, list) and all(isinstance(host, str) for host in hosts)
-            else None
-        ),
+        trial_agent=trial_agent,
+        trial_environment=trial_environment,
+        timeout_multiplier=_positive_finite(multiplier),
     )
+
+
+def _positive_finite(value: object) -> float | None:
+    """Return a usable positive, finite saved number or unknown."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) and number > 0 else None
 
 
 def _verified_task_config(
@@ -805,10 +861,10 @@ def _verified_task_config(
     if task_path is None or digest is None:
         return None
     try:
-        if not task_path.is_dir():
+        if task_path.is_symlink() or not task_path.is_dir():
             return None
-        actual_digest, _ = Packager.compute_content_hash(task_path)
-        if digest != f"sha256:{actual_digest}":
+        actual_digest = _bounded_task_digest(task_path)
+        if actual_digest is None or digest != f"sha256:{actual_digest}":
             return None
         task_config = tomllib.loads(
             read_bytes(task_path / "task.toml", "task.toml").decode("utf-8")
@@ -816,6 +872,48 @@ def _verified_task_config(
     except (OSError, ValueError, UnicodeError):
         return None
     return task_config
+
+
+def _bounded_task_digest(task_path: Path) -> str | None:
+    """Hash Harbor's selected task files within fixed entry and byte caps.
+
+    The initial walk bounds Harbor's file selection. The second cap bounds
+    bytes actually read if a file changes between its size check and hashing.
+    """
+    root = task_path.resolve()
+    pending = [root]
+    entries_seen = 0
+    bytes_seen = 0
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                entries_seen += 1
+                if entries_seen > _MAX_TASK_DIGEST_ENTRIES or entry.is_symlink():
+                    return None
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False):
+                    bytes_seen += entry.stat(follow_symlinks=False).st_size
+                    if bytes_seen > _MAX_TASK_DIGEST_BYTES:
+                        return None
+                else:
+                    return None
+    outer = hashlib.sha256()
+    bytes_read = 0
+    for file_path in Packager.collect_files(root):
+        file_hash = hashlib.sha256()
+        with file_path.open("rb") as stream:
+            while chunk := stream.read(
+                min(1024 * 1024, _MAX_TASK_DIGEST_BYTES - bytes_read + 1)
+            ):
+                bytes_read += len(chunk)
+                if bytes_read > _MAX_TASK_DIGEST_BYTES:
+                    return None
+                file_hash.update(chunk)
+        relative = file_path.relative_to(root).as_posix()
+        outer.update(f"{relative}\0{file_hash.hexdigest()}\n".encode())
+    return outer.hexdigest()
 
 
 def _level_reports(trials: Sequence[_Trial]) -> list[LevelReport]:
@@ -1129,6 +1227,14 @@ def _markdown_row(pair: PairReport) -> str:
         _format_count(pair[metric]["median"])
         for metric in ("input_tokens", "cached_tokens", "output_tokens")
     )
+    missing_sessions = pair["session_evidence_missing_trials"]
+
+    def observed_sessions(count: int) -> str:
+        if missing_sessions:
+            noun = "Trial" if missing_sessions == 1 else "Trials"
+            return f"{count} observed; {missing_sessions} {noun} missing"
+        return str(count)
+
     cells = [
         pair["task"],
         pair["task_checksum"][:12],
@@ -1144,8 +1250,9 @@ def _markdown_row(pair: PairReport) -> str:
         tokens,
         _format_count(pair["sessions"]["median"]),
         _or_unknown(pair["configuration"]["reasoning"]),
-        str(pair["xhigh_sessions"]),
-        str(pair["sessions_with_summary"]),
+        observed_sessions(pair["xhigh_sessions"]),
+        observed_sessions(pair["sessions_with_summary"]),
+        str(missing_sessions),
     ]
     return f"| {' | '.join(cells)} |"
 

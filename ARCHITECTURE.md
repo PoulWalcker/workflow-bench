@@ -54,6 +54,13 @@ remain the source facts; reporting one configuration needs no comparison baselin
 | [Sapiens integration](src/workflow_bench_integrations/sapiens.py) | `SapiensInstalledAgent` uses Harbor's Codex configuration/auth/MCP seams. Checks a prepared image's Sapiens revision and Codex installation, creates fresh homes, starts the unmodified Sapiens host, submits once, then polls its public `/api/state` snapshot across two consecutive quiet Pulse ticks; Sapiens owns planning and delegation. Each adapter `doctor`/`chat` attempt gets a safe `phase=sapiens-cli` line, and observed turn/workload state changes get `phase=sapiens-transition` lines. Host stdout/stderr remain in `agent/sapiens-host.txt`; the pinned revision has no host log-level option. Waiting, failed, interrupted and unresolved terminal states return as agent outcomes so Harbor can run the verifier. On terminal observation it invokes the bounded [state exporter](src/workflow_bench_integrations/sapiens_state.py) inside the agent environment; selected agents, turns, calls, decisions and transitions go to Harbor's agent log directory. SQLite, WAL, workspaces, notes and auth files stay out of collection. An export failure is diagnostic only. |
 | [harbor helpers](src/workflow_bench/harbor.py) | `DeadlineDockerEnvironment` bounds native stop and buffered/streamed collection cleanup, and logs UTC phase results for environment start, stop and confirmed native deletion with `env=agent`/`env=verifier`. After separate verifier teardown it logs one summary from validated `evaluation.json` or `unavailable` when unreadable. `_cleanup`, `LifecycleFacts`, `docker` and `assert_stopped` record or check Compose-project-scoped residual resources using bounded metadata queries. |
 
+Comparison counts a criterion status once per Trial only when a separate Harbor verifier
+result confirms the evaluation's producer. It resolves agent network policy through
+Harbor's task and Trial settings and applies Harbor's timeout cap and multiplier before
+deciding comparability. Task digest verification reads at most 4096 entries and 64 MiB;
+an unverified directory has level `unknown`. Markdown qualifies observed session effort
+and summary counts when some session files are unavailable.
+
 Dependency direction: Sapiens integration → composer/data/contracts and Harbor;
 composer → data/contracts, harbor helpers and Harbor; evaluation → data/contracts; mcp → data/contracts;
 cli → readiness, comparison, transcript and composer; transcript → comparison;

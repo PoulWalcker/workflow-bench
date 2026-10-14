@@ -218,7 +218,12 @@ def _harness_name(trial_dir: Path) -> str | None:
 
 
 def read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
-    """Read saved Codex sessions within the transcript's safety bounds."""
+    """Read bounded saved Codex sessions and their evidence status.
+
+    A None marker means all discovered sessions were read. A string marker
+    means session evidence is unavailable, unsafe, incomplete or invalid;
+    callers must not interpret the empty session list as a measured zero.
+    """
     if not directory.is_dir() or directory.is_symlink():
         return [], "not collected"
     try:
