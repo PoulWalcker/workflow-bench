@@ -1,0 +1,37 @@
+{
+  "House 1": {
+    "Name": "Clara",
+    "Drink": "juice",
+    "Flower": "iris",
+    "Animal": "horse",
+    "Food": "rice"
+  },
+  "House 2": {
+    "Name": "Hugo",
+    "Drink": "tea",
+    "Flower": "lily",
+    "Animal": "falcon",
+    "Food": "pie"
+  },
+  "House 3": {
+    "Name": "Damon",
+    "Drink": "cocoa",
+    "Flower": "dahlia",
+    "Animal": "cat",
+    "Food": "pasta"
+  },
+  "House 4": {
+    "Name": "Ada",
+    "Drink": "milk",
+    "Flower": "aster",
+    "Animal": "dog",
+    "Food": "soup"
+  },
+  "House 5": {
+    "Name": "Felix",
+    "Drink": "lemonade",
+    "Flower": "tulip",
+    "Animal": "otter",
+    "Food": "curry"
+  }
+}
