@@ -42,6 +42,11 @@ _SECRET = re.compile(
 _NODE = re.compile(r"decision at node ([A-Za-z][A-Za-z0-9_]*)")
 
 
+def mask_sensitive_text(value: str) -> str:
+    """Replace recognized credential and account patterns in diagnostic text."""
+    return _SECRET.sub("[REDACTED]", value)
+
+
 class SapiensState(TypedDict):
     """Selected Sapiens chronology; older exports omit truncation metadata."""
 
@@ -706,7 +711,7 @@ def _display(value: object, depth: int = 0) -> str:
 
 def _safe(value: str) -> str:
     return (
-        _SECRET.sub("[REDACTED]", value)
+        mask_sensitive_text(value)
         .replace("\n", " ")
         .replace("\r", " ")
         .replace("|", "\\|")

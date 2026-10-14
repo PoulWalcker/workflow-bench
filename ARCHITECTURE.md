@@ -51,19 +51,25 @@ remain the source facts; reporting one configuration needs no comparison baselin
 | [transcript](src/workflow_bench/transcript.py) | `wb compare --transcript` reads saved Codex sessions and the Sapiens state snapshot under each Trial's agent logs, then renders a Markdown chronology and verifier footer. It reuses `compare`/`summarize` for outcome facts; missing sources stay marked missing. It selects message/tool/decision fields and redacts recognized credential and account identifiers. `--full-prompts` expands Sapiens node prompts without changing saved facts. |
 | [mcp](src/workflow_bench/mcp.py) | Newline JSON-RPC over stdio: initialize, ping, list public tools and forward permitted calls to HTTP with a bearer capability. Disables ambient HTTP proxies, does not retry writes or export admin tools, and reports transport uncertainty. |
 | [composer](src/workflow_bench/composer.py) | Codex preflight, live subscription allowance reads and usage extraction. `SessionSafeCodex` retains Harbor's agent loop while bounding native session ingestion and blocking candidate trajectory fallback. The filename is historical; no workflow composition engine remains. |
-| [Sapiens integration](src/workflow_bench_integrations/sapiens.py) | `SapiensInstalledAgent` uses Harbor's Codex configuration/auth/MCP seams. Checks a prepared image's Sapiens revision and Codex installation, creates fresh homes, starts the unmodified Sapiens host, submits once, then polls its public `/api/state` snapshot across two consecutive quiet Pulse ticks; Sapiens owns planning and delegation. Waiting, failed, interrupted and unresolved terminal states return as agent outcomes so Harbor can run the verifier. On terminal observation it invokes the bounded [state exporter](src/workflow_bench_integrations/sapiens_state.py) inside the agent environment; selected agents, turns, calls, decisions and transitions go to Harbor's agent log directory. SQLite, WAL, workspaces, notes and auth files stay out of collection. An export failure is diagnostic only. |
-| [harbor helpers](src/workflow_bench/harbor.py) | `DeadlineDockerEnvironment` bounds native stop and buffered/streamed collection cleanup, and logs UTC phase results for environment start, stop and confirmed native deletion. `_cleanup`, `LifecycleFacts`, `docker` and `assert_stopped` record or check Compose-project-scoped residual resources using bounded metadata queries. |
+| [Sapiens integration](src/workflow_bench_integrations/sapiens.py) | `SapiensInstalledAgent` uses Harbor's Codex configuration/auth/MCP seams. Checks a prepared image's Sapiens revision and Codex installation, creates fresh homes, starts the unmodified Sapiens host, submits once, then polls its public `/api/state` snapshot across two consecutive quiet Pulse ticks; Sapiens owns planning and delegation. Each adapter `doctor`/`chat` attempt gets a safe `phase=sapiens-cli` line, and observed turn/workload state changes get `phase=sapiens-transition` lines. Host stdout/stderr remain in `agent/sapiens-host.txt`; the pinned revision has no host log-level option. Waiting, failed, interrupted and unresolved terminal states return as agent outcomes so Harbor can run the verifier. On terminal observation it invokes the bounded [state exporter](src/workflow_bench_integrations/sapiens_state.py) inside the agent environment; selected agents, turns, calls, decisions and transitions go to Harbor's agent log directory. SQLite, WAL, workspaces, notes and auth files stay out of collection. An export failure is diagnostic only. |
+| [harbor helpers](src/workflow_bench/harbor.py) | `DeadlineDockerEnvironment` bounds native stop and buffered/streamed collection cleanup, and logs UTC phase results for environment start, stop and confirmed native deletion with `env=agent`/`env=verifier`. After separate verifier teardown it logs one summary from validated `evaluation.json` or `unavailable` when unreadable. `_cleanup`, `LifecycleFacts`, `docker` and `assert_stopped` record or check Compose-project-scoped residual resources using bounded metadata queries. |
 
 Dependency direction: Sapiens integration → composer/data/contracts and Harbor;
 composer → data/contracts, harbor helpers and Harbor; evaluation → data/contracts; mcp → data/contracts;
 cli → readiness, comparison, transcript and composer; transcript → comparison;
+observability → comparison (evaluation reader), transcript (pattern masking);
 readiness → comparison (evaluation reader);
 both → data/contracts and Harbor.
 Core modules do not import the Sapiens integration or application business rules.
 New environment and agent run-result diagnostics use UTC ISO 8601 `at=` timestamps with
 `phase=`, `result=` and elapsed `duration=` fields in Trial logs. The trivial
-task verifier writes the same shape to its captured stdout after evaluation;
-these lines are diagnostic and do not feed verdict or reward calculation.
+task verifier writes the same shape to its captured stdout after evaluation.
+The host verifier line reads only validated `evaluation.json`, reports the verdict,
+criterion count and failed ids, and uses `unavailable` if the file cannot be read.
+Sapiens CLI lines include a bounded excerpt after instruction removal and the
+existing best-effort pattern masking. Transition lines use only known state names
+or `other`, and omit unchanged polls. These lines are diagnostic and do not feed
+verdict or reward calculation.
 
 Schemas load through `importlib.resources`, without checkout/cwd lookup or remote
 schema fetching. Nested JSON values remain mutable despite frozen outer containers.
@@ -123,6 +129,10 @@ The adapter writes observation start and terminal decision lines to the Trial lo
 The decision line records safe turn/workload state names, whether `run_activity`
 was empty, and the consecutive quiet-tick count; an interrupted observation has
 no terminal decision line.
+Each observed turn-status or workload-state change is logged with an observation
+time and safe id. The first observed state starts from `none`; later unchanged
+polls add no line. The adapter logs every host CLI `doctor` attempt and the one
+`chat` submission without logging the chat command or instruction.
 
 `DeadlineDockerEnvironment` installs a cancellation callback that kills the main
 candidate container and confirms it is no longer running before cancelling the

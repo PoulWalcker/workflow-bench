@@ -27,6 +27,24 @@ def test_chief_completes_trivial_task_without_delegation(
     native = json.loads(next(job.glob("*/result.json")).read_text())
     assert native["agent_result"]["metadata"]["sapiens_outcome"] == "completed"
     _assert_observation(job, "completed")
+    trial_dir = next(job.glob("*/result.json")).parent
+    lines = (trial_dir / "trial.log").read_text().splitlines()
+    assert any(
+        "phase=verifier result=pass criteria=3 failed=none" in line for line in lines
+    )
+    assert any(
+        "phase=sapiens-cli" in line and "subcommand=doctor" in line for line in lines
+    )
+    assert any(
+        "phase=sapiens-cli" in line and "subcommand=chat" in line for line in lines
+    )
+    assert any(
+        "phase=sapiens-transition" in line and "kind=turn" in line for line in lines
+    )
+    assert any(
+        "phase=sapiens-transition" in line and "kind=workload" in line for line in lines
+    )
+    assert (trial_dir / "agent/sapiens-host.txt").is_file()
 
 
 def test_chief_waits_for_new_specialist_to_complete(

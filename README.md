@@ -154,6 +154,17 @@ in `wb compare`; absent or malformed usage remains unknown. Pinned Sapiens may
 raise reasoning effort to `xhigh` internally in deep mode, regardless of the
 job's configured base effort. The example uses normal mode.
 
+`trial.log` labels Docker phase lines `env=agent` or `env=verifier`. After a
+separate verifier runs, it records a host-side `phase=verifier` line from validated
+`evaluation.json` with the verdict, criterion count and failed criterion ids.
+Missing or invalid evaluation is logged as `unavailable`; it does not change the
+Trial outcome. Sapiens Trials also log each adapter `doctor`/`chat` CLI attempt
+with exit code, duration and a masked output excerpt of at most 200 characters,
+plus observed turn and workload state changes from `/api/state`. The submitted
+chat instruction is excluded from CLI lines. The existing
+`agent/sapiens-host.txt` captures host stdout and stderr. These are diagnostics;
+the pinned host revision exposes no log-level option in `python -m sapiens --help`.
+
 An authorized local smoke on 2026-10-14 ran one Sapiens Trial on `l1-basket-total`
 with Sapiens revision `71e93cb3de00183c263ec440919b313cf92ed8af`, Codex CLI
 0.162.1, `openai/gpt-6.1-sol`, low reasoning and ChatGPT subscription authentication.
@@ -163,7 +174,7 @@ The recorded sessions all used low effort; no delegation was observed. The termi
 state was `Completed`, with no observed premature finish.
 The ignored local Harbor evidence is in
 `runs/m1b-05-sapiens/sapiens-live-smoke-20261014`, with reports at
-`runs/m1b-05-compare.json` and `runs/m1b-05-summary.txt`. This single smoke result
+`runs/m1b-05-compare.json` and `runs/m1b-05-summary.json`. This single smoke result
 does not estimate reliability or a per-Trial subscription charge.
 
 ## Report
