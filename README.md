@@ -245,6 +245,19 @@ string value of at least 16 characters in the run's `auth.json`, plus
 Transcripts use only best-effort pattern masking for credential and account-ID
 forms. Every transcript starts with a notice to check it before sharing.
 
+## First L1 report (2026-10-14)
+
+The first five-task L1 run completed 30 Trials in 15 jobs: Sapiens and direct Codex
+each passed 3/3 on every task. Both used `openai/gpt-6.1-sol`, base reasoning
+`medium`, reasoning summaries `auto`, web search disabled, the same 1800-second
+agent limit and provider allowlist, and Codex CLI 0.162.1. Sapiens used pinned
+revision `71e93cb3de00183c263ec440919b313cf92ed8af`; no session used `xhigh`.
+The ignored local evidence is in `runs/m2-09/`, with the reproducible JSON and
+Markdown reports at `runs/m2-09-report.json` and `runs/m2-09-report.md`.
+These three attempts per task are descriptive, not a general reliability estimate.
+The public IFEval, LiveBench and AIME instances may be present in model training
+data; the two logic grids were generated for this run.
+
 ## Navigation
 
 | Document | Owner |
