@@ -10,7 +10,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict, cast
 
 from workflow_bench.contracts import Criterion
 from workflow_bench.evaluation import write_evaluation
@@ -20,6 +20,15 @@ EXPECTED = Path("/tests/expected")
 VERIFIER_DIR = Path("/logs/verifier")
 MAX_ANSWER_BYTES = 1024 * 1024
 type ReadProblem = Literal["missing_or_invalid", "too_large", "unavailable"]
+
+
+class ProtectedFileEntry(TypedDict):
+    size: int
+    sha256: str
+
+
+class ProtectedManifest(TypedDict):
+    files: dict[str, ProtectedFileEntry]
 
 
 def main() -> None:
@@ -117,7 +126,9 @@ def _scan_large_answer(expected: str) -> bool | Literal["invalid", "unavailable"
 
 
 def _no_collateral_changes() -> Criterion:
-    manifest = json.loads((EXPECTED / "protected.json").read_text())
+    manifest = cast(
+        ProtectedManifest, json.loads((EXPECTED / "protected.json").read_text())
+    )
     has_unknown = False
     for relative, entry in manifest["files"].items():
         content = _read_regular(APP, f"varsea/{relative}", entry["size"])
