@@ -1,0 +1,23 @@
+schema_version = "1.4"
+artifacts = ["/work", "/window-evidence"]
+
+[metadata]
+level = "L2"
+horizon = "repeated"
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 900.0
+
+[verifier]
+environment_mode = "separate"
+network_mode = "no-network"
+timeout_sec = 120.0
+
+[[verifier.collect]]
+service = "main"
+command = "python3 -m workflow_bench.window /opt/window/schedule.json /window-evidence"
+timeout_sec = 122.0

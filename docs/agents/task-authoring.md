@@ -98,6 +98,65 @@ Workflow Bench image instead of being copied.
 environment and that the verifier accepts a correct result. It is a control, not a reference
 answer: an agent's result may differ from it and still pass.
 
+## Repeated tasks (set up and leave)
+
+Use `[metadata] horizon = "repeated"` when the instruction asks for effects after
+one setup turn. Tell the agent it will not be present for later changes and state
+the business goal and output path; leave the mechanism to the agent. The oracle
+may start a detached loop with stdin, stdout and stderr redirected, so the setup
+turn exits while the loop keeps working. The task's verifier judges the resulting
+state, not the agent's claimed method.
+
+Place `schedule.json` and an initial `manifest.json` under `environment/`. The
+Dockerfile copies the schedule into the image and creates the evidence directory
+with that manifest, status `not_started`, schema version 1, null start/end/elapsed/
+error fields, empty `drops`, `snapshots`, `samples`, `skipped` arrays and
+`skipped_truncated = false`. See the exact seed in the
+[short control](../../tests/integration/assets/window-task/environment/manifest.json).
+This preserves a collected incomplete status if Harbor stops `main` before the hook starts.
+The task declares the workspace and evidence directory as artifacts:
+
+```toml
+artifacts = ["/work", "/window-evidence"]
+[agent]
+timeout_sec = 900
+[verifier]
+environment_mode = "separate"
+network_mode = "no-network"
+timeout_sec = 120
+[[verifier.collect]]
+service = "main"
+command = "python3 -m workflow_bench.window /opt/window/schedule.json /window-evidence"
+timeout_sec = 780 # duration 600 + tail 60 + margin 60
+```
+
+The schedule is task-owned JSON with exactly `duration_sec`, `tail_sec`,
+`sample_interval_sec`, `watch` (absolute paths), `drops` (`at_sec`, absolute
+`source` and `target`) and `snapshots` (`at_sec`, absolute `paths`). Offsets are
+seconds from the driver's start, after the agent phase. At equal offsets a
+snapshot precedes a drop. The driver samples watched paths at interval offsets
+through `duration + tail`, copying changed content so the verifier can determine
+when an appended line or row first appeared. It bounds the schedule to 3600 s
+duration, 600 s tail, at most 128 samples, 32 watched paths, 128 drops and 128
+snapshots, and 32 MiB/4096 copied entries of evidence. Symlinks and special
+files are not copied. Set the hook timeout to `duration + tail + 60` seconds.
+
+Use `workflow_bench.window.read_window` in the separate verifier. Missing,
+invalid or unsafe evidence raises `DataError`; `not_started`, `running` and
+`failed` are explicit incomplete statuses. Criteria needing the window are
+`unknown` with reason `window_incomplete` in those cases. Criteria decidable
+from final state still decide. Derive timing from first-seen sample offsets;
+candidate timestamps can check consistency but cannot establish first appearance.
+Window evidence in `main` is candidate-reachable, so reports must label that
+provenance. The verifier's `network_mode = "no-network"` keeps its assessment
+offline. If scheduled agent work needs model access, the run supplies provider
+hosts through `environment.extra_allowed_hosts`; the Task does not embed them.
+
+Run readiness with `wb check-task <task> --jobs-dir <path> --run-timeout-sec 1800`
+so its two native controls each have enough time for
+the setup turn, window, verification and cleanup. A short-window version may be
+used for authoring controls, but it does not replace the task's full criteria.
+
 ## Verifier and evaluation
 
 `tests/test.sh` runs the task's checks in the separate verifier container and ends by calling
