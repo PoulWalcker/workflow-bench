@@ -38,6 +38,32 @@ image sets `WORKDIR /work` and creates `/work/output`; `task.toml` declares
 path for the separate verifier. The final chat message is never the answer. State-based tasks
 (L2 and above) are checked against the resulting files or service state instead.
 
+### State-based tasks rebased from Terminal-Bench
+
+Keep the upstream instruction's goal and constraints in `instruction.md`; record every
+change in `[metadata] deviations`. Preserve its working paths. Collect the final workspace
+as a directory artifact (for example, `artifacts = ["/app"]`) so the separate verifier
+assesses the agent's resulting state. Harbor empties that directory in the fresh verifier
+container before uploading the collected copy; a deleted file therefore stays deleted. A
+missing collected directory is an artifact transfer failure, not a passing pristine image.
+
+Pin the upstream instance by its hub reference and content digest. Record its source
+repository URL and commit, license and attribution, difficulty, empirical rank when used,
+deviations, and contamination risk in `[metadata]`. Keep upstream `README.md` and a
+network-installing `test.sh` out of the rebased task. Port each upstream test function to
+one Criterion in a stdlib verifier, with private expectations in `tests/expected/`.
+
+Build deterministic inputs for every comparison against an authored constant: fix random
+seeds and git identity and dates where used, pin source commits, and fail the build if a
+checked-out commit differs. Add `no_collateral_changes` as its own Criterion. Its finite
+authored list in `tests/expected/protected.json` names pre-existing paths and SHA-256 hashes,
+plus git refs or ordered commit messages when the instruction protects them. State the
+constraint in the public instruction in user terms; record in `[metadata]` that the
+Criterion was added by Workflow Bench. Verify every listed entry's presence, type and
+bytes, while allowing new helper files outside the list. When there is no pre-existing
+state to protect, return `not_applicable` with `reason_code = "no_protected_state"` and
+explain that choice in `[metadata]`.
+
 ## `task.toml`
 
 Required, and checked by `wb check-task`:
@@ -87,7 +113,13 @@ The helper writes `evaluation.json` (verdict, criteria, completeness, errors) an
 `reward.json` only for a complete assessment: `1.0` for `pass`, `0.0` for `fail`. A known
 violation makes the verdict `fail` even when other criteria are unknown. Read candidate files
 as untrusted input (`workflow_bench.data.read_json` bounds size and rejects symlinks) and never
-execute them. A verifier crash leaves no evaluation, which Harbor records as a verifier error.
+execute them except under this rule: candidate code may run only in the separate verifier, as an
+unprivileged user in a fresh temporary directory holding copies of the candidate file and private
+test harness, isolated from the private checker and other verifier inputs. Bound its execution time
+and captured output. After each run, kill all processes of that user and confirm none remain;
+otherwise mark affected Criteria unknown. Remove entries in
+`/logs/verifier` that the verifier did not create, then write the evaluation last from the verifier
+process. A verifier crash leaves no evaluation, which Harbor records as a verifier error.
 
 ## Readiness
 

@@ -1,0 +1,34 @@
+schema_version = "1.4"
+artifacts = ["/app"]
+
+[metadata]
+level = "L2"
+horizon = "single"
+benchmark = "Terminal-Bench 2.1"
+instance = "cancel-async-tasks"
+hub_reference = "terminal-bench/terminal-bench-2-1"
+upstream_content_digest = "a3d048d351136e48070696cda8bb79660dfd74db1fea3b6da88559f0332699c1"
+dataset_url = "https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1"
+dataset_revision = "a3d048d351136e48070696cda8bb79660dfd74db1fea3b6da88559f0332699c1"
+source_repo_url = "https://github.com/harbor-framework/terminal-bench-2"
+source_repo_commit = "2fd12b88aafdd04a52c298e3940bcb189f9766d6"
+checker_source_url = "https://github.com/harbor-framework/terminal-bench-2/tree/2fd12b88aafdd04a52c298e3940bcb189f9766d6/cancel-async-tasks/tests"
+checker_commit = "2fd12b88aafdd04a52c298e3940bcb189f9766d6"
+license = "Apache-2.0"
+attribution = "Terminal-Bench 2.1 cancel-async-tasks by Alex Shaw"
+difficulty = "hard"
+empirical_rank = "30/89 (arXiv 2601.11868, Appendix A.3)"
+collateral_check = "not_applicable: empty workspace"
+deviations = "Python 3.12 instead of 3.13; removed package-install sentence; agent timeout 1800 s instead of 900 s; no network; no CPU or memory limits; separate stdlib verifier replaces pytest; final /app workspace collected."
+contamination_risk = "The public Terminal-Bench task and tests may be present in model training data."
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 90.0

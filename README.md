@@ -211,6 +211,15 @@ digest read (4096 entries or 64 MiB), or its Harbor digest no longer matches the
 lock. Markdown presents the same descriptive metrics and marks observed session counts
 when session evidence is missing.
 
+Each JSON Trial also has `delegation`: `null` when no Sapiens state snapshot was
+saved, otherwise a status and the number of participating Sapi, delegations,
+specialists created, and decision steps by node. A truncated or invalid source
+collection leaves its dependent metrics `null` (unknown). Each task × configuration
+pair has `delegation: {known, delegated, unknown}`; it is `null` when no Trial
+has a snapshot. Markdown adds a `Delegated` column (`x/n`, plus unknown Trials)
+and a per-Trial delegation section. The state snapshot is produced inside the
+agent environment and is diagnostic; it does not affect outcomes or comparability.
+
 JSON and Markdown include an estimated USD cost per Trial and the
 median, total and known Trial count per task × configuration. The tracked
 [price file](prices/openai-api-2026-10-14.json) records the Standard short-context
@@ -226,7 +235,8 @@ price, not a ChatGPT subscription charge.
 With the readiness controls above, `oracle` has pass rate 1.0 and `nop` has 0.0. A
 directory that is not a Harbor job exits 2. `--format summary` prints one JSON record
 per Trial with native phase timing, the same outcome class as the report, verifier
-criteria, token counts, artifact status and paths to diagnostic files.
+criteria, token counts, artifact status, delegation diagnostics and paths to
+diagnostic files.
 `--transcript` prints a read-only Markdown conversation for each saved Trial: the
 task, Sapiens decision nodes or Codex messages, tool calls and results, time and
 tokens when recorded, and the verifier result. Each step shows a bounded,
@@ -257,6 +267,21 @@ Markdown reports at `runs/m2-09-report.json` and `runs/m2-09-report.md`.
 These three attempts per task are descriptive, not a general reliability estimate.
 The public IFEval, LiveBench and AIME instances may be present in model training
 data; the two logic grids were generated for this run.
+
+## First L2 report (2026-10-14)
+
+The five-task L2 run completed 30 planned Trials in 15 jobs: Sapiens passed
+12/15 and direct Codex passed 13/15. Both used `openai/gpt-6.1-sol`, base
+reasoning `medium`, summaries `auto`, web search disabled, the same 1800-second
+agent limit and provider allowlist, and Codex CLI 0.162.1. Sapiens used pinned
+revision `71e93cb3de00183c263ec440919b313cf92ed8af` and delegated in 0/15
+assessed Trials. The report also preserves two earlier cancelled `infra_error`
+Trials that started before required checks; they are excluded from pass rates and
+the procedural violation is documented in the ignored local evidence at
+`runs/m3-07/`. Reproducible reports are `runs/m3-07-report.json` and
+`runs/m3-07-report.md`. These three attempts per task are descriptive. The
+public Terminal-Bench tasks may be present in model training data, and their
+rebased task conditions differ from the published benchmark.
 
 ## Navigation
 

@@ -1,0 +1,48 @@
+{
+  "files": {
+    "backup-7622b502/723576e03092b927.bin": {
+      "sha256": "4d33e1b666995e1750a6e2e3683e272b324d96f2c928410ee4f6e25b95b2c717",
+      "size": 5120
+    },
+    "backup-7622b502/e581cf7949c4338e.log": {
+      "sha256": "e7ec3342f82253f13d9ad4de088e17883a283665a9f1d688805b231c3d3e05f7",
+      "size": 35
+    },
+    "cfg-4dd3ad75/5101ecc043478f59.log": {
+      "sha256": "e7ec3342f82253f13d9ad4de088e17883a283665a9f1d688805b231c3d3e05f7",
+      "size": 35
+    },
+    "cfg-4dd3ad75/bb28b1d017b4639c.bin": {
+      "sha256": "31448864a2d37cfed1907ebc18db50b39267fbaa92e93bca7309c6e0eb6954eb",
+      "size": 5120
+    },
+    "data-7b96fcaa/4e9d6fafb2a2aac9.bin": {
+      "sha256": "2f39024a3ac5bd28bb05a155a8427b4a8b38302eaa32011d99483f3aa0c50c3d",
+      "size": 5120
+    },
+    "data-7b96fcaa/a0d6ff5e9f327bbe.log": {
+      "sha256": "e7ec3342f82253f13d9ad4de088e17883a283665a9f1d688805b231c3d3e05f7",
+      "size": 35
+    },
+    "disks/sub1/subA/subAlpha/ae3f4c.dat": {
+      "sha256": "0398f48fc961b6089bd20d90b1f0661c70c2ab63ec04c34bfebe9c38dbf3bc2c",
+      "size": 4194304
+    },
+    "logs-afbe40ec/22dfddd2a16998c9.bin": {
+      "sha256": "d8e365667f6c0b2b996522c2f1e242d45872ece7e20751c20cfe2762f5b7e672",
+      "size": 5120
+    },
+    "logs-afbe40ec/4521a753596df4cf.log": {
+      "sha256": "e7ec3342f82253f13d9ad4de088e17883a283665a9f1d688805b231c3d3e05f7",
+      "size": 35
+    },
+    "tmp-09ef8b73/629dbd2cd05ac89a.bin": {
+      "sha256": "42707a15443aa1eee32327be68fbc5cd461f25b736c81d47b6ca22d126f87a13",
+      "size": 5120
+    },
+    "tmp-09ef8b73/f94fb80dbc8c076a.log": {
+      "sha256": "e7ec3342f82253f13d9ad4de088e17883a283665a9f1d688805b231c3d3e05f7",
+      "size": 35
+    }
+  }
+}
