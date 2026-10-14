@@ -161,6 +161,320 @@ def _session(agent_dir: Path, name: str, rows: list[dict[str, object]]) -> None:
     (sessions / name).write_text("\n".join(json.dumps(row) for row in rows) + "\n")
 
 
+def _state(job: Path, trial: str, state: dict[str, object]) -> None:
+    agent = job / trial / "agent"
+    agent.mkdir(exist_ok=True)
+    (agent / "sapiens-state.json").write_text(json.dumps(state))
+
+
+def test_compare_reports_direct_sapiens_work_from_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "direct", criteria=_criteria("pass"), harness="sapiens")
+    _state(
+        job,
+        "direct",
+        {
+            "agents": [{"id": "chief"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [{"addressedTo": "chief", "causedBy": None}],
+                    "decisions": [
+                        {"agent": "chief", "node": "Assessing"},
+                        {"agent": "chief", "node": "ReadyToWork"},
+                        {"agent": "chief", "node": "Execution"},
+                    ],
+                }
+            ],
+        },
+    )
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["trials"][0]["delegation"] == {
+        "status": "ok",
+        "sapi": 1,
+        "delegations": 0,
+        "specialists_created": 0,
+        "steps_by_node": {"Assessing": 1, "Execution": 1, "ReadyToWork": 1},
+    }
+    assert report["pairs"][0]["delegation"] == {
+        "known": 1,
+        "delegated": 0,
+        "unknown": 0,
+    }
+
+
+def test_compare_reports_delegation_and_clarification_separately(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "delegated", criteria=_criteria("pass"), harness="sapiens")
+    _state(
+        job,
+        "delegated",
+        {
+            "agents": [{"id": "chief"}, {"id": "specialist"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [
+                        {"addressedTo": "chief", "causedBy": None},
+                        {"addressedTo": "specialist", "causedBy": "root"},
+                        {
+                            "addressedTo": "chief",
+                            "causedBy": "root",
+                            "activation": "RequestClarified",
+                        },
+                    ],
+                    "decisions": [
+                        {"agent": "chief", "node": "Assessing"},
+                        {"agent": "chief", "node": "Assessing"},
+                        {"agent": "chief", "node": "ChiefTriage"},
+                        {"agent": "chief", "node": "CreatingSapi"},
+                        {"agent": "chief", "node": "Delegation"},
+                        {"agent": "chief", "node": "ReadyToWork"},
+                        {"agent": "specialist", "node": "Execution"},
+                    ],
+                }
+            ],
+        },
+    )
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["trials"][0]["delegation"] == {
+        "status": "ok",
+        "sapi": 2,
+        "delegations": 1,
+        "specialists_created": 1,
+        "steps_by_node": {
+            "Assessing": 2,
+            "ChiefTriage": 1,
+            "CreatingSapi": 1,
+            "Delegation": 1,
+            "Execution": 1,
+            "ReadyToWork": 1,
+        },
+    }
+    assert report["pairs"][0]["delegation"] == {
+        "known": 1,
+        "delegated": 1,
+        "unknown": 0,
+    }
+
+
+def test_compare_preserves_unknown_delegation_evidence(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    for name in ("direct", "delegated", "invalid"):
+        _trial(job, name, criteria=_criteria("pass"), harness="sapiens")
+    _state(
+        job,
+        "direct",
+        {
+            "agents": [{"id": "chief"}],
+            "turns": [],
+            "workloads": [{"calls": [{"addressedTo": "chief"}], "decisions": []}],
+        },
+    )
+    _state(
+        job,
+        "delegated",
+        {
+            "agents": [{"id": "chief"}, {"id": "child"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [
+                        {"addressedTo": "chief"},
+                        {"addressedTo": "child", "causedBy": "root"},
+                    ],
+                    "decisions": [],
+                }
+            ],
+        },
+    )
+    (job / "invalid" / "agent").mkdir()
+    (job / "invalid" / "agent" / "sapiens-state.json").write_text("{")
+    _, three_trial_report = _compare([job], capsys)
+    assert three_trial_report["pairs"][0]["delegation"] == {
+        "known": 2,
+        "delegated": 1,
+        "unknown": 1,
+    }
+    _trial(job, "truncated", criteria=_criteria("pass"), harness="sapiens")
+    _state(
+        job,
+        "truncated",
+        {
+            "agents": [{"id": "chief"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [{"addressedTo": "chief"}],
+                    "decisions": [{"agent": "chief", "node": "Execution"}],
+                }
+            ],
+            "truncated": {"calls": True},
+        },
+    )
+    _, report = _compare([job], capsys)
+    trials = {
+        trial["trial"]: trial["delegation"] for trial in report["pairs"][0]["trials"]
+    }
+    assert trials["invalid"] == {
+        "status": "invalid",
+        "sapi": None,
+        "delegations": None,
+        "specialists_created": None,
+        "steps_by_node": None,
+    }
+    assert trials["truncated"] == {
+        "status": "truncated",
+        "sapi": None,
+        "delegations": None,
+        "specialists_created": None,
+        "steps_by_node": {"Execution": 1},
+    }
+    assert report["pairs"][0]["delegation"] == {
+        "known": 2,
+        "delegated": 1,
+        "unknown": 2,
+    }
+    assert main(["compare", "--format", "markdown", str(job)]) == 0
+    assert "1/2 +2 unknown" in capsys.readouterr().out
+
+
+def test_delegation_reaches_summary_and_markdown_without_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sapiens = _job(tmp_path, "sapiens-job")
+    codex = _job(tmp_path, "codex-job")
+    _trial(sapiens, "direct", criteria=_criteria("pass"), harness="sapiens")
+    _trial(codex, "plain", criteria=_criteria("pass"))
+    _state(
+        sapiens,
+        "direct",
+        {
+            "agents": [{"id": "chief"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [{"addressedTo": "chief"}],
+                    "decisions": [{"agent": "chief", "node": "Execution"}],
+                }
+            ],
+        },
+    )
+    assert main(["compare", "--format", "summary", str(sapiens), str(codex)]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    by_job = {trial["job"]: trial["delegation"] for trial in summary["trials"]}
+    assert by_job["sapiens-job"] == {
+        "status": "ok",
+        "sapi": 1,
+        "delegations": 0,
+        "specialists_created": 0,
+        "steps_by_node": {"Execution": 1},
+    }
+    assert by_job["codex-job"] is None
+    assert main(["compare", "--format", "markdown", str(sapiens), str(codex)]) == 0
+    output = capsys.readouterr().out
+    assert "| Delegated |" in output
+    assert "0/1" in output
+    assert "## Trial delegation" in output
+    assert "| sapiens-job | direct | ok | 1 | 0 | 0 | Execution: 1 |" in output
+    assert (
+        "state snapshot is produced inside the agent environment and is diagnostic"
+        in output
+    )
+    assert "—" in output
+
+
+def test_compare_marks_malformed_decision_nodes_unknown(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "malformed", criteria=_criteria("pass"), harness="sapiens")
+    _state(
+        job,
+        "malformed",
+        {
+            "agents": [{"id": "chief"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [{"addressedTo": "chief"}],
+                    "decisions": [{"agent": "chief", "node": "a|injected"}],
+                }
+            ],
+        },
+    )
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["trials"][0]["delegation"] == {
+        "status": "invalid",
+        "sapi": None,
+        "delegations": 0,
+        "specialists_created": 0,
+        "steps_by_node": None,
+    }
+    assert main(["compare", "--format", "markdown", str(job)]) == 0
+    assert "a|injected" not in capsys.readouterr().out
+
+
+def test_compare_marks_invalid_truncation_metadata_unknown(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "invalid-truncation", criteria=_criteria("pass"), harness="sapiens")
+    _state(
+        job,
+        "invalid-truncation",
+        {
+            "agents": [{"id": "chief"}],
+            "turns": [],
+            "workloads": [
+                {
+                    "calls": [{"addressedTo": "chief", "causedBy": None}],
+                    "decisions": [{"agent": "chief", "node": "Execution"}],
+                }
+            ],
+            "truncated": None,
+        },
+    )
+    status, report = _compare([job], capsys)
+    assert status == 0
+    assert report["pairs"][0]["trials"][0]["delegation"] == {
+        "status": "invalid",
+        "sapi": None,
+        "delegations": None,
+        "specialists_created": None,
+        "steps_by_node": None,
+    }
+    assert report["pairs"][0]["delegation"] == {
+        "known": 0,
+        "delegated": 0,
+        "unknown": 1,
+    }
+
+
+def test_compare_marks_oversized_state_unknown(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-job")
+    _trial(job, "oversized", criteria=_criteria("pass"), harness="sapiens")
+    agent = job / "oversized" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["trials"][0]["delegation"] == {
+        "status": "too large",
+        "sapi": None,
+        "delegations": None,
+        "specialists_created": None,
+        "steps_by_node": None,
+    }
+
+
 def _condition_lock(
     job: Path,
     trial: str,
@@ -684,6 +998,9 @@ def test_transcript_marks_invalid_sapiens_state_missing(
     (agent / "sapiens-state.json").write_text("{}")
     assert main(["compare", "--transcript", str(job)]) == 0
     assert "[missing: Sapiens state (invalid)]" in capsys.readouterr().out
+    (agent / "sapiens-state.json").write_text("{")
+    assert main(["compare", "--transcript", str(job)]) == 0
+    assert "[missing: Sapiens state (unreadable)]" in capsys.readouterr().out
     (agent / "sapiens-state.json").write_text(
         json.dumps(
             {
@@ -1196,6 +1513,7 @@ def _trial_outcome(
         "outcome": outcome,
         "reason": reason,
         "exception": exception,
+        "delegation": None,
     }
 
 
@@ -1555,7 +1873,7 @@ def test_markdown_report_has_one_table_per_configuration(
         "## codex 0.162.1, model openai/gpt-5, reasoning high, "
         "reasoning summary unknown, web search unknown"
     )
-    assert "| t1 | c1 | 3 | 1/2 | 1 | 0 | 1 | 0.50 | unknown |" in lines[codex + 4]
+    assert "| t1 | c1 | 3 | — | 1/2 | 1 | 0 | 1 | 0.50 | unknown |" in lines[codex + 4]
     assert (
         "17.5 | 200.5 / 20 / 20 | unknown | high | "
         "0 observed; 3 Trials missing | 0 observed; 3 Trials missing | 3 |"
@@ -1566,7 +1884,8 @@ def test_markdown_report_has_one_table_per_configuration(
         "reasoning summary unknown, web search unknown"
     )
     assert (
-        "| t1 | c1 | 1 | 0/0 | 0 | 0 | 1 | unknown | unknown |" in lines[no_model + 4]
+        "| t1 | c1 | 1 | — | 0/0 | 0 | 0 | 1 | unknown | unknown |"
+        in lines[no_model + 4]
     )
 
 

@@ -4,6 +4,7 @@ import hashlib
 import logging
 import math
 import os
+import re
 import statistics
 import time
 import tomllib
@@ -37,11 +38,13 @@ from workflow_bench.pricing import (
     estimate_cost_usd,
     price_estimate_label,
 )
-from workflow_bench.transcript import read_sessions
+from workflow_bench.transcript import SapiensState, read_sapiens_state, read_sessions
 
 LOGGER = logging.getLogger(__name__)
 _MAX_TASK_DIGEST_ENTRIES = 4096
 _MAX_TASK_DIGEST_BYTES = 64 * 1024 * 1024
+# Node labels enter Markdown; accept only bounded identifiers from the snapshot.
+_SAFE_NODE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
 
 type Outcome = Literal["pass", "fail", "unknown", "infra_error"]
 # Sortable identity; an optional part is (known, value) so unknown sorts first.
@@ -68,8 +71,26 @@ class Configuration(TypedDict):
     web_search: str | None
 
 
+class DelegationMetrics(TypedDict):
+    """Snapshot diagnostics; None values mean source evidence is incomplete."""
+
+    status: Literal["ok", "unreadable", "invalid", "too large", "truncated"]
+    sapi: int | None
+    delegations: int | None
+    specialists_created: int | None
+    steps_by_node: dict[str, int] | None
+
+
+class PairDelegation(TypedDict):
+    """Delegating Trials among those with known call evidence."""
+
+    known: int
+    delegated: int
+    unknown: int
+
+
 class TrialOutcome(TypedDict):
-    """The one outcome class of one Trial.
+    """The one outcome class of one Trial plus snapshot diagnostics.
 
     Attributes:
         reason: Safe code for an ``infra_error``; None for a verdict.
@@ -82,6 +103,7 @@ class TrialOutcome(TypedDict):
     outcome: Outcome
     reason: str | None
     exception: str | None
+    delegation: DelegationMetrics | None
 
 
 class TrialCost(TypedDict):
@@ -140,6 +162,7 @@ class PairReport(TypedDict):
         cost_usd: Median and total over Trials with complete token facts and a
             matching explicit API price; None without a known estimate.
         trial_costs: Per-Trial estimates without changing outcome records.
+        delegation: Snapshot-only counts; None when no Trial saved a snapshot.
     """
 
     task: str
@@ -167,6 +190,7 @@ class PairReport(TypedDict):
     sessions_with_summary: int
     session_evidence_missing_trials: int
     level: str
+    delegation: PairDelegation | None
 
 
 class IncompleteTrial(TypedDict):
@@ -279,6 +303,7 @@ class TrialSummary(TypedDict):
     tokens: TrialTokens
     artifact_manifest: ManifestSummary
     paths: TrialPaths
+    delegation: DelegationMetrics | None
 
 
 class SummaryReport(TypedDict):
@@ -466,6 +491,7 @@ def render_markdown(report: ComparisonReport) -> str:
             "Task",
             "Checksum",
             "Trials",
+            "Delegated",
             "Pass/valid",
             "Fail",
             "Unknown",
@@ -487,6 +513,42 @@ def render_markdown(report: ComparisonReport) -> str:
             f"| {' | '.join('---' for _ in headers)} |",
         ]
         lines += [_markdown_row(pair) for pair in pairs]
+    lines += [
+        "",
+        "## Trial delegation",
+        "",
+        (
+            "The state snapshot is produced inside the agent environment "
+            "and is diagnostic."
+        ),
+        "",
+        (
+            "| Job | Trial | Status | Sapi | Delegations | Specialists created "
+            "| Steps by node |"
+        ),
+        "|---|---|---|---|---|---|---|",
+    ]
+    for pair in report["pairs"]:
+        for trial in pair["trials"]:
+            metrics = trial["delegation"]
+            if metrics is None:
+                continue
+            steps = metrics["steps_by_node"]
+            if steps is None:
+                steps_text = "unknown"
+            elif not steps:
+                steps_text = "{}"
+            else:
+                steps_text = ", ".join(
+                    f"{node}: {count}" for node, count in steps.items()
+                )
+            lines.append(
+                f"| {trial['job']} | {trial['trial']} | {metrics['status']} "
+                f"| {_format_count(metrics['sapi'])} "
+                f"| {_format_count(metrics['delegations'])} "
+                f"| {_format_count(metrics['specialists_created'])} "
+                f"| {steps_text} |"
+            )
     lines += [
         "",
         "## Trial cost estimates",
@@ -595,6 +657,7 @@ def _summarize_trial(
         },
         "artifact_manifest": _manifest_summary(trial_dir),
         "paths": paths,
+        "delegation": outcome["delegation"],
     }
 
 
@@ -702,6 +765,7 @@ def _measure_trial(
             "outcome": outcome,
             "reason": reason,
             "exception": None if exception is None else exception.exception_type,
+            "delegation": _delegation_metrics(trial_dir),
         },
         agent_sec=agent_sec,
         input_tokens=None if usage is None else usage.n_input_tokens,
@@ -724,6 +788,133 @@ def _measure_trial(
         agent_timeout_sec=conditions.agent_timeout_sec,
         agent_network=conditions.agent_network,
     )
+
+
+def _delegation_metrics(trial_dir: Path) -> DelegationMetrics | None:
+    path = trial_dir / "agent" / "sapiens-state.json"
+    if not path.exists() and not path.is_symlink():
+        return None
+    state, marker = read_sapiens_state(path)
+    if state is None:
+        status: Literal["unreadable", "invalid", "too large"] = "unreadable"
+        if marker in {"invalid", "invalid JSON"}:
+            status = "invalid"
+        elif marker == "too large":
+            status = "too large"
+        return {
+            "status": status,
+            "sapi": None,
+            "delegations": None,
+            "specialists_created": None,
+            "steps_by_node": None,
+        }
+    return _count_delegation(state)
+
+
+def _count_delegation(state: SapiensState) -> DelegationMetrics:
+    truncated = state.get("truncated", {})
+    has_complete_workloads = not truncated.get("workloads", False)
+    agents = state["agents"]
+    workloads = state["workloads"]
+    calls: list[dict[str, object]] = []
+    decisions: list[dict[str, object]] = []
+    has_valid_calls = has_complete_workloads and not truncated.get("calls", False)
+    has_valid_decisions = has_complete_workloads and not truncated.get(
+        "decisions", False
+    )
+    for workload in workloads:
+        work_calls = workload.get("calls")
+        if not isinstance(work_calls, list) or not all(
+            isinstance(call, dict) for call in work_calls
+        ):
+            has_valid_calls = False
+        else:
+            calls.extend(work_calls)
+        work_decisions = workload.get("decisions")
+        if not isinstance(work_decisions, list) or not all(
+            isinstance(decision, dict) for decision in work_decisions
+        ):
+            has_valid_decisions = False
+        else:
+            decisions.extend(work_decisions)
+    has_valid_calls = has_valid_calls and all(
+        isinstance(call.get("addressedTo"), str)
+        and bool(call["addressedTo"])
+        and (call.get("causedBy") is None or isinstance(call["causedBy"], str))
+        and (call.get("activation") is None or isinstance(call["activation"], str))
+        for call in calls
+    )
+    has_valid_decisions = has_valid_decisions and all(
+        isinstance(decision.get("agent"), str)
+        and bool(decision["agent"])
+        and isinstance(decision.get("node"), str)
+        and _SAFE_NODE.fullmatch(cast(str, decision["node"])) is not None
+        for decision in decisions
+    )
+    has_valid_agents = not truncated.get("agents", False) and all(
+        isinstance(agent.get("id"), str) and bool(agent["id"]) for agent in agents
+    )
+    status: Literal["ok", "invalid", "truncated"] = "ok"
+    if any(truncated.values()):
+        status = "truncated"
+    elif not all((has_valid_calls, has_valid_decisions, has_valid_agents)):
+        status = "invalid"
+    sapi = None
+    delegations = None
+    specialists_created = None
+    steps_by_node = None
+    if has_valid_calls:
+        delegations = sum(
+            bool(call.get("causedBy")) and call.get("activation") != "RequestClarified"
+            for call in calls
+        )
+    if has_valid_calls and has_valid_decisions:
+        sapi = len(
+            {cast(str, call["addressedTo"]) for call in calls}
+            | {cast(str, decision["agent"]) for decision in decisions}
+        )
+    if has_valid_calls and has_valid_agents:
+        root_addressees = {
+            cast(str, call["addressedTo"])
+            for call in calls
+            if call.get("causedBy") is None
+        }
+        specialists_created = sum(
+            agent["id"] not in root_addressees for agent in agents
+        )
+    if has_valid_decisions:
+        steps_by_node = {}
+        for decision in decisions:
+            node = cast(str, decision["node"])
+            steps_by_node[node] = steps_by_node.get(node, 0) + 1
+        steps_by_node = dict(sorted(steps_by_node.items()))
+    return {
+        "status": status,
+        "sapi": sapi,
+        "delegations": delegations,
+        "specialists_created": specialists_created,
+        "steps_by_node": steps_by_node,
+    }
+
+
+def _pair_delegation(trials: Sequence[_Trial]) -> PairDelegation | None:
+    recorded = [
+        trial.outcome["delegation"]
+        for trial in trials
+        if trial.outcome["delegation"] is not None
+    ]
+    if not recorded:
+        return None
+    known = [
+        metric["delegations"]
+        for metric in recorded
+        if metric is not None and metric["delegations"] is not None
+    ]
+    return {
+        "known": len(known),
+        "delegated": sum(count >= 1 for count in known),
+        "unknown": len(trials) - len(known),
+    }
 
 
 def _failed_criteria(trial_dir: Path, result: TrialResult) -> dict[str, dict[str, int]]:
@@ -1271,6 +1462,7 @@ def _pair_report(trials: Sequence[_Trial]) -> PairReport:
         "level": first.level
         if all(trial.level == first.level for trial in trials)
         else "unknown",
+        "delegation": _pair_delegation(trials),
     }
 
 
@@ -1329,6 +1521,7 @@ def _markdown_row(pair: PairReport) -> str:
         pair["task"],
         pair["task_checksum"][:12],
         str(counts["trials"]),
+        _delegated_text(pair["delegation"]),
         f"{counts['pass']}/{pair['valid']}",
         str(counts["fail"]),
         str(counts["unknown"]),
@@ -1352,6 +1545,15 @@ def _markdown_row(pair: PairReport) -> str:
         ),
     ]
     return f"| {' | '.join(cells)} |"
+
+
+def _delegated_text(metrics: PairDelegation | None) -> str:
+    if metrics is None:
+        return "—"
+    text = f"{metrics['delegated']}/{metrics['known']}"
+    if metrics["unknown"]:
+        text += f" +{metrics['unknown']} unknown"
+    return text
 
 
 def _format_failed_criteria(criteria: dict[str, dict[str, int]]) -> str:
