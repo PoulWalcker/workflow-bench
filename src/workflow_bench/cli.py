@@ -13,6 +13,7 @@ from pathlib import Path
 from workflow_bench.comparison import compare, render_markdown, summarize
 from workflow_bench.composer import read_codex_limits
 from workflow_bench.data import DataError
+from workflow_bench.pricing import read_price_file
 from workflow_bench.readiness import check_task
 from workflow_bench.transcript import render_transcripts
 
@@ -22,8 +23,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     `check-task` prints its JSON report on stdout and returns 0 only when the
     task is ready, 1 otherwise. `compare` prints JSON, Markdown or per-Trial summary
-    on stdout and returns 0, or 2 when an argument is not a Harbor job
-    directory or is repeated. `preflight` returns 0 only for available native
+    on stdout and returns 0, or 2 for an invalid job or price file or a repeated
+    job directory. `preflight` returns 0 only for available native
     subscription allowance, 1 for a safe rejection; it makes no model call.
     """
     parser = _parser()
@@ -70,8 +71,14 @@ def _compare(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     job_dirs = [path.resolve() for path in arguments.job_dirs]
     if len(set(job_dirs)) != len(job_dirs):
         parser.error("a job directory is given more than once")
+    prices = None
+    if arguments.prices is not None:
+        try:
+            prices = read_price_file(arguments.prices.resolve())
+        except (DataError, OSError):
+            parser.error("invalid price file")
     try:
-        report = compare(job_dirs)
+        report = compare(job_dirs, prices=prices)
     except DataError as error:
         parser.error(f"not a Harbor job directory: {error.relative_path}")
     if arguments.is_transcript_requested:
@@ -146,6 +153,11 @@ def _parser() -> argparse.ArgumentParser:
         nargs="+",
         metavar="job_dir",
         help="Harbor job directory (<jobs-dir>/<job-name>).",
+    )
+    compare_command.add_argument(
+        "--prices",
+        type=Path,
+        help="Dated OpenAI API list-price JSON file for cost estimates.",
     )
     compare_command.add_argument(
         "--format",

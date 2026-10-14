@@ -1,0 +1,13 @@
+{
+  "models": {
+    "openai/gpt-6.1-sol": {
+      "input_per_million": 2.0,
+      "cached_input_per_million": 0.1,
+      "output_per_million": 10.0,
+      "tier": "standard",
+      "context_band": "short (<=272K input tokens per request)",
+      "source_url": "https://developers.openai.com/api/docs/pricing",
+      "retrieved_on": "2026-10-14"
+    }
+  }
+}

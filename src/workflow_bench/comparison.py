@@ -31,6 +31,12 @@ from harbor.trial.network_policy import (
 
 from workflow_bench.contracts import Evaluation
 from workflow_bench.data import DataError, read_bytes, read_json, validate_contract
+from workflow_bench.pricing import (
+    PriceEntry,
+    PriceEstimateLabel,
+    estimate_cost_usd,
+    price_estimate_label,
+)
 from workflow_bench.transcript import read_sessions
 
 LOGGER = logging.getLogger(__name__)
@@ -78,6 +84,14 @@ class TrialOutcome(TypedDict):
     exception: str | None
 
 
+class TrialCost(TypedDict):
+    """One Trial's API list-price estimate, independent of its outcome."""
+
+    job: str
+    trial: str
+    cost_usd: float | None
+
+
 # Functional form: ``pass`` is a Python keyword.
 OutcomeCounts = TypedDict(
     "OutcomeCounts",
@@ -94,6 +108,14 @@ class Median(TypedDict):
     """
 
     median: float | None
+    known: int
+
+
+class CostSummary(TypedDict):
+    """Median and sum over Trials with a known API list-price estimate."""
+
+    median: float | None
+    total: float | None
     known: int
 
 
@@ -115,6 +137,9 @@ class PairReport(TypedDict):
             session may contribute to more than one value if effort changed.
         session_evidence_missing_trials: Trials whose session files could not
             be read; their effort and summary presence are not inferred as zero.
+        cost_usd: Median and total over Trials with complete token facts and a
+            matching explicit API price; None without a known estimate.
+        trial_costs: Per-Trial estimates without changing outcome records.
     """
 
     task: str
@@ -128,6 +153,8 @@ class PairReport(TypedDict):
     input_tokens: Median
     cached_tokens: Median
     output_tokens: Median
+    cost_usd: CostSummary
+    trial_costs: list[TrialCost]
     session_count: Median
     sessions: Median
     trials: list[TrialOutcome]
@@ -179,6 +206,7 @@ class ComparisonReport(TypedDict):
     pass_hat_k: int
     comparisons: list[TaskComparison]
     levels: list[LevelReport]
+    price_estimate: PriceEstimateLabel
 
 
 class PhaseSummary(TypedDict):
@@ -270,6 +298,7 @@ class _Trial:
     input_tokens: int | None
     cached_tokens: int | None
     output_tokens: int | None
+    cost_usd: float | None
     session_count: int | None
     effective_session_count: int | None
     failed_criteria: dict[str, dict[str, int]]
@@ -316,10 +345,13 @@ class _EffectiveConditions:
     agent_network: tuple[str, ...] | None
 
 
-def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
+def compare(
+    job_dirs: Sequence[Path], *, prices: Mapping[str, PriceEntry] | None = None
+) -> ComparisonReport:
     """Return the report of every Trial in the given Harbor job directories.
 
-    Reads only native files; the same files give the same report. Every
+    Reads only native files and optional validated prices; the same files give
+    the same report. Every
     subdirectory of a job directory is a Trial, as Harbor lays them out; one
     without a readable ``result.json`` is listed as incomplete, outside the
     pairs.
@@ -348,7 +380,7 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
                     {"job": job_dir.name, "trial": trial_dir.name, "reason": error.code}
                 )
                 continue
-            trials.append(_measure_trial(job_dir.name, trial_dir, result))
+            trials.append(_measure_trial(job_dir.name, trial_dir, result, prices))
     groups: dict[_Key, list[_Trial]] = {}
     for trial in trials:
         groups.setdefault(_pair_key(trial), []).append(trial)
@@ -367,6 +399,7 @@ def compare(job_dirs: Sequence[Path]) -> ComparisonReport:
         "pass_hat_k": 3,
         "comparisons": _comparison_reports(trials),
         "levels": _level_reports(trials),
+        "price_estimate": price_estimate_label(prices),
     }
 
 
@@ -419,6 +452,12 @@ def render_markdown(report: ComparisonReport) -> str:
         "# Workflow Bench report",
         "",
         "Pass^3 (k=3) = C(pass, 3) / C(valid, 3); unknown when valid < 3.",
+        "",
+        (
+            f"Cost: {report['price_estimate']['label']}; source: "
+            f"{_or_unknown(report['price_estimate']['source_url'])}."
+        ),
+        f"Limit: {report['price_estimate']['limits']}.",
     ]
     for key in sorted(sections):
         pairs = sections[key]
@@ -441,12 +480,24 @@ def render_markdown(report: ComparisonReport) -> str:
             "xhigh sessions",
             "Sessions with summary",
             "Session evidence missing Trials",
+            "Estimated cost USD median / total / known",
         ]
         lines += [
             f"| {' | '.join(headers)} |",
             f"| {' | '.join('---' for _ in headers)} |",
         ]
         lines += [_markdown_row(pair) for pair in pairs]
+    lines += [
+        "",
+        "## Trial cost estimates",
+        "",
+        "| Job | Trial | Estimated cost USD |",
+        "|---|---|---|",
+    ]
+    for pair in report["pairs"]:
+        for trial in pair["trial_costs"]:
+            cost_text = _format_cost(trial["cost_usd"])
+            lines.append(f"| {trial['job']} | {trial['trial']} | {cost_text} |")
     if report["comparisons"]:
         lines += [
             "",
@@ -521,7 +572,11 @@ def _summarize_trial(
         "agent_logs": str(trial_dir / "agent"),
     }
     return {
-        **outcome,
+        "job": outcome["job"],
+        "trial": outcome["trial"],
+        "outcome": outcome["outcome"],
+        "reason": outcome["reason"],
+        "exception": outcome["exception"],
         "phases": {
             "environment_setup": _phase_summary(result.environment_setup),
             "agent_setup": _phase_summary(result.agent_setup),
@@ -605,7 +660,12 @@ def _read_result(trial_dir: Path) -> TrialResult:
         raise DataError("result_invalid", trial_dir.name) from None
 
 
-def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
+def _measure_trial(
+    job: str,
+    trial_dir: Path,
+    result: TrialResult,
+    prices: Mapping[str, PriceEntry] | None,
+) -> _Trial:
     outcome, reason = _classify(trial_dir, result)
     exception = result.exception_info
     execution = result.agent_execution
@@ -617,6 +677,17 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
     ):
         agent_sec = (execution.finished_at - execution.started_at).total_seconds()
     usage = result.agent_result
+    configuration = _configuration(result)
+    model = configuration["model"]
+    model_price = None if prices is None or model is None else prices.get(model)
+    cost_usd = None
+    if model_price is not None and usage is not None:
+        cost_usd = estimate_cost_usd(
+            usage.n_input_tokens,
+            usage.n_cache_tokens,
+            usage.n_output_tokens,
+            model_price,
+        )
     failed_criteria = _failed_criteria(trial_dir, result)
     session_observations = _observe_sessions(trial_dir)
     conditions = _effective_conditions(trial_dir)
@@ -624,7 +695,7 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
     return _Trial(
         task=result.task_name,
         task_checksum=result.task_checksum,
-        configuration=_configuration(result),
+        configuration=configuration,
         outcome={
             "job": job,
             "trial": trial_dir.name,
@@ -636,6 +707,7 @@ def _measure_trial(job: str, trial_dir: Path, result: TrialResult) -> _Trial:
         input_tokens=None if usage is None else usage.n_input_tokens,
         cached_tokens=None if usage is None else usage.n_cache_tokens,
         output_tokens=None if usage is None else usage.n_output_tokens,
+        cost_usd=cost_usd,
         session_count=recorded_session_count,
         effective_session_count=(
             session_observations.count
@@ -1166,6 +1238,15 @@ def _pair_report(trials: Sequence[_Trial]) -> PairReport:
         "input_tokens": _median([trial.input_tokens for trial in trials]),
         "cached_tokens": _median([trial.cached_tokens for trial in trials]),
         "output_tokens": _median([trial.output_tokens for trial in trials]),
+        "cost_usd": _cost_summary([trial.cost_usd for trial in trials]),
+        "trial_costs": [
+            {
+                "job": trial.outcome["job"],
+                "trial": trial.outcome["trial"],
+                "cost_usd": trial.cost_usd,
+            }
+            for trial in trials
+        ],
         "session_count": _median([trial.session_count for trial in trials]),
         "sessions": _median([trial.effective_session_count for trial in trials]),
         "trials": outcomes,
@@ -1201,6 +1282,15 @@ def _median(values: Sequence[float | None]) -> Median:
     known = [value for value in values if value is not None]
     return {
         "median": float(statistics.median(known)) if known else None,
+        "known": len(known),
+    }
+
+
+def _cost_summary(values: Sequence[float | None]) -> CostSummary:
+    known = [value for value in values if value is not None]
+    return {
+        "median": float(statistics.median(known)) if known else None,
+        "total": sum(known) if known else None,
         "known": len(known),
     }
 
@@ -1253,6 +1343,13 @@ def _markdown_row(pair: PairReport) -> str:
         observed_sessions(pair["xhigh_sessions"]),
         observed_sessions(pair["sessions_with_summary"]),
         str(missing_sessions),
+        " / ".join(
+            (
+                _format_cost(pair["cost_usd"]["median"]),
+                _format_cost(pair["cost_usd"]["total"]),
+                str(pair["cost_usd"]["known"]),
+            )
+        ),
     ]
     return f"| {' | '.join(cells)} |"
 
@@ -1271,3 +1368,7 @@ def _format_count(value: float | None) -> str:
     if value is None:
         return "unknown"
     return f"{value:.0f}" if value.is_integer() else f"{value:.1f}"
+
+
+def _format_cost(value: float | None) -> str:
+    return "unknown" if value is None else f"{value:.8f}"

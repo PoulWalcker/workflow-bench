@@ -2066,3 +2066,140 @@ def test_session_effort_counts_each_observed_value_once_per_session(
     [pair] = report["pairs"]
     assert pair["session_efforts"] == {"low": 1, "xhigh": 1}
     assert pair["xhigh_sessions"] == 1
+
+
+def test_price_estimate_uses_harbor_tokens_for_both_harnesses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prices = tmp_path / "openai-api-prices-2026-10-14.json"
+    prices.write_text(
+        json.dumps(
+            {
+                "models": {
+                    "openai/gpt-5": {
+                        "input_per_million": 2.0,
+                        "cached_input_per_million": 0.1,
+                        "output_per_million": 10.0,
+                        "tier": "standard",
+                        "context_band": "short (<=272K input tokens per request)",
+                        "source_url": "https://developers.openai.com/api/docs/pricing",
+                        "retrieved_on": "2026-10-14",
+                    }
+                }
+            }
+        )
+    )
+    codex = _job(tmp_path, "codex")
+    sapiens = _job(tmp_path, "sapiens")
+    _trial(codex, "one", criteria=_criteria("pass"), tokens=(100, 20, 10))
+    saved = codex / "one" / "result.json"
+    native_result = json.loads(saved.read_text())
+    native_result["agent_result"]["cost_usd"] = 999.0
+    saved.write_text(json.dumps(native_result))
+    _trial(codex, "two", criteria=_criteria("fail"), tokens=(200, 50, 20))
+    _trial(codex, "unknown-tokens", criteria=_criteria("pass"), tokens=(None, 0, 10))
+    _trial(codex, "bad-cache", criteria=_criteria("pass"), tokens=(5, 10, 1))
+    _trial(
+        sapiens,
+        "one",
+        criteria=_criteria("pass"),
+        harness="sapiens",
+        tokens=(100, 20, 10),
+    )
+    _trial(
+        sapiens,
+        "missing-model",
+        criteria=_criteria("pass"),
+        harness="sapiens",
+        model="other",
+    )
+
+    assert main(["compare", "--prices", str(prices), str(codex), str(sapiens)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    pairs = {
+        pair["configuration"]["harness"]: pair
+        for pair in report["pairs"]
+        if pair["configuration"]["model"] == "openai/gpt-5"
+    }
+    codex_cost = pairs["codex"]["cost_usd"]
+    assert codex_cost == {
+        "median": pytest.approx(0.0003835),
+        "total": pytest.approx(0.000767),
+        "known": 2,
+    }
+    assert {
+        trial["trial"]: trial["cost_usd"] for trial in pairs["codex"]["trial_costs"]
+    } == {
+        "one": pytest.approx(0.000262),
+        "two": pytest.approx(0.000505),
+        "unknown-tokens": None,
+        "bad-cache": None,
+    }
+    assert pairs["sapiens"]["trial_costs"][0]["cost_usd"] == pytest.approx(0.000262)
+    assert next(
+        pair
+        for pair in report["pairs"]
+        if pair["configuration"]["model"] == "openai/other"
+    )["cost_usd"] == {"median": None, "total": None, "known": 0}
+    assert (
+        report["price_estimate"]["label"]
+        == "estimate by OpenAI API list price as of 2026-10-14"
+    )
+    assert (
+        report["price_estimate"]["source_url"]
+        == "https://developers.openai.com/api/docs/pricing"
+    )
+    assert (
+        "cache-write tokens and the long-context band are not modelled"
+        in report["price_estimate"]["limits"]
+    )
+
+    assert (
+        main(["compare", "--format", "markdown", "--prices", str(prices), str(codex)])
+        == 0
+    )
+    markdown = capsys.readouterr().out
+    assert "estimate by OpenAI API list price as of 2026-10-14" in markdown
+    assert "https://developers.openai.com/api/docs/pricing" in markdown
+    assert "cache-write tokens and the long-context band are not modelled" in markdown
+    assert "unknown" in markdown
+
+
+def test_price_estimate_is_unknown_without_price_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "job")
+    _trial(job, "one", criteria=_criteria("pass"), tokens=(100, 20, 10))
+    _, report = _compare([job], capsys)
+    assert report["pairs"][0]["trial_costs"][0]["cost_usd"] is None
+    assert report["pairs"][0]["cost_usd"] == {"median": None, "total": None, "known": 0}
+
+
+@pytest.mark.parametrize("invalid", ["missing", "negative", "infinite"])
+def test_invalid_price_file_exits_two_without_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], invalid: str
+) -> None:
+    job = _job(tmp_path, "job")
+    model = {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.1,
+        "output_per_million": 10.0,
+        "tier": "standard",
+        "context_band": "short (<=272K input tokens per request)",
+        "source_url": "https://developers.openai.com/api/docs/pricing",
+        "retrieved_on": "2026-10-14",
+    }
+    if invalid == "missing":
+        del model["tier"]
+    elif invalid == "negative":
+        model["input_per_million"] = -1.0
+    else:
+        model["input_per_million"] = float("inf")
+    prices = tmp_path / "prices.json"
+    prices.write_text(json.dumps({"models": {"openai/gpt-5": model}}))
+    with pytest.raises(SystemExit) as error:
+        main(["compare", "--prices", str(prices), str(job)])
+    captured = capsys.readouterr()
+    assert error.value.code == 2
+    assert captured.out == ""
+    assert "invalid price file" in captured.err

@@ -3,7 +3,6 @@
 import asyncio
 import io
 import json
-import math
 import os
 import selectors
 import shutil
@@ -15,7 +14,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TypedDict, override
+from typing import TypedDict, cast, override
 
 from harbor.agents.installed.codex import Codex
 from harbor.environments.base import BaseEnvironment
@@ -31,6 +30,7 @@ from workflow_bench.data import (
 )
 from workflow_bench.harbor import DeadlineDockerEnvironment
 from workflow_bench.observability import format_phase_line
+from workflow_bench.pricing import estimate_cost_usd
 
 MAX_SESSION_ENTRIES = 256
 MAX_SESSION_DEPTH = 8
@@ -291,43 +291,35 @@ def collect_codex_usage(
                 has_invalid_session = True
     if has_invalid_session:
         totals = None
-    usage = {
+    usage: dict[str, JsonValue] = {
         "source": "native_session_last_cumulative",
-        "raw_refs": raw_refs,
+        "raw_refs": cast(JsonValue, raw_refs),
         "model_calls": None,
         "usd": None,
-        "prices": prices,
+        "prices": cast(JsonValue, prices),
     }
+    tokens: dict[str, int | None] = {}
     for name in ("input_tokens", "cached_input_tokens", "output_tokens"):
         value = totals.get(name) if totals else None
-        usage[name] = (
+        tokens[name] = (
             value
             if isinstance(value, int) and not isinstance(value, bool) and value >= 0
             else None
         )
-    if prices is not None and all(
-        usage[key] is not None
-        for key in ("input_tokens", "cached_input_tokens", "output_tokens")
-    ):
+        usage[name] = tokens[name]
+    if prices is not None:
         if set(prices) != {
             "input_per_million",
             "cached_input_per_million",
             "output_per_million",
-        } or any(
-            isinstance(v, bool)
-            or not isinstance(v, (int, float))
-            or not math.isfinite(v)
-            or v < 0
-            for v in prices.values()
-        ):
+        }:
             raise DataError("invalid_prices", "prices")
-        uncached = usage["input_tokens"] - usage["cached_input_tokens"]
-        if uncached >= 0:
-            usage["usd"] = (
-                uncached * prices["input_per_million"]
-                + usage["cached_input_tokens"] * prices["cached_input_per_million"]
-                + usage["output_tokens"] * prices["output_per_million"]
-            ) / 1_000_000
+        usage["usd"] = estimate_cost_usd(
+            tokens["input_tokens"],
+            tokens["cached_input_tokens"],
+            tokens["output_tokens"],
+            prices,
+        )
     return usage
 
 

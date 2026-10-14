@@ -193,6 +193,7 @@ uv run --locked wb compare --format markdown "$PWD"/runs/readiness/check-*
 uv run --locked wb compare --format summary /tmp/workflow-bench-codex/codex-empty-provider
 uv run --locked wb compare --transcript "$PWD"/runs/m1a-06-codex/codex-live-smoke-20261013
 uv run --locked wb compare --transcript "$PWD"/runs/m1b-05-sapiens/sapiens-live-smoke-20261014
+uv run --locked wb compare --prices prices/openai-api-2026-10-14.json "$PWD"/runs/m1b-05-sapiens/sapiens-live-smoke-20261014
 ```
 
 The first command prints a JSON report and exits 0: one outcome per Trial and, per
@@ -209,6 +210,19 @@ Level is `unknown` if the recorded task directory is missing, exceeds the bounde
 digest read (4096 entries or 64 MiB), or its Harbor digest no longer matches the Trial
 lock. Markdown presents the same descriptive metrics and marks observed session counts
 when session evidence is missing.
+
+JSON and Markdown include an estimated USD cost per Trial and the
+median, total and known Trial count per task × configuration. The tracked
+[price file](prices/openai-api-2026-10-14.json) records the Standard short-context
+OpenAI API list prices retrieved on 2026-10-14, by Harbor model id. The report
+labels estimates with that date and source URL. It uses Harbor's input tokens
+(including cached), cached input tokens and output tokens; the same formula applies
+to Codex and Sapiens: `((input - cached) × input_rate + cached × cached_rate +
+output × output_rate) / 1,000,000`. A missing price, missing token count or cached count greater
+than input gives `unknown`; without `--prices`, every cost is `unknown`. Cache-write
+tokens and the long-context band are not modelled. These figures estimate API list
+price, not a ChatGPT subscription charge.
+
 With the readiness controls above, `oracle` has pass rate 1.0 and `nop` has 0.0. A
 directory that is not a Harbor job exits 2. `--format summary` prints one JSON record
 per Trial with native phase timing, the same outcome class as the report, verifier
