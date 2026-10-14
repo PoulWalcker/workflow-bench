@@ -8,6 +8,12 @@ from typing import NotRequired, TypedDict
 
 
 class Clue(TypedDict):
+    """Encode a unary or binary clue over attribute-value operands.
+
+    ``a`` and ``b`` are [attribute, value] pairs. Unary clues use a one-based
+    ``house`` instead of ``b``; binary clues use ``b`` and omit ``house``.
+    """
+
     type: str
     a: list[str]
     b: NotRequired[list[str]]
