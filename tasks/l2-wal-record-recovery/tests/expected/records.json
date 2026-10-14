@@ -1,0 +1,5 @@
+{
+  "ids": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+  "updated_values": {"1": 150, "2": 250},
+  "names": {"3": "cherry", "4": "date", "5": "elderberry", "6": "fig", "7": "grape", "8": "honeydew", "9": "kiwi", "10": "lemon", "11": "mango"}
+}
