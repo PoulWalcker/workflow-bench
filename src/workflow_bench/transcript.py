@@ -80,7 +80,9 @@ def render_trial_transcript(
 ) -> str:
     """Show one Trial's conversation and independently recorded verifier result."""
     agent_dir = trial_dir / "agent"
-    state, state_marker = _read_state(agent_dir / "sapiens-state.json")
+    state, state_marker = read_sapiens_state(agent_dir / "sapiens-state.json")
+    if state_marker == "invalid JSON":
+        state_marker = "unreadable"
     sessions, session_marker = read_sessions(agent_dir / "sessions")
     is_sapiens = (
         _harness_name(trial_dir) == "sapiens"
@@ -216,7 +218,13 @@ def read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str |
     ), None
 
 
-def _read_state(path: Path) -> tuple[SapiensState | None, str | None]:
+def read_sapiens_state(path: Path) -> tuple[SapiensState | None, str | None]:
+    """Read a bounded saved snapshot, returning a safe marker when unavailable.
+
+    A missing file has marker ``not collected``. Malformed JSON has marker
+    ``invalid JSON``; invalid structure has ``invalid``. Unsafe or unreadable
+    files have marker ``unreadable``.
+    """
     if not path.is_file() or path.is_symlink():
         return None, "not collected"
     try:
@@ -224,8 +232,10 @@ def _read_state(path: Path) -> tuple[SapiensState | None, str | None]:
         if content is None:
             return None, "too large"
         state = decode_json(content, "sapiens-state.json")
-    except (OSError, DataError):
+    except OSError:
         return None, "unreadable"
+    except DataError as error:
+        return None, "invalid JSON" if error.code == "invalid_schema" else "unreadable"
     if not isinstance(state, dict):
         return None, "invalid"
     for key in ("agents", "turns", "workloads"):
