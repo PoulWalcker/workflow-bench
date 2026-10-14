@@ -1,0 +1,26 @@
+schema_version = "1.4"
+artifacts = ["/work/output"]
+
+[metadata]
+level = "L1"
+horizon = "single"
+benchmark = "AIME 2025 II"
+instance_key = "Problem 13"
+dataset_url = "https://artofproblemsolving.com/wiki/index.php/2025_AIME_II_Problems/Problem_13"
+dataset_revision = "2025 AIME II, Problem 13"
+checker_source_url = "https://hub.harborframework.com/datasets"
+checker_commit = "Harbor aime@1.0, aime_ii-13, answer cross-check only"
+license = "No open license"
+attribution = "2025 AIME II, Problem 13, © MAA American Mathematics Competitions"
+deviations = "Statement hand-authored from AoPS; answer written to /work/output/answer.json; independent file and value criteria; Harbor aime@1.0 used only to cross-check answer 248"
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120.0
