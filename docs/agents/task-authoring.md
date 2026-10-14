@@ -113,7 +113,12 @@ The helper writes `evaluation.json` (verdict, criteria, completeness, errors) an
 `reward.json` only for a complete assessment: `1.0` for `pass`, `0.0` for `fail`. A known
 violation makes the verdict `fail` even when other criteria are unknown. Read candidate files
 as untrusted input (`workflow_bench.data.read_json` bounds size and rejects symlinks) and never
-execute them. A verifier crash leaves no evaluation, which Harbor records as a verifier error.
+execute them except under this rule: candidate code may run only in the separate verifier, as an
+unprivileged user in a fresh temporary directory holding copies of the candidate file and private
+test harness. Bound its execution time and captured output. After each run, kill all processes of
+that user and confirm none remain; otherwise mark affected Criteria unknown. Remove entries in
+`/logs/verifier` that the verifier did not create, then write the evaluation last from the verifier
+process. A verifier crash leaves no evaluation, which Harbor records as a verifier error.
 
 ## Readiness
 
