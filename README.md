@@ -204,9 +204,11 @@ artifact status and paths to diagnostic files.
 `--transcript` prints a read-only Markdown conversation for each saved Trial: the
 task, Sapiens decision nodes or Codex messages, tool calls and results, time and
 tokens when recorded, and the verifier result. Each step shows a bounded,
-best-effort-masked reasoning summary or a no-summary marker. A Trial footer shows
-the requested setting from the saved Trial config (or `unknown`) and the number
-of steps with a summary. It shows an unavailable marker when no summary appears
+best-effort-masked reasoning summary, a no-summary marker when the response is
+readable, or an unknown marker when response evidence is missing. A Trial footer
+shows the requested setting from the saved Trial config (or `unknown`) and the
+number of steps with a summary (also `unknown` when sessions are missing or
+incomplete). It shows an unavailable marker when no summary appears
 and the setting is not `none`. Encrypted reasoning is never shown. Sapiens
 captures a bounded state snapshot in its Harbor agent log for speaker names,
 delegations and transitions. Older Trials without that snapshot show missing-data

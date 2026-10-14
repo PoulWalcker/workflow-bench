@@ -315,7 +315,7 @@ def test_transcript_marks_reasoning_unavailable_only_when_requested(
     assert ("reasoning summaries: unavailable" in output) is is_unavailable
 
 
-def test_transcript_counts_sapiens_state_only_decisions_as_steps(
+def test_transcript_marks_sapiens_state_only_summary_as_unknown(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     job = _job(tmp_path, "state-only")
@@ -333,10 +333,100 @@ def test_transcript_counts_sapiens_state_only_decisions_as_steps(
     )
     assert main(["compare", "--transcript", str(job)]) == 0
     output = capsys.readouterr().out
-    assert "Reasoning summary: [no summary]" in output
+    assert "Reasoning summary: [unknown: no aligned Codex session]" in output
     assert "Reasoning summary setting: unknown" in output
-    assert "steps with a reasoning summary: 0 of 1" in output
+    assert "steps with a reasoning summary: unknown of 1" in output
     assert "reasoning summaries: unavailable" in output
+
+
+def test_transcript_marks_codex_summary_count_unknown_without_sessions(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "missing-session")
+    _trial(
+        job,
+        "step",
+        criteria=_criteria("pass"),
+        kwargs={"config": {"model_reasoning_summary": "auto"}},
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "[missing: Codex sessions (not collected)]" in output
+    assert "steps with a reasoning summary: unknown of unknown" in output
+    assert "steps with a reasoning summary: 0 of 0" not in output
+
+
+def test_transcript_marks_summary_unknown_when_session_has_no_response(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "no-response")
+    _trial(job, "step", criteria=_criteria("fail"))
+    _session(
+        job / "step" / "agent",
+        "rollout.jsonl",
+        [_message("2026-01-01T00:00:01Z", "user", "Compute the answer")],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "Reasoning summary: [unknown: no assistant response]" in output
+    assert "steps with a reasoning summary: unknown of 1" in output
+
+
+def test_transcript_marks_partial_sapiens_summary_evidence_unknown(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "partial-sessions")
+    _trial(
+        job,
+        "step",
+        criteria=_criteria("pass"),
+        harness="sapiens",
+        kwargs={"config": {"model_reasoning_summary": "auto"}},
+    )
+    agent = job / "step" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [{"id": "chief", "name": "Chief"}],
+                "turns": [],
+                "workloads": [
+                    {
+                        "decisions": [
+                            {"agent": "chief", "node": "First"},
+                            {"agent": "chief", "node": "Second"},
+                        ]
+                    }
+                ],
+            }
+        )
+    )
+    _session(
+        agent,
+        "first.jsonl",
+        [
+            _message(
+                "2026-01-01T00:00:01Z",
+                "user",
+                'decision at node First\nContext:\n{"selfId":"chief"}',
+            ),
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "reasoning",
+                    "summary": [{"text": "I should check the first step."}],
+                },
+            },
+        ],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "Chief — First" in output
+    assert "Chief — Second" in output
+    assert "Reasoning summary: I should check the first step." in output
+    assert "Reasoning summary: [unknown: no aligned Codex session]" in output
+    assert "steps with a reasoning summary: unknown of 2" in output
+    assert "reasoning summaries: unavailable" not in output
 
 
 def test_transcript_renders_codex_conversation_and_redacts_identifiers(
