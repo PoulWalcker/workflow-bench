@@ -82,7 +82,12 @@ def estimate_cost_usd(
     output_tokens: int | None,
     rates: Mapping[str, object],
 ) -> float | None:
-    """Estimate USD from total input (including cached), cached and output tokens."""
+    """Estimate USD from total input (including cached), cached and output tokens.
+
+    Return None if a token count is missing, negative or boolean, or if cached
+    tokens exceed total input. Invalid or missing rates raise DataError, even
+    when a token count is unknown.
+    """
     _validate_rates(rates)
     if input_tokens is None or cached_tokens is None or output_tokens is None:
         return None
@@ -104,7 +109,11 @@ def estimate_cost_usd(
 
 
 def price_estimate_label(prices: Mapping[str, PriceEntry] | None) -> PriceEstimateLabel:
-    """Describe the selected price source, or the unknown estimate without one."""
+    """Describe the selected price source, or the unknown estimate without one.
+
+    A supplied mapping must be nonempty, with the same retrieval date and source
+    URL for every entry, as enforced by read_price_file.
+    """
     if prices is None:
         return {"label": "unknown", "source_url": None, "limits": PRICE_LIMITS}
     entry = next(iter(prices.values()))
