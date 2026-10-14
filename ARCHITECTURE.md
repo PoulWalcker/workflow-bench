@@ -63,7 +63,8 @@ and summary counts when some session files are unavailable.
 
 Dependency direction: Sapiens integration → composer/data/contracts and Harbor;
 composer → data/contracts, harbor helpers and Harbor; evaluation → data/contracts; mcp → data/contracts;
-cli → readiness, comparison, transcript and composer; transcript → comparison;
+cli → readiness, comparison, transcript and composer; comparison → transcript (bounded session reader);
+transcript → comparison (type hints only);
 observability → comparison (evaluation reader), transcript (pattern masking);
 readiness → comparison (evaluation reader);
 both → data/contracts and Harbor.

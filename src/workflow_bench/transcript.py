@@ -172,6 +172,50 @@ def render_trial_transcript(
     return "\n".join(lines)
 
 
+def read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
+    """Read bounded saved Codex sessions and their evidence status.
+
+    A None marker means all discovered sessions were read. A string marker
+    means session evidence is unavailable, unsafe, incomplete or invalid;
+    callers must not interpret the empty session list as a measured zero.
+    """
+    if not directory.is_dir() or directory.is_symlink():
+        return [], "not collected"
+    try:
+        paths, marker = _session_paths(directory)
+    except OSError:
+        return [], "unreadable"
+    if marker:
+        return [], marker
+    if not paths:
+        return [], "empty"
+    if len(paths) > _MAX_SESSION_COUNT:
+        return [], "too many"
+    sessions = []
+    total_bytes = 0
+    try:
+        for path in paths:
+            content = _bounded_file(
+                path, min(_MAX_SESSION_BYTES, _MAX_ALL_SESSIONS_BYTES - total_bytes)
+            )
+            if content is None:
+                return [], "unsafe or too large"
+            total_bytes += len(content)
+            rows = [
+                decode_json(line, "session")
+                for line in content.splitlines()
+                if line.strip()
+            ]
+            if not all(isinstance(row, dict) for row in rows):
+                return [], "invalid"
+            sessions.append(cast(list[dict[str, object]], rows))
+    except (OSError, DataError):
+        return [], "unreadable"
+    return sorted(
+        sessions, key=lambda rows: str(rows[0].get("timestamp", "")) if rows else ""
+    ), None
+
+
 def _read_state(path: Path) -> tuple[SapiensState | None, str | None]:
     if not path.is_file() or path.is_symlink():
         return None, "not collected"
@@ -215,50 +259,6 @@ def _harness_name(trial_dir: Path) -> str | None:
         return None
     name = agent_info.get("name")
     return name if isinstance(name, str) else None
-
-
-def read_sessions(directory: Path) -> tuple[list[list[dict[str, object]]], str | None]:
-    """Read bounded saved Codex sessions and their evidence status.
-
-    A None marker means all discovered sessions were read. A string marker
-    means session evidence is unavailable, unsafe, incomplete or invalid;
-    callers must not interpret the empty session list as a measured zero.
-    """
-    if not directory.is_dir() or directory.is_symlink():
-        return [], "not collected"
-    try:
-        paths, marker = _session_paths(directory)
-    except OSError:
-        return [], "unreadable"
-    if marker:
-        return [], marker
-    if not paths:
-        return [], "empty"
-    if len(paths) > _MAX_SESSION_COUNT:
-        return [], "too many"
-    sessions = []
-    total_bytes = 0
-    try:
-        for path in paths:
-            content = _bounded_file(
-                path, min(_MAX_SESSION_BYTES, _MAX_ALL_SESSIONS_BYTES - total_bytes)
-            )
-            if content is None:
-                return [], "unsafe or too large"
-            total_bytes += len(content)
-            rows = [
-                decode_json(line, "session")
-                for line in content.splitlines()
-                if line.strip()
-            ]
-            if not all(isinstance(row, dict) for row in rows):
-                return [], "invalid"
-            sessions.append(cast(list[dict[str, object]], rows))
-    except (OSError, DataError):
-        return [], "unreadable"
-    return sorted(
-        sessions, key=lambda rows: str(rows[0].get("timestamp", "")) if rows else ""
-    ), None
 
 
 def _bounded_file(path: Path, limit: int) -> bytes | None:
