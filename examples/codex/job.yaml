@@ -22,6 +22,7 @@ agents:
       version: 0.162.1
       reasoning_effort: low
       config:
+        model_reasoning_summary: auto
         model_provider: empty
         model_providers:
           empty:

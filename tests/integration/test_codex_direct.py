@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,7 @@ def test_fake_codex_completes_task_in_isolation(
 def test_pinned_codex_empty_provider_is_evaluated_from_state(
     trivial_task: Path, tmp_path: Path
 ) -> None:
-    job = _run_job(trivial_task, tmp_path)
+    job = _run_job(_config_capture_task(trivial_task, tmp_path), tmp_path)
     report = compare([job])
     assert [trial["outcome"] for trial in report["pairs"][0]["trials"]] == ["fail"]
     native = json.loads(next(job.glob("*/result.json")).read_text())
@@ -56,6 +57,8 @@ def test_pinned_codex_empty_provider_is_evaluated_from_state(
     assert metadata["cli_version"] == "0.162.1"
     assert metadata["model_provider"] == "empty"
     agent_logs = next(job.glob("*/agent"))
+    effective_config = tomllib.loads((agent_logs / "effective-config.toml").read_text())
+    assert effective_config["model_reasoning_summary"] == "auto"
     agent = SessionSafeCodex(logs_dir=agent_logs, version="0.162.1")
     trajectory = agent.convert_trajectory(agent_logs)
     assert trajectory is not None
@@ -150,6 +153,22 @@ def _fake_task(source: Path, directory: Path, executable: str) -> Path:
     (task / "environment/fake-codex").write_text(executable)
     with (task / "environment/Dockerfile").open("a") as stream:
         stream.write("\nCOPY --chmod=755 fake-codex /usr/local/bin/codex\n")
+    return task
+
+
+def _config_capture_task(source: Path, directory: Path) -> Path:
+    task = directory / "task"
+    shutil.copytree(source, task, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy2(
+        Path(__file__).parent / "assets/config-capture-entrypoint",
+        task / "environment/config-capture-entrypoint",
+    )
+    with (task / "environment/Dockerfile").open("a") as stream:
+        stream.write(
+            "\nCOPY --chmod=755 config-capture-entrypoint "
+            "/usr/local/bin/config-capture-entrypoint\n"
+        )
+        stream.write('ENTRYPOINT ["/usr/local/bin/config-capture-entrypoint"]\n')
     return task
 
 

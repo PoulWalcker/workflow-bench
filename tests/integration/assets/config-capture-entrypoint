@@ -1,0 +1,14 @@
+#!/bin/sh
+(
+  attempt=0
+  while [ "$attempt" -lt 600 ]; do
+    if [ -f /tmp/codex-home/config.toml ]; then
+      umask 077
+      cp /tmp/codex-home/config.toml /logs/agent/effective-config.toml
+      exit 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.1
+  done
+) &
+exec "$@"

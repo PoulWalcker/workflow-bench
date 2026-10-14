@@ -323,6 +323,7 @@ def test_sapiens_example_builds_agent_with_native_model_and_reasoning(
     assert agent.version() == "0.162.1"
     assert isinstance(agent.config_source, dict)
     assert agent.config_source["model_reasoning_effort"] == "low"
+    assert agent._build_effective_config()["model_reasoning_summary"] == "auto"
     assert config.agents[0].kwargs["reasoning_effort"] == "low"
     assert config.jobs_dir.is_absolute()
     assert (

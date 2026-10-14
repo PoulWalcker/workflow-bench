@@ -175,6 +175,170 @@ def _message(
     return {"timestamp": at, "type": "response_item", "payload": payload}
 
 
+def test_transcript_shows_codex_reasoning_summaries_per_step(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "codex-reasoning")
+    _trial(
+        job,
+        "two-steps",
+        criteria=_criteria("pass"),
+        kwargs={"config": {"model_reasoning_summary": "auto"}},
+    )
+    agent = job / "two-steps" / "agent"
+    _session(
+        agent,
+        "first.jsonl",
+        [
+            {"type": "turn_context", "payload": {"summary": "none"}},
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "reasoning",
+                    "summary": [
+                        {
+                            "type": "summary_text",
+                            "text": "I should add 7 and 5. token=SECRET",
+                        }
+                    ],
+                    "encrypted_content": "NEVER_SHOW_CIPHER",
+                },
+            },
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "reasoning",
+                    "summary": [{"type": "summary_text", "text": "X" * 600}],
+                },
+            },
+            _message("2026-01-01T00:00:01Z", "assistant", "The sum is 12."),
+        ],
+    )
+    _session(
+        agent,
+        "second.jsonl",
+        [
+            {"type": "turn_context", "payload": {"summary": "none"}},
+            _message("2026-01-01T00:00:02Z", "assistant", "Finished."),
+        ],
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "Reasoning summary: I should add 7 and 5." in output
+    assert "X" * 100 in output and "X" * 501 not in output
+    assert "SECRET" not in output and "NEVER_SHOW_CIPHER" not in output
+    assert "Reasoning summary: [no summary]" in output
+    assert "Reasoning summary setting: auto" in output
+    assert "steps with a reasoning summary: 1 of 2" in output
+    assert "reasoning summaries: unavailable" not in output
+
+
+def test_transcript_shows_sapiens_summary_next_to_each_decision(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "sapiens-reasoning")
+    _trial(
+        job,
+        "three-steps",
+        criteria=_criteria("fail"),
+        harness="sapiens",
+        kwargs={"config": {"model_reasoning_summary": "auto"}},
+    )
+    agent = job / "three-steps" / "agent"
+    for index, summary in enumerate(
+        [
+            [{"type": "summary_text", "text": "I need a basket total."}],
+            [],
+            None,
+        ]
+    ):
+        prompt = f"decision at node Step{index}\nContext:\n{{}}"
+        reasoning: dict[str, object] = {
+            "type": "reasoning",
+            "encrypted_content": "NEVER_SHOW_CIPHER",
+        }
+        if summary is not None:
+            reasoning["summary"] = summary
+        _session(
+            agent,
+            f"{index}.jsonl",
+            [
+                {"type": "turn_context", "payload": {"summary": "none"}},
+                _message(f"2026-01-01T00:00:0{index}Z", "user", prompt),
+                {"type": "response_item", "payload": reasoning},
+                _message(
+                    f"2026-01-01T00:00:0{index + 1}Z",
+                    "assistant",
+                    json.dumps({"event": "Outcome", "reason": "Done"}),
+                ),
+            ],
+        )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert output.index("Reasoning summary: I need a basket total.") < output.index(
+        "Decision: Outcome"
+    )
+    assert output.count("Reasoning summary: [no summary]") == 2
+    assert "NEVER_SHOW_CIPHER" not in output
+    assert "Reasoning summary setting: auto" in output
+    assert "steps with a reasoning summary: 1 of 3" in output
+
+
+@pytest.mark.parametrize(
+    ("setting", "is_unavailable"),
+    [("none", False), ("auto", True), (None, True)],
+)
+def test_transcript_marks_reasoning_unavailable_only_when_requested(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    setting: str | None,
+    is_unavailable: bool,
+) -> None:
+    job = _job(tmp_path, "no-reasoning")
+    kwargs: dict[str, object] | None = (
+        {"config": {"model_reasoning_summary": setting}}
+        if setting is not None
+        else None
+    )
+    _trial(job, "step", criteria=_criteria("pass"), kwargs=kwargs)
+    rows: list[dict[str, object]] = [
+        _message("2026-01-01T00:00:01Z", "assistant", "Done.")
+    ]
+    recorded_summary = "auto" if setting == "none" else "none"
+    rows.insert(0, {"type": "turn_context", "payload": {"summary": recorded_summary}})
+    _session(job / "step" / "agent", "rollout.jsonl", rows)
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert f"Reasoning summary setting: {setting or 'unknown'}" in output
+    assert "Reasoning summary: [no summary]" in output
+    assert "steps with a reasoning summary: 0 of 1" in output
+    assert ("reasoning summaries: unavailable" in output) is is_unavailable
+
+
+def test_transcript_counts_sapiens_state_only_decisions_as_steps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    job = _job(tmp_path, "state-only")
+    _trial(job, "step", criteria=_criteria("fail"), harness="sapiens")
+    agent = job / "step" / "agent"
+    agent.mkdir()
+    (agent / "sapiens-state.json").write_text(
+        json.dumps(
+            {
+                "agents": [{"id": "chief", "name": "Chief"}],
+                "turns": [],
+                "workloads": [{"decisions": [{"node": "Execution", "agent": "chief"}]}],
+            }
+        )
+    )
+    assert main(["compare", "--transcript", str(job)]) == 0
+    output = capsys.readouterr().out
+    assert "Reasoning summary: [no summary]" in output
+    assert "Reasoning summary setting: unknown" in output
+    assert "steps with a reasoning summary: 0 of 1" in output
+    assert "reasoning summaries: unavailable" in output
+
+
 def test_transcript_renders_codex_conversation_and_redacts_identifiers(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

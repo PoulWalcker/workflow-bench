@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import time
+import tomllib
 from contextlib import suppress
 from pathlib import Path
 
@@ -131,6 +132,9 @@ def test_real_codex_accepts_sapiens_exec_arguments_without_a_provider(
     metadata = events[0]["payload"]
     assert metadata["cli_version"] == "0.162.1"
     assert metadata["model_provider"] == "empty"
+    agent_logs = next(job.glob("*/agent"))
+    effective_config = tomllib.loads((agent_logs / "effective-config.toml").read_text())
+    assert effective_config["model_reasoning_summary"] == "auto"
     completed = next(
         event["payload"]
         for event in events
@@ -184,11 +188,19 @@ def _empty_provider_task(source: Path, directory: Path) -> Path:
         assets / "empty-provider-entrypoint",
         task / "environment/empty-provider-entrypoint",
     )
+    shutil.copy2(
+        assets / "config-capture-entrypoint",
+        task / "environment/config-capture-entrypoint",
+    )
     with (task / "environment/Dockerfile").open("a") as stream:
         stream.write("\nCOPY empty_provider.py /usr/local/bin/empty_provider.py\n")
         stream.write(
             "COPY --chmod=755 empty-provider-entrypoint "
             "/usr/local/bin/empty-provider-entrypoint\n"
+        )
+        stream.write(
+            "COPY --chmod=755 config-capture-entrypoint "
+            "/usr/local/bin/config-capture-entrypoint\n"
         )
         stream.write('ENTRYPOINT ["/usr/local/bin/empty-provider-entrypoint"]\n')
     return task

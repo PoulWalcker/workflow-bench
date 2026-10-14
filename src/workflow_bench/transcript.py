@@ -111,6 +111,18 @@ def render_trial_transcript(
         lines += _codex_steps(sessions)
     if session_marker:
         lines.append(f"[missing: Codex sessions ({session_marker})]")
+    summary_steps = sum(bool(_reasoning_summaries(rows)) for rows in sessions)
+    step_count = len(sessions)
+    if is_sapiens and not sessions:
+        step_count = len(_state_decisions(state))
+    summary_setting = _summary_setting(trial_dir)
+    lines += [
+        "",
+        f"Reasoning summary setting: {summary_setting}",
+        f"steps with a reasoning summary: {summary_steps} of {step_count}",
+    ]
+    if summary_setting != "none" and summary_steps == 0:
+        lines.append("reasoning summaries: unavailable")
     evaluation = summary["evaluation"]
     lines += ["", "## Verifier"]
     if evaluation is None:
@@ -327,6 +339,7 @@ def _sapiens_steps(
                 f"### {index}. {_safe(speaker)} — {node}",
                 f"Time: {at}; Tokens: [missing: token count]",
                 "[missing: node prompt and Codex session]",
+                "Reasoning summary: [no summary]",
             ]
             response = decision.get("response")
             if isinstance(response, dict):
@@ -367,6 +380,12 @@ def _sapiens_steps(
                 )
         else:
             lines.append("[missing: node prompt]")
+        summaries = _reasoning_summaries(rows)
+        lines += (
+            [f"Reasoning summary: {summary}" for summary in summaries]
+            if summaries
+            else ["Reasoning summary: [no summary]"]
+        )
         responses = _messages(rows, "assistant")
         response = _decision_response(responses)
         if response:
@@ -435,6 +454,12 @@ def _codex_steps(sessions: list[list[dict[str, object]]]) -> list[str]:
             f"### Session {index}",
             f"Time: {_time(rows)}; Tokens: {_tokens(rows)}",
         ]
+        summaries = _reasoning_summaries(rows)
+        lines += (
+            [f"Reasoning summary: {summary}" for summary in summaries]
+            if summaries
+            else ["Reasoning summary: [no summary]"]
+        )
         for row in rows:
             payload = row.get("payload")
             if not isinstance(payload, dict) or row.get("type") != "response_item":
@@ -470,6 +495,49 @@ def _codex_steps(sessions: list[list[dict[str, object]]]) -> list[str]:
     if not has_final_reply:
         lines.append("Final reply: [missing: final message]")
     return lines
+
+
+def _reasoning_summaries(rows: list[dict[str, object]]) -> list[str]:
+    """Return at most four masked, bounded summary fragments from one session."""
+    summaries = []
+    for row in rows:
+        payload = row.get("payload")
+        if (
+            row.get("type") != "response_item"
+            or not isinstance(payload, dict)
+            or payload.get("type") != "reasoning"
+        ):
+            continue
+        fragments = payload.get("summary")
+        if not isinstance(fragments, list):
+            continue
+        for fragment in fragments:
+            text = fragment.get("text") if isinstance(fragment, dict) else None
+            if not isinstance(text, str) or not text.strip():
+                continue
+            summaries.append(_safe(text)[:500])
+            if len(summaries) == 4:
+                return summaries
+    return summaries
+
+
+def _summary_setting(trial_dir: Path) -> str:
+    """Read the requested mode from saved Trial config, or return unknown."""
+    try:
+        trial_config = read_json(trial_dir / "config.json", "config")
+    except (OSError, DataError):
+        return "unknown"
+    if not isinstance(trial_config, dict):
+        return "unknown"
+    agent = trial_config.get("agent")
+    kwargs = agent.get("kwargs") if isinstance(agent, dict) else None
+    config = kwargs.get("config") if isinstance(kwargs, dict) else None
+    setting = (
+        config.get("model_reasoning_summary") if isinstance(config, dict) else None
+    )
+    if isinstance(setting, str) and setting in {"auto", "concise", "detailed", "none"}:
+        return setting
+    return "unknown"
 
 
 def _node_prompt(rows: list[dict[str, object]]) -> str | None:

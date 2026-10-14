@@ -104,8 +104,11 @@ late writer on timeout and cancellation. Repeat the native job with a fresh
 
 Native Harbor owns configuration: agent `model_name`, `kwargs.version`,
 `kwargs.reasoning_effort` (CLI `-k reasoning_effort=low`) and `kwargs.config`
-(Codex TOML mapping); MCP servers belong to the task. The example deliberately has
-no live credentials. An authorized subscription job must replace its empty-provider
+(Codex TOML mapping); MCP servers belong to the task. Both example jobs set
+`kwargs.config.model_reasoning_summary: auto` as one source for the effective
+Codex config in either harness. This requested summary setting is part of the
+measured configuration. The example deliberately has no live credentials. An
+authorized subscription job must replace its empty-provider
 config, select permitted provider networking, set an explicit
 `agents[].env.CODEX_AUTH_JSON_PATH` in the job,
 and keep finite Trial limits. It must first pass readiness and a fresh
@@ -133,7 +136,9 @@ retry. It supplies both Harbor's reasoning option and Sapiens' required
 Its empty loopback provider and explicit empty credential settings make it a
 model-free configuration/control example. The fast configuration test verifies
 Harbor builds `SapiensInstalledAgent` with these settings; the Sapiens execution
-controls are a separate integration path.
+controls are a separate integration path. Its `kwargs.config.model_reasoning_summary`
+requests `auto` through the same effective Codex config as the direct example;
+Harbor's separate `kwargs.reasoning_summary` option does not reach Sapiens.
 
 Run the opted-in Sapiens controls with:
 
@@ -198,8 +203,12 @@ phase timing, the same outcome class as the report, verifier criteria, token cou
 artifact status and paths to diagnostic files.
 `--transcript` prints a read-only Markdown conversation for each saved Trial: the
 task, Sapiens decision nodes or Codex messages, tool calls and results, time and
-tokens when recorded, and the verifier result. Sapiens captures a bounded
-state snapshot in its Harbor agent log for speaker names,
+tokens when recorded, and the verifier result. Each step shows a bounded,
+best-effort-masked reasoning summary or a no-summary marker. A Trial footer shows
+the requested setting from the saved Trial config (or `unknown`) and the number
+of steps with a summary. It shows an unavailable marker when no summary appears
+and the setting is not `none`. Encrypted reasoning is never shown. Sapiens
+captures a bounded state snapshot in its Harbor agent log for speaker names,
 delegations and transitions. Older Trials without that snapshot show missing-data
 markers. Node prompts show a short excerpt by default; add `--full-prompts` to
 show their full text. The Sapiens state export masks every occurrence of each
