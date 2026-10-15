@@ -138,8 +138,12 @@ snapshot precedes a drop. The driver samples watched paths at interval offsets
 through `duration + tail`, copying changed content so the verifier can determine
 when an appended line or row first appeared. It bounds the schedule to 3600 s
 duration, 600 s tail, at most 128 samples, 32 watched paths, 128 drops and 128
-snapshots, and 32 MiB/4096 copied entries of evidence. Symlinks and special
-files are not copied. Set the hook timeout to `duration + tail + 60` seconds.
+snapshots, and 32 MiB/4096 copied files and directories of evidence. Each sample
+or snapshot processes at most 4096 directory children (with bounded lookahead
+to detect truncation); this traversal limit resets for the
+next observation, so earlier unchanged samples do not consume later scan capacity.
+Symlinks and special files are not copied. Set the hook timeout to
+`duration + tail + 60` seconds.
 
 Use `workflow_bench.window.read_window` in the separate verifier. Missing,
 invalid or unsafe evidence raises `DataError`; `not_started`, `running` and

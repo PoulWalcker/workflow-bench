@@ -50,7 +50,9 @@ class _SnapshotRecord(TypedDict):
     truncated: bool
 
 
-class _Observation(TypedDict):
+class Observation(TypedDict):
+    """Validated state, digest, and optional stored copy of one watched path."""
+
     state: str
     sha256: str | None
     copy: str | None
@@ -58,7 +60,7 @@ class _Observation(TypedDict):
 
 class _SampleRecord(TypedDict):
     actual_offset_sec: float
-    paths: dict[str, _Observation]
+    paths: dict[str, Observation]
 
 
 class _SkippedRecord(TypedDict):
@@ -67,6 +69,13 @@ class _SkippedRecord(TypedDict):
 
 
 class _Manifest(TypedDict):
+    """Window state: only terminal states have end/elapsed values.
+
+    `not_started` exists only in task-seeded evidence. A running window has a
+    start time and no end, elapsed time, or error. Completion has no error;
+    failure has an error code and retains earlier action records.
+    """
+
     schema_version: int
     status: Literal["running", "completed", "failed"]
     started_at: str
@@ -107,7 +116,7 @@ class Sample:
     """One watched-path observation, including changed-copy references."""
 
     actual_offset_sec: float
-    paths: dict[str, dict[str, str | None]]
+    paths: dict[str, Observation]
 
 
 @dataclass(frozen=True)
@@ -215,7 +224,12 @@ class _EvidenceWriter:
             temporary.unlink(missing_ok=True)
 
     def copy_path(self, source: Path, destination: Path) -> tuple[int, int, bool, str]:
-        """Copy regular entries without following links, within aggregate bounds."""
+        """Copy regular entries within aggregate storage and current-action scan bounds.
+
+        Return copied file count, bytes, truncation, and content SHA-256. For a
+        missing, linked, special, or uncopyable path, the last value is its
+        status word instead of a digest.
+        """
         if _has_symlink_component(source):
             self.record_skip(source, "symlink")
             return 0, 0, False, "symlink"
@@ -245,6 +259,9 @@ class _EvidenceWriter:
         if not stat.S_ISDIR(mode):
             self.record_skip(source, "special")
             return 0, 0, False, "special"
+        if self.entries >= MAX_ENTRIES:
+            return 0, 0, True, "truncated"
+        self.entries += 1
         destination.mkdir(parents=True, exist_ok=True)
         count = 0
         byte_count = 0
@@ -511,7 +528,7 @@ def read_window(evidence_dir: Path) -> WindowFacts:
             or len(paths) > MAX_WATCH
         ):
             raise DataError("invalid_schema", "manifest.json")
-        checked_paths: dict[str, dict[str, str | None]] = {}
+        checked_paths: dict[str, Observation] = {}
         for watched, observation in paths.items():
             if (
                 not _absolute_path(watched)
@@ -687,6 +704,7 @@ def _execute_drop(writer: _EvidenceWriter, item: object) -> None:
 
 def _execute_snapshot(writer: _EvidenceWriter, item: object) -> None:
     index, plan = cast(tuple[int, _SnapshotPlan], item)
+    writer.scanned = 0
     directory = f"snapshots/{index:03d}"
     destination = writer.root / directory
     destination.mkdir(parents=True)
@@ -719,7 +737,8 @@ def _execute_sample(
     index: object,
 ) -> None:
     index = cast(int, index)
-    paths: dict[str, _Observation] = {}
+    writer.scanned = 0
+    paths: dict[str, Observation] = {}
     for path_index, path in enumerate(watch):
         destination = writer.root / f"samples/{index:04d}/{path_index:02d}-{path.name}"
         if _has_symlink_component(path):
@@ -736,13 +755,12 @@ def _execute_sample(
                 previous.pop(str(path), None)
                 state, digest, copied = "special", None, None
             else:
-                count, size, truncated, digest = writer.copy_path(path, destination)
+                _, size, truncated, digest = writer.copy_path(path, destination)
                 state = "directory" if stat.S_ISDIR(mode) else "regular"
                 if truncated:
                     state = "truncated"
                 if previous.get(str(path)) == digest:
-                    _remove_copy(destination)
-                    writer.entries -= count
+                    writer.entries -= _remove_copy(destination)
                     writer.bytes -= size
                     copied = None
                 else:
@@ -751,20 +769,29 @@ def _execute_sample(
                         if destination.exists()
                         else None
                     )
-                previous[str(path)] = digest
+                if _digest(digest):
+                    previous[str(path)] = digest
+                else:
+                    previous.pop(str(path), None)
+                    digest = None
         paths[str(path)] = {"state": state, "sha256": digest, "copy": copied}
     writer.manifest["samples"].append(
         {"actual_offset_sec": writer.offset(), "paths": paths}
     )
 
 
-def _remove_copy(path: Path) -> None:
+def _remove_copy(path: Path) -> int:
+    """Remove a temporary observation and return its stored file/directory count."""
     if path.is_file():
         path.unlink()
-    elif path.is_dir():
+        return 1
+    if path.is_dir():
+        entries = 1
         for child in path.iterdir():
-            _remove_copy(child)
+            entries += _remove_copy(child)
         path.rmdir()
+        return entries
+    return 0
 
 
 def _read_records(value: object, keys: set[str], limit: int) -> list[dict[str, Any]]:

@@ -127,6 +127,111 @@ def test_reappearing_watch_is_copied_even_with_same_bytes(tmp_path: Path) -> Non
     ]
 
 
+@pytest.mark.parametrize("change_at", [125, 127])
+@pytest.mark.parametrize("tail_sec", [0, 2])
+def test_late_change_in_unchanged_directory_is_copied(
+    tmp_path: Path, change_at: int, tail_sec: int
+) -> None:
+    watched = tmp_path / "watched"
+    watched.mkdir()
+    for index in range(33):
+        (watched / f"{index:02d}.txt").write_text("original")
+    changed = watched / "00.txt"
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=127 - tail_sec,
+        tail_sec=tail_sec,
+        sample_interval_sec=1,
+        watch=[str(watched)],
+    )
+    clock = FakeClock()
+
+    def advance(seconds: float) -> None:
+        clock.sleep(seconds)
+        if clock.elapsed >= change_at and changed.read_text() == "original":
+            changed.write_text("late change")
+
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    facts = read_window(evidence)
+    late = facts.samples[change_at].paths[str(watched)]
+
+    assert facts.status == "completed"
+    assert len(facts.samples) == 128
+    assert facts.samples[change_at].actual_offset_sec == change_at
+    assert all(
+        sample.paths[str(watched)]["copy"] is None
+        for sample in facts.samples[1:change_at]
+    )
+    assert len(list((evidence / "samples").rglob("*.txt"))) == 66
+    assert late["state"] == "directory"
+    assert late["copy"] is not None
+    assert (evidence / late["copy"] / changed.name).read_text() == "late change"
+
+
+def test_late_snapshot_has_its_own_scan_budget(tmp_path: Path) -> None:
+    watched = tmp_path / "watched"
+    watched.mkdir()
+    for index in range(33):
+        (watched / f"{index:02d}.txt").write_text("original")
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=127,
+        tail_sec=0,
+        sample_interval_sec=1,
+        watch=[str(watched)],
+        snapshots=[{"at_sec": 127, "paths": [str(watched)]}],
+    )
+    clock = FakeClock()
+    evidence = tmp_path / "evidence"
+
+    run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+    facts = read_window(evidence)
+
+    assert facts.status == "completed"
+    assert facts.snapshots[0].entries == 33
+    assert not facts.snapshots[0].truncated
+    assert len(list((evidence / facts.snapshots[0].directory).rglob("*.txt"))) == 33
+
+
+def test_changed_empty_directories_keep_aggregate_entry_bound(tmp_path: Path) -> None:
+    watched = tmp_path / "watched"
+    watched.mkdir()
+    for index in range(129):
+        (watched / f"{index:03d}").mkdir()
+    changing = watched / "000"
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=127,
+        tail_sec=0,
+        sample_interval_sec=1,
+        watch=[str(watched)],
+    )
+    clock = FakeClock()
+    generation = 0
+
+    def advance(seconds: float) -> None:
+        nonlocal generation, changing
+        clock.sleep(seconds)
+        if int(clock.elapsed) > generation:
+            generation = int(clock.elapsed)
+            replacement = watched / f"generation-{generation}"
+            changing.rename(replacement)
+            changing = replacement
+
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    copies = evidence / "samples"
+    stored = [path for sample in copies.iterdir() for path in sample.rglob("*")]
+
+    assert len(stored) <= 4096
+    facts = read_window(evidence)
+    assert facts.status == "completed"
+    assert any(
+        sample.paths[str(watched)]["state"] == "truncated" for sample in facts.samples
+    )
+
+
 def test_oversized_snapshot_is_marked_truncated(tmp_path: Path) -> None:
     large = tmp_path / "large.bin"
     with large.open("wb") as stream:
@@ -208,7 +313,9 @@ def test_watch_under_symlinked_parent_is_not_followed(tmp_path: Path) -> None:
         {"watch": [f"/tmp/watch-{index}" for index in range(33)]},
     ],
 )
-def test_invalid_schedule_has_no_effect(tmp_path: Path, updates: dict) -> None:
+def test_invalid_schedule_has_no_effect(
+    tmp_path: Path, updates: dict[str, object]
+) -> None:
     schedule = _schedule(tmp_path / "schedule.json", **updates)
     evidence = tmp_path / "evidence"
     clock = FakeClock()
