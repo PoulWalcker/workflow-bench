@@ -296,7 +296,10 @@ class SapiensInstalledAgent(SessionSafeCodex):
     async def _run_sapiens(
         self, instruction: str, environment: BaseEnvironment
     ) -> CompletionDecision:
-        """Submit once to the host and return all Sapiens work's terminal state."""
+        """Submit once and return the terminal decision for admin work.
+
+        Routine-origin work may continue after this method returns.
+        """
         if self.model_name is None:
             raise RuntimeError("sapiens_model_required")
         home = self._REMOTE_CODEX_HOME.as_posix()
