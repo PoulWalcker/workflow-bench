@@ -161,7 +161,7 @@ class _SnapshotPlan:
 class _Schedule:
     duration_sec: float
     tail_sec: float
-    sample_interval_sec: float
+    sample_offsets_sec: tuple[float, ...]
     watch: tuple[Path, ...]
     drops: tuple[_DropPlan, ...]
     snapshots: tuple[_SnapshotPlan, ...]
@@ -364,9 +364,8 @@ def run_window(
     for index, drop in enumerate(schedule.drops):
         events.append((drop.at_sec, 1, "drop", (index, drop)))
     total = schedule.duration_sec + schedule.tail_sec
-    sample_count = int(total // schedule.sample_interval_sec) + 1
-    for index in range(sample_count):
-        events.append((index * schedule.sample_interval_sec, 2, "sample", index))
+    for index, offset in enumerate(schedule.sample_offsets_sec):
+        events.append((offset, 2, "sample", index))
     events.sort(key=lambda event: (event[0], event[1]))
     try:
         for offset, _, kind, plan in events:
@@ -653,10 +652,15 @@ def _read_schedule(path: Path) -> _Schedule:
         and cast(float, tail) <= MAX_TAIL_SEC
         and _nonnegative_number(interval)
         and cast(float, interval) >= 1
-        and int((cast(float, duration) + cast(float, tail)) // cast(float, interval))
-        + 1
-        <= MAX_SAMPLES
     ):
+        raise DataError("invalid_schedule", "schedule.json")
+    sample_offsets: list[float] = []
+    for index in range(MAX_SAMPLES + 1):
+        offset = index * cast(float, interval)
+        if offset > cast(float, duration) + cast(float, tail):
+            break
+        sample_offsets.append(offset)
+    if len(sample_offsets) > MAX_SAMPLES:
         raise DataError("invalid_schedule", "schedule.json")
     watch = schedule["watch"]
     drops = schedule["drops"]
@@ -710,7 +714,7 @@ def _read_schedule(path: Path) -> _Schedule:
     return _Schedule(
         cast(float, duration),
         cast(float, tail),
-        cast(float, interval),
+        tuple(sample_offsets),
         tuple(dict.fromkeys(Path(cast(str, p)) for p in watch)),
         tuple(planned_drops),
         tuple(planned_snapshots),
@@ -731,6 +735,7 @@ def _execute_drop(writer: _EvidenceWriter, item: object) -> None:
         _has_symlink_component(plan.source)
         or not plan.source.is_file()
         or _has_symlink_component(plan.target)
+        or (plan.target.exists() and not plan.target.is_file())
     ):
         raise DataError("unsafe_file", "drop")
     content = read_bytes(plan.source, "drop", limit=MAX_EVIDENCE_BYTES)

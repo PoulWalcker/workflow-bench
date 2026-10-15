@@ -1,6 +1,12 @@
 """Observation-window timing and evidence through the public driver and reader."""
 
 import json
+import math
+import os
+import socket
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -95,6 +101,134 @@ def test_changed_watch_is_copied_once_per_change(tmp_path: Path) -> None:
         False,
     ]
     assert (evidence / str(observations[1]["copy"])).read_text() == "first\nsecond\n"
+
+
+def test_fractional_endpoint_records_change_after_snapshot_and_drop(
+    tmp_path: Path,
+) -> None:
+    watched = tmp_path / "watched"
+    watched.write_text("old")
+    source = tmp_path / "source"
+    source.write_text("new")
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=11,
+        tail_sec=0,
+        sample_interval_sec=1.1,
+        watch=[str(watched)],
+        drops=[{"at_sec": 11, "source": str(source), "target": str(watched)}],
+        snapshots=[{"at_sec": 11, "paths": [str(watched)]}],
+    )
+    clock = FakeClock()
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+    facts = read_window(evidence)
+    assert facts.status == "completed"
+    assert facts.elapsed_sec == clock.elapsed == 11
+    assert len(facts.samples) == 11
+    assert facts.samples[-1].actual_offset_sec == 11
+    assert (
+        facts.drops[0].actual_offset_sec == facts.snapshots[0].actual_offset_sec == 11
+    )
+    assert (evidence / facts.snapshots[0].directory / "00-watched").read_text() == "old"
+    observations = [sample.paths[str(watched)] for sample in facts.samples]
+    assert [item["copy"] is not None for item in observations] == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        True,
+    ]
+    assert observations[0]["sha256"] != observations[-1]["sha256"]
+    stored = observations[-1]["copy"]
+    assert stored is not None
+    assert (evidence / stored).read_text() == "new"
+
+
+@pytest.mark.parametrize(
+    ("interval", "endpoint"), [(1.1, 11.0), (1.3, 13.0), (2.2, 22.0), (1.25, 12.5)]
+)
+@pytest.mark.parametrize("boundary", ["before", "exact", "after"])
+@pytest.mark.parametrize("tail", [0.0, 1.0])
+def test_fractional_samples_respect_horizon_and_tail(
+    tmp_path: Path, interval: float, endpoint: float, boundary: str, tail: float
+) -> None:
+    horizon = endpoint
+    if boundary == "before":
+        horizon = math.nextafter(endpoint, -math.inf)
+    elif boundary == "after":
+        horizon = math.nextafter(endpoint, math.inf)
+    watched = tmp_path / "watched"
+    watched.write_text("old")
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=horizon - tail,
+        tail_sec=tail,
+        sample_interval_sec=interval,
+        watch=[str(watched)],
+    )
+    clock = FakeClock()
+
+    def advance(seconds: float) -> None:
+        clock.sleep(seconds)
+        if clock.elapsed >= endpoint:
+            watched.write_text("new")
+
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    facts = read_window(evidence)
+    assert facts.status == "completed"
+    assert facts.elapsed_sec == clock.elapsed == horizon
+    assert len(facts.samples) == (10 if boundary == "before" else 11)
+    assert all(sample.actual_offset_sec <= horizon for sample in facts.samples)
+    observations = [sample.paths[str(watched)] for sample in facts.samples]
+    assert sum(item["copy"] is not None for item in observations) == (
+        1 if boundary == "before" else 2
+    )
+    if boundary != "before":
+        assert facts.samples[-1].actual_offset_sec == endpoint
+        stored = observations[-1]["copy"]
+        assert stored is not None
+        assert (evidence / stored).read_text() == "new"
+
+
+@pytest.mark.parametrize("interval", [1.0, 1.1, 1.3, 2.2])
+@pytest.mark.parametrize("boundary", ["before", "exact", "after"])
+@pytest.mark.parametrize("tail", [0.0, 1.0])
+def test_sample_limit_uses_the_executed_fractional_offsets(
+    tmp_path: Path, interval: float, boundary: str, tail: float
+) -> None:
+    horizon = 128 * interval
+    if boundary == "before":
+        horizon = math.nextafter(horizon, -math.inf)
+    elif boundary == "after":
+        horizon = math.nextafter(horizon, math.inf)
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=horizon - tail,
+        tail_sec=tail,
+        sample_interval_sec=interval,
+    )
+    clock = FakeClock()
+    evidence = tmp_path / "evidence"
+    if boundary != "before":
+        with pytest.raises(DataError, match="invalid_schedule"):
+            run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+        assert not evidence.exists()
+        assert clock.elapsed == 0
+        return
+    run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+    facts = read_window(evidence)
+    assert facts.status == "completed"
+    assert len(facts.samples) == 128
+    assert facts.samples[-1].actual_offset_sec == 127 * interval
+    assert facts.elapsed_sec == clock.elapsed == horizon
 
 
 @pytest.mark.parametrize("duplicate_count", [2, 32])
@@ -585,6 +719,82 @@ def test_runtime_failure_keeps_earlier_actions(tmp_path: Path) -> None:
     assert facts.status == "failed"
     assert facts.error_code == "unsafe_file"
     assert [drop.target for drop in facts.drops] == [str(tmp_path / "first")]
+
+
+def test_fifo_drop_fails_without_blocking_and_keeps_evidence(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.write_text("first")
+    delivered = tmp_path / "delivered"
+    fifo = tmp_path / "fifo"
+    os.mkfifo(fifo)
+    evidence = tmp_path / "evidence"
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=0.2,
+        tail_sec=0,
+        watch=[str(source)],
+        drops=[
+            {"at_sec": 0, "source": str(source), "target": str(delivered)},
+            {"at_sec": 0.1, "source": str(source), "target": str(fifo)},
+        ],
+        snapshots=[{"at_sec": 0, "paths": [str(source)]}],
+    )
+    with subprocess.Popen(
+        [sys.executable, "-m", "workflow_bench.window", str(schedule), str(evidence)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=3)
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=3)
+            assert process.poll() is not None
+    assert process.returncode == 1
+    assert stdout == b""
+    assert b"unsafe_file" in stderr
+    assert b"Traceback" not in stderr
+    facts = read_window(evidence)
+    assert facts.status == "failed"
+    assert facts.error_code == "unsafe_file"
+    assert [drop.target for drop in facts.drops] == [str(delivered)]
+    assert delivered.read_text() == "first"
+    assert len(facts.snapshots) == len(facts.samples) == 1
+    snapshot = evidence / facts.snapshots[0].directory / "00-source"
+    assert snapshot.read_text() == "first"
+    stored = facts.samples[0].paths[str(source)]["copy"]
+    assert stored is not None
+    assert (evidence / stored).read_text() == "first"
+
+
+@pytest.mark.parametrize("kind", ["directory", "socket", "character"])
+def test_nonregular_drop_target_fails_safely(tmp_path: Path, kind: str) -> None:
+    source = tmp_path / "source"
+    source.write_text("input")
+    evidence = tmp_path / "evidence"
+    with tempfile.TemporaryDirectory(prefix="wb-target-", dir="/tmp") as directory:
+        target = Path(directory).resolve() / "target"
+        with socket.socket(socket.AF_UNIX) as listener:
+            if kind == "directory":
+                target.mkdir()
+            elif kind == "socket":
+                listener.bind(str(target))
+            else:
+                target = Path(os.devnull)
+            schedule = _schedule(
+                tmp_path / "schedule.json",
+                drops=[{"at_sec": 1, "source": str(source), "target": str(target)}],
+            )
+            clock = FakeClock()
+            with pytest.raises(DataError, match="unsafe_file"):
+                run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+            facts = read_window(evidence)
+            assert facts.status == "failed"
+            assert facts.error_code == "unsafe_file"
+            assert not facts.drops
+            assert facts.elapsed_sec == 1
+            assert target.exists()
 
 
 def test_reader_rejects_missing_invalid_and_unsafe_manifest(tmp_path: Path) -> None:
