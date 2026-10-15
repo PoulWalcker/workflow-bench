@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from workflow_bench.transcript import read_sapiens_state
 from workflow_bench_integrations.sapiens_state import write_state_snapshot
 
 
@@ -227,3 +228,116 @@ def test_state_snapshot_requires_readable_injected_auth_source(
     with pytest.raises(ValueError, match="auth_source_unavailable"):
         write_state_snapshot(tmp_path, destination)
     assert not destination.exists()
+
+
+def test_snapshot_exports_bounded_routines_and_selected_origins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "auth.json").write_text('{"token": "DUMMY_ROUTINE_AUTH_123456"}')
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    with sqlite3.connect(tmp_path / "corpora.sqlite3") as connection:
+        connection.executescript(
+            "CREATE TABLE agents (id, name, role, created);"
+            "CREATE TABLE turns (id, agent, input, output, status, created);"
+            "CREATE TABLE workloads (value);"
+            "CREATE TABLE turn_details (id, value);"
+            "CREATE TABLE scheduled_routines (sequence INTEGER PRIMARY KEY, value);"
+        )
+        origin = {"routine": "r1", "taskType": "automated", "secret": "exclude-me"}
+        connection.execute(
+            "INSERT INTO turns VALUES (?,?,?,?,?,?)",
+            ("t", "chief", "in", "out", "done", "now"),
+        )
+        connection.execute(
+            "INSERT INTO turn_details VALUES (?,?)",
+            ("t", json.dumps({"origin": origin})),
+        )
+        connection.execute(
+            "INSERT INTO workloads VALUES (?)", (json.dumps({"origin": origin}),)
+        )
+        for index in range(65):
+            connection.execute(
+                "INSERT INTO scheduled_routines(value) VALUES (?)",
+                (
+                    json.dumps(
+                        {
+                            "id": f"r{index}",
+                            "minutes": 1,
+                            "created": "now",
+                            "nextDue": "later",
+                            "runCount": 2,
+                            "paused": False,
+                            "prompt": "DUMMY_ROUTINE_AUTH_123456; password: hide-this; "
+                            + "x" * 17000,
+                            "secret": "exclude-me",
+                        }
+                    ),
+                ),
+            )
+    destination = tmp_path / "state.json"
+    write_state_snapshot(tmp_path, destination)
+    snapshot = json.loads(destination.read_text())
+    assert len(snapshot["routines"]) == 64
+    assert snapshot["truncated"]["routines"] is True
+    assert (
+        snapshot["turns"][0]["origin"]
+        == snapshot["workloads"][0]["origin"]
+        == {"routine": "r1", "taskType": "automated"}
+    )
+    assert set(snapshot["routines"][0]) == {
+        "id",
+        "minutes",
+        "created",
+        "nextDue",
+        "runCount",
+        "paused",
+        "prompt",
+    }
+    assert len(snapshot["routines"][0]["prompt"]) <= 16000
+    assert "hide-this" not in destination.read_text()
+    assert "DUMMY_ROUTINE_AUTH_123456" not in destination.read_text()
+    assert "exclude-me" not in destination.read_text()
+
+
+def test_snapshot_replace_preserves_exclusive_create_and_publishes_complete_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "auth.json").write_text("{}")
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    with sqlite3.connect(tmp_path / "corpora.sqlite3") as connection:
+        connection.executescript(
+            "CREATE TABLE agents (id, name, role, created);"
+            "CREATE TABLE turns (id, agent, input, output, status, created);"
+            "CREATE TABLE workloads (value);"
+        )
+    destination = tmp_path / "state.json"
+    write_state_snapshot(tmp_path, destination)
+    original_inode = destination.stat().st_ino
+    with pytest.raises(FileExistsError):
+        write_state_snapshot(tmp_path, destination)
+    destination.write_text("old incomplete content")
+    write_state_snapshot(tmp_path, destination, replace=True)
+    assert json.loads(destination.read_text())["agents"] == []
+    assert destination.stat().st_ino != original_inode
+    assert list(tmp_path.glob(".sapiens-state-*")) == []
+
+
+def test_transcript_accepts_routine_truncation_but_rejects_other_keys(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "state.json"
+    snapshot = {
+        "agents": [],
+        "turns": [],
+        "workloads": [],
+        "truncated": {"routines": True},
+    }
+    path.write_text(json.dumps(snapshot))
+    assert read_sapiens_state(path)[1] is None
+    snapshot["truncated"] = {"other": False}
+    path.write_text(json.dumps(snapshot))
+    assert read_sapiens_state(path) == (None, "invalid")

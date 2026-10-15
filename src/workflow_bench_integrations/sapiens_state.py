@@ -4,12 +4,18 @@ Pattern masking is best-effort; inspect transcripts before sharing them.
 """
 
 import json
+import logging
 import os
 import re
 import sqlite3
 import sys
+import tempfile
+import time
+from contextlib import closing
 from pathlib import Path
 
+LOGGER = logging.getLogger(__name__)
+_MAX_ROUTINES = 64
 _MAX_AGENTS = 64
 _MAX_TURNS = 256
 _MAX_WORKLOADS = 128
@@ -36,18 +42,23 @@ _SECRET = re.compile(
 )
 
 
-def write_state_snapshot(source: Path, destination: Path) -> None:
+def write_state_snapshot(
+    source: Path, destination: Path, *, replace: bool = False
+) -> None:
     """Export selected conversation facts, excluding database and auth material.
 
     The pinned Sapiens revision stores agents, turns and full workload decisions
     in SQLite. This exports only the fields needed for an offline transcript.
     It never copies the database, WAL, workspaces, notes or credential files.
+    Create mode refuses an existing destination; replace mode atomically replaces it.
     """
     secrets = _secret_values()
     database = source / "corpora.sqlite3"
     if database.is_symlink() or not database.is_file():
         raise ValueError("sapiens_state_unavailable")
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=5) as connection:
+    with closing(
+        sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=5)
+    ) as connection:
         connection.row_factory = sqlite3.Row
         truncated = {
             key: False for key in ("agents", "turns", "workloads", "calls", "decisions")
@@ -74,7 +85,47 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
             }
             for row in turn_rows[:_MAX_TURNS]
         ]
-        workloads = []
+        workloads: list[dict[str, object]] = []
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "turn_details" in tables:
+            for turn in turns:
+                detail = connection.execute(
+                    "SELECT value FROM turn_details WHERE id = ?", (turn["id"],)
+                ).fetchone()
+                if detail:
+                    _add_origin(turn, json.loads(detail[0]), secrets)
+        routines = []
+        if "scheduled_routines" in tables:
+            rows = connection.execute(
+                "SELECT value FROM scheduled_routines ORDER BY sequence LIMIT ?",
+                (_MAX_ROUTINES + 1,),
+            ).fetchall()
+            if rows:
+                truncated["routines"] = len(rows) > _MAX_ROUTINES
+                for row in rows[:_MAX_ROUTINES]:
+                    routine = json.loads(row[0])
+                    if not isinstance(routine, dict):
+                        raise ValueError("sapiens_routine_invalid")
+                    routines.append(
+                        _select(
+                            routine,
+                            (
+                                "id",
+                                "minutes",
+                                "created",
+                                "nextDue",
+                                "runCount",
+                                "paused",
+                                "prompt",
+                            ),
+                            secrets,
+                        )
+                    )
         workload_rows = connection.execute(
             "SELECT value FROM workloads ORDER BY rowid LIMIT ?", (_MAX_WORKLOADS + 1,)
         ).fetchall()
@@ -121,18 +172,42 @@ def write_state_snapshot(source: Path, destination: Path) -> None:
                     else [],
                 }
             )
+            _add_origin(workloads[-1], work, secrets)
     snapshot = {
         "agents": agents,
         "turns": turns,
         "workloads": workloads,
         "truncated": truncated,
     }
+    if routines:
+        snapshot["routines"] = routines
     encoded = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")).encode()
     if len(encoded) > _MAX_OUTPUT_BYTES:
         raise ValueError("sapiens_state_too_large")
+    if replace:
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=".sapiens-state-", dir=destination.parent
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(encoded)
+            os.replace(temporary, destination)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+        return
     descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "wb") as stream:
         stream.write(encoded)
+
+
+def _add_origin(
+    destination: dict[str, object], source: dict[str, object], secrets: tuple[str, ...]
+) -> None:
+    origin = source.get("origin")
+    if isinstance(origin, dict):
+        selected = _select(origin, ("routine", "taskType"), secrets)
+        if selected:
+            destination["origin"] = selected
 
 
 def _select(
@@ -210,4 +285,15 @@ def _secret_values() -> tuple[str, ...]:
 
 
 if __name__ == "__main__":
-    write_state_snapshot(Path(sys.argv[1]), Path(sys.argv[2]))
+    source, destination = Path(sys.argv[1]), Path(sys.argv[2])
+    if "--refresh" in sys.argv[3:]:
+        logging.basicConfig(level=logging.WARNING)
+        deadline = time.monotonic() + 3600
+        while time.monotonic() + 15 < deadline:
+            time.sleep(15)
+            try:
+                write_state_snapshot(source, destination, replace=True)
+            except Exception:
+                LOGGER.warning("phase=sapiens-state result=unavailable")
+    else:
+        write_state_snapshot(source, destination, replace="--replace" in sys.argv[3:])

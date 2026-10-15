@@ -249,7 +249,7 @@ def read_sapiens_state(path: Path) -> tuple[SapiensState | None, str | None]:
     if "truncated" in state and (
         not isinstance(truncated, dict)
         or not all(
-            key in {"agents", "turns", "workloads", "calls", "decisions"}
+            key in {"agents", "turns", "workloads", "calls", "decisions", "routines"}
             and type(value) is bool
             for key, value in truncated.items()
         )

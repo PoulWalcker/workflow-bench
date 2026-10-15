@@ -106,7 +106,7 @@ class SapiensTransitionTracker:
 
 
 class SapiensCompletion:
-    """Decide when two observed Pulse ticks have no Sapiens work remaining."""
+    """Decide when admin work is quiet across two observed Pulse ticks."""
 
     def __init__(self) -> None:
         self._last_pulse: tuple[str, int] | None = None
@@ -118,7 +118,7 @@ class SapiensCompletion:
         return self._quiet_ticks
 
     def observe(self, snapshot: Mapping[str, object]) -> CompletionDecision:
-        """Return a terminal decision only after two distinct quiet Pulse ticks.
+        """Return a terminal decision after two quiet ticks over non-routine work.
 
         ``agent_outcome`` means Sapiens stopped without normal completion; the
         adapter returns so the independent verifier can judge task results.
@@ -154,6 +154,43 @@ class SapiensCompletion:
             )
         ):
             raise RuntimeError("sapiens_state_invalid")
+        # A batch is routine-only only when every declared member is known.
+        routine_ids = {
+            turn.get("id")
+            for turn in turns
+            if _is_routine_work(turn) and isinstance(turn.get("id"), str)
+        }
+        routine_batches = set()
+        for turn in turns:
+            members = turn.get("batch_members")
+            batch = turn.get("batch_id")
+            if (
+                isinstance(batch, str)
+                and isinstance(members, list)
+                and members
+                and all(
+                    isinstance(member, str) and member in routine_ids
+                    for member in members
+                )
+                and all(
+                    _is_routine_work(item)
+                    for item in turns
+                    if item.get("batch_id") == batch
+                )
+            ):
+                routine_batches.add(batch)
+        turns = [turn for turn in turns if not _is_routine_work(turn)]
+        workloads = [work for work in workloads if not _is_routine_work(work)]
+        run_activity = {
+            key: value
+            for key, value in run_activity.items()
+            if not (
+                key in routine_batches
+                and isinstance(value, dict)
+                and isinstance(value.get("turn"), str)
+                and value["turn"] in routine_ids
+            )
+        }
         current_pulse = (identity, tick)
         is_busy = (
             any(
@@ -259,7 +296,10 @@ class SapiensInstalledAgent(SessionSafeCodex):
     async def _run_sapiens(
         self, instruction: str, environment: BaseEnvironment
     ) -> CompletionDecision:
-        """Submit once to the host and return all Sapiens work's terminal state."""
+        """Submit once and return the terminal decision for admin work.
+
+        Routine-origin work may continue after this method returns.
+        """
         if self.model_name is None:
             raise RuntimeError("sapiens_model_required")
         home = self._REMOTE_CODEX_HOME.as_posix()
@@ -426,6 +466,39 @@ class SapiensInstalledAgent(SessionSafeCodex):
                     "phase=sapiens-state trial=%s result=unavailable",
                     self.logs_dir.parent.name,
                 )
+        routines = snapshot.get("routines")
+        if isinstance(routines, list) and routines:
+            try:
+                refresh_source = (
+                    Path(__file__).with_name("sapiens_state.py").read_text()
+                )
+                refresh_command = (
+                    "setsid python -c "
+                    + shlex.quote(refresh_source)
+                    + " "
+                    + shlex.quote(DATA_DIR)
+                    + " "
+                    + shlex.quote(logs + "/sapiens-state.json")
+                    + " --refresh </dev/null >"
+                    + shlex.quote(logs + "/sapiens-state-refresh.txt")
+                    + " 2>&1 & refresh_pid=$!; "
+                    + "printf '%s\\n' \"$refresh_pid\" >"
+                    + shlex.quote(logs + "/sapiens-state-refresh.pid")
+                    + '; sleep 0.1; kill -0 "$refresh_pid"'
+                )
+                refresh_started = await environment.exec(
+                    command=refresh_command, env=env, timeout_sec=15
+                )
+                if refresh_started.return_code:
+                    self.logger.warning(
+                        "phase=sapiens-state-refresh trial=%s result=unavailable",
+                        self.logs_dir.parent.name,
+                    )
+            except Exception:
+                self.logger.warning(
+                    "phase=sapiens-state-refresh trial=%s result=unavailable",
+                    self.logs_dir.parent.name,
+                )
         # State names can be untrusted strings; log only the known vocabulary.
         turn_states = sorted({cast(str, turn["status"]) for turn in turns})
         turn_states_for_log = (
@@ -541,3 +614,12 @@ class SapiensInstalledAgent(SessionSafeCodex):
         ):
             raise RuntimeError("sapiens_response_invalid")
         return cast(_CliResponse, value)
+
+
+def _is_routine_work(work: Mapping[str, object]) -> bool:
+    origin = work.get("origin")
+    return (
+        isinstance(origin, dict)
+        and isinstance(origin.get("routine"), str)
+        and bool(origin["routine"])
+    )

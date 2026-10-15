@@ -438,3 +438,89 @@ def test_sapiens_agent_populates_harbor_context_from_native_sessions(
         "sapiens_session_count": 1,
     }
     assert context.model_usage == {}
+
+
+@pytest.mark.parametrize("status,state", [("running", "Running"), ("failed", "Failed")])
+def test_routine_work_does_not_hold_or_fail_admin_completion(
+    status: str, state: str
+) -> None:
+    completion = SapiensCompletion()
+    for tick in (1, 2):
+        decision = completion.observe(
+            {
+                "pulse": {"id": "pulse", "numbers": {"bpm60": tick}},
+                "turns": [
+                    {"status": "done"},
+                    {
+                        "id": "r",
+                        "status": status,
+                        "origin": {"routine": "routine1"},
+                        "batch_id": "r",
+                        "batch_members": ["r"],
+                    },
+                ],
+                "workloads": [{"state": state, "origin": {"routine": "routine1"}}],
+                "run_activity": {"r": {"turn": "r"}},
+            }
+        )
+    assert decision == "completed"
+
+
+@pytest.mark.parametrize(
+    "activity,admin_status,members",
+    [
+        ({"unknown": {}}, "done", ["r"]),
+        ({}, "running", ["r"]),
+        ({"r": {"turn": "r"}}, "done", ["r", "admin"]),
+        ({"r": {"turn": "r"}}, "done", ["missing"]),
+    ],
+)
+def test_unknown_or_admin_activity_keeps_routine_snapshot_busy(
+    activity: dict[str, object], admin_status: str, members: list[str]
+) -> None:
+    completion = SapiensCompletion()
+    for tick in (1, 2, 3):
+        assert (
+            completion.observe(
+                {
+                    "pulse": {"id": "pulse", "numbers": {"bpm60": tick}},
+                    "turns": [
+                        {"id": "admin", "status": admin_status},
+                        {
+                            "id": "r",
+                            "status": "running",
+                            "origin": {"routine": "routine1"},
+                            "batch_id": "r",
+                            "batch_members": members,
+                        },
+                    ],
+                    "workloads": [],
+                    "run_activity": activity,
+                }
+            )
+            == "working"
+        )
+
+
+def test_routine_batch_key_does_not_hide_unattributed_activity() -> None:
+    completion = SapiensCompletion()
+    for tick in (1, 2):
+        assert (
+            completion.observe(
+                {
+                    "pulse": {"id": "pulse", "numbers": {"bpm60": tick}},
+                    "turns": [
+                        {
+                            "id": "r",
+                            "status": "running",
+                            "origin": {"routine": "routine1"},
+                            "batch_id": "r",
+                            "batch_members": ["r"],
+                        }
+                    ],
+                    "workloads": [],
+                    "run_activity": {"r": {"turn": "unknown"}},
+                }
+            )
+            == "working"
+        )
