@@ -2550,6 +2550,80 @@ def test_repeated_reports_observed_changes_and_reaction_latency(tmp_path: Path) 
     assert repeated["reaction_latency_sec"] == {"per_drop": [2, 4, 20], "median": 4}
 
 
+@pytest.mark.parametrize("coverage", ["empty", "partial", "wrong", "one_gap"])
+def test_repeated_requires_observations_of_every_planned_watched_path(
+    tmp_path: Path, coverage: str
+) -> None:
+    job = _job(tmp_path, "missing-observations")
+    _trial(job, "one", criteria=_criteria("pass"))
+    evidence = _repeated_window(job, "one")
+    task = job.parent / "task-one"
+    if coverage == "partial":
+        schedule = task / "environment/schedule.json"
+        plan = json.loads(schedule.read_text())
+        plan["watch"].append("/work/status")
+        schedule.write_text(json.dumps(plan))
+        _condition_lock(job, "one", task)
+    else:
+        path = evidence / "manifest.json"
+        manifest = json.loads(path.read_text())
+        samples = manifest["samples"]
+        if coverage == "one_gap":
+            samples = [samples[2]]
+        for sample in samples:
+            observation = sample["paths"].pop("/work/output")
+            if coverage == "wrong":
+                sample["paths"]["/work/unrelated"] = observation
+        path.write_text(json.dumps(manifest))
+
+    pair = compare([job])["pairs"][0]
+    repeated = pair["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["window"]["status"] == "completed"
+    assert repeated["observed_updates"] is None
+    assert repeated["reaction_latency_sec"] == {"per_drop": None, "median": None}
+    assert pair["repeated"] is not None
+    assert pair["repeated"]["observed_updates"] == {
+        "median": None,
+        "known": 0,
+        "unknown": 1,
+    }
+
+
+@pytest.mark.parametrize("field", ["duration_sec", "tail_sec", "drop", "snapshot"])
+@pytest.mark.parametrize(
+    "value", [10**400, -(10**400)], ids=["huge-positive", "huge-negative"]
+)
+def test_repeated_rejects_unbounded_plan_numbers_without_losing_trial_facts(
+    tmp_path: Path, field: str, value: int
+) -> None:
+    job = _job(tmp_path, "invalid-plan")
+    _trial(job, "one", criteria=_criteria("pass"), tokens=(90, 10, 9))
+    _repeated_window(job, "one")
+    task = job.parent / "task-one"
+    schedule = task / "environment/schedule.json"
+    plan = json.loads(schedule.read_text())
+    if field in {"drop", "snapshot"}:
+        plan[f"{field}s"][0]["at_sec"] = value
+    else:
+        plan[field] = value
+    schedule.write_text(json.dumps(plan))
+    _condition_lock(job, "one", task)
+
+    pair = compare([job])["pairs"][0]
+    repeated = pair["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["window"]["status"] == "completed"
+    assert repeated["window"]["actual_duration_sec"] == 70
+    assert repeated["window"]["drops_done"] == 3
+    assert repeated["window"]["planned_duration_sec"] is None
+    assert repeated["window"]["drops_planned"] is None
+    assert repeated["observed_updates"] is None
+    assert repeated["reaction_latency_sec"] == {"per_drop": None, "median": None}
+    assert pair["counts"]["pass"] == 1
+    assert pair["input_tokens"]["median"] == 90
+
+
 def test_repeated_reports_post_phase_routine_usage_and_prices(tmp_path: Path) -> None:
     job = _job(tmp_path, "routines")
     _trial(
@@ -2588,27 +2662,40 @@ def test_repeated_reports_post_phase_routine_usage_and_prices(tmp_path: Path) ->
         ("nohup python3 /work/poll.py >/tmp/poll.log 2>&1 &", "background_process"),
         ("crontab /work/schedule", "cron"),
         ("python3 /work/once.py", "none_observed"),
+        ('nohup python3 /work/poll.py --label "a\\b" &', "background_process"),
+        ("nohup python3 /work/poll.py &\ncrontab /work/schedule", "cron"),
     ],
 )
+@pytest.mark.parametrize("representation", ["function_call", "custom_tool_call"])
 def test_repeated_detects_codex_mechanisms_without_claiming_window_llm_usage(
     tmp_path: Path,
     command: str,
     expected: str,
+    representation: str,
 ) -> None:
     job = _job(tmp_path, "codex-window")
     _trial(job, "one", criteria=_criteria("pass"))
     _repeated_window(job, "one")
+    payload = (
+        {
+            "type": "custom_tool_call",
+            "name": "exec",
+            "input": f"text(await tools.exec_command({{cmd:{json.dumps(command)}}}));",
+        }
+        if representation == "custom_tool_call"
+        else {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": json.dumps({"cmd": command}),
+        }
+    )
     _session(
         job / "one/agent",
         "setup.jsonl",
         [
             {
                 "type": "response_item",
-                "payload": {
-                    "type": "function_call",
-                    "name": "exec_command",
-                    "arguments": json.dumps({"cmd": command}),
-                },
+                "payload": payload,
             }
         ],
     )
@@ -2617,6 +2704,132 @@ def test_repeated_detects_codex_mechanisms_without_claiming_window_llm_usage(
     assert repeated["mechanism"] == {"kind": expected, "count": None, "minutes": None}
     assert repeated["llm_firings"] is None
     assert repeated["window_tokens"] is None
+
+
+@pytest.mark.parametrize("position", ["before", "between", "after", "only"])
+def test_repeated_uses_last_cumulative_usage_despite_rate_only_notifications(
+    tmp_path: Path, position: str
+) -> None:
+    job = _job(tmp_path, "rate-notifications")
+    _trial(job, "one", criteria=_criteria("pass"), harness="sapiens")
+    _repeated_window(job, "one")
+    _routine_state(job, "one")
+    _usage_session(
+        job / "one/agent", "after.jsonl", "2026-01-01T00:00:15Z", (500, 150, 50)
+    )
+    path = job / "one/agent/sessions/after.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    notification = {
+        "type": "event_msg",
+        "payload": {"type": "token_count", "info": None, "rate_limits": {}},
+    }
+    if position == "only":
+        rows = [rows[0], notification]
+    else:
+        index = {"before": 1, "between": 2, "after": 3}[position]
+        rows.insert(index, notification)
+    path.write_text("\n".join(json.dumps(row) for row in rows))
+    rate: PriceEntry = {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.1,
+        "output_per_million": 10.0,
+        "tier": "standard",
+        "context_band": "short",
+        "source_url": "https://example.test/prices",
+        "retrieved_on": "2026-10-14",
+    }
+
+    pair = compare([job], prices={"openai/gpt-5": rate})["pairs"][0]
+    repeated = pair["trials"][0]["repeated"]
+    aggregate = pair["repeated"]
+    assert repeated is not None
+    assert aggregate is not None
+    assert repeated["llm_firings"] == 5
+    if position == "only":
+        assert repeated["window_tokens"] is None
+        assert repeated["tokens_per_firing"] is None
+        assert repeated["window_cost_usd"] is None
+        assert repeated["cost_per_firing_usd"] is None
+        assert aggregate["window_tokens"]["input"] == {
+            "median": None,
+            "known": 0,
+            "unknown": 1,
+        }
+    else:
+        assert repeated["window_tokens"] == {"input": 500, "cached": 150, "output": 50}
+        assert repeated["tokens_per_firing"] == {
+            "input": 100,
+            "cached": 30,
+            "output": 10,
+        }
+        assert repeated["window_cost_usd"] == pytest.approx(0.001215)
+        assert repeated["cost_per_firing_usd"] == pytest.approx(0.000243)
+        assert aggregate["window_tokens"]["input"] == {
+            "median": 500,
+            "known": 1,
+            "unknown": 0,
+        }
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "text(await tools.exec_command({cmd:command}));",
+        'text("tools.exec_command({cmd:\\"crontab /work/schedule\\"})");',
+        '/* text(await tools.exec_command({cmd:"crontab /work/schedule"})); */',
+        'text(await tools.exec_command({cmd:"crontab " + path}));',
+        'text(await tools.exec_command({cmd:"ls"}));' * 300,
+    ],
+    ids=["dynamic", "quoted", "commented", "expression", "over-limit"],
+)
+def test_repeated_keeps_unsupported_native_command_sources_unknown(
+    tmp_path: Path, source: str
+) -> None:
+    job = _job(tmp_path, "native-unknown")
+    _trial(job, "one", criteria=_criteria("pass"))
+    _repeated_window(job, "one")
+    _session(
+        job / "one/agent",
+        "setup.jsonl",
+        [{"payload": {"type": "custom_tool_call", "name": "exec", "input": source}}],
+    )
+    pair = compare([job])["pairs"][0]
+    repeated = pair["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["mechanism"]["kind"] == "unknown"
+    assert pair["repeated"] is not None
+    assert pair["repeated"]["mechanism"] == {"counts": {}, "known": 0, "unknown": 1}
+
+
+@pytest.mark.parametrize("collection", ["turns", "workloads"])
+@pytest.mark.parametrize(
+    "origin", [{"routine": 123}, {"routine": ""}, {"routine": None}, [], None]
+)
+def test_repeated_keeps_invalid_routine_origins_unknown(
+    tmp_path: Path, collection: str, origin: object
+) -> None:
+    job = _job(tmp_path, "bad-origin")
+    _trial(job, "one", criteria=_criteria("pass"), harness="sapiens")
+    _repeated_window(job, "one")
+    _routine_state(job, "one")
+    _usage_session(
+        job / "one/agent", "after.jsonl", "2026-01-01T00:00:15Z", (500, 150, 50)
+    )
+    path = job / "one/agent/sapiens-state.json"
+    state = json.loads(path.read_text())
+    state[collection][1]["origin"] = origin
+    path.write_text(json.dumps(state))
+
+    pair = compare([job])["pairs"][0]
+    repeated = pair["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["mechanism"]["kind"] == "routine"
+    assert repeated["llm_firings"] is None
+    assert repeated["tokens_per_firing"] is None
+    assert repeated["cost_per_firing_usd"] is None
+    assert repeated["window_tokens"] == {"input": 500, "cached": 150, "output": 50}
+    assert pair["repeated"] is not None
+    assert pair["repeated"]["llm_firings"] == {"median": None, "known": 0, "unknown": 1}
 
 
 def test_repeated_aggregates_known_usage_apart_from_truncated_state(
@@ -2664,6 +2877,86 @@ def test_repeated_aggregates_known_usage_apart_from_truncated_state(
     assert unknown["llm_firings"] is None
     assert unknown["window_tokens"] is None
     assert unknown["tokens_per_firing"] is None
+
+
+@pytest.mark.parametrize("origin", [None, {}, {"taskType": "admin"}])
+def test_repeated_preserves_measured_zero_firings_for_admin_work(
+    tmp_path: Path, origin: dict[str, str] | None
+) -> None:
+    job = _job(tmp_path, "admin-only")
+    _trial(job, "one", criteria=_criteria("pass"), harness="sapiens")
+    _repeated_window(job, "one")
+    _routine_state(job, "one")
+    path = job / "one/agent/sapiens-state.json"
+    state = json.loads(path.read_text())
+    for record in state["turns"] + state["workloads"]:
+        if origin is None:
+            record.pop("origin")
+        else:
+            record["origin"] = origin
+    path.write_text(json.dumps(state))
+    repeated = compare([job])["pairs"][0]["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["llm_firings"] == 0
+    assert repeated["tokens_per_firing"] is None
+
+
+@pytest.mark.parametrize("counts", [None, {}, {"input_tokens": -1}])
+def test_repeated_keeps_malformed_actual_usage_unknown_with_rate_limits(
+    tmp_path: Path, counts: object
+) -> None:
+    job = _job(tmp_path, "bad-totals")
+    _trial(job, "one", criteria=_criteria("pass"), harness="sapiens")
+    _repeated_window(job, "one")
+    _routine_state(job, "one")
+    _usage_session(
+        job / "one/agent", "after.jsonl", "2026-01-01T00:00:15Z", (500, 150, 50)
+    )
+    path = job / "one/agent/sessions/after.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    rows[-1]["payload"]["info"]["total_token_usage"] = counts
+    rows[-1]["payload"]["rate_limits"] = {}
+    path.write_text("\n".join(json.dumps(row) for row in rows))
+    repeated = compare([job])["pairs"][0]["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["llm_firings"] == 5
+    assert repeated["window_tokens"] is None
+    assert repeated["tokens_per_firing"] is None
+
+
+@pytest.mark.parametrize(
+    ("source", "updates"), [("no_watch", 0), ("missing_file", 0), ("past_end", 3)]
+)
+def test_repeated_preserves_complete_watch_observations(
+    tmp_path: Path, source: str, updates: int
+) -> None:
+    job = _job(tmp_path, "complete-watch")
+    _trial(job, "one", criteria=_criteria("pass"))
+    evidence = _repeated_window(job, "one")
+    path = evidence / "manifest.json"
+    manifest = json.loads(path.read_text())
+    if source == "no_watch":
+        task = job.parent / "task-one"
+        schedule = task / "environment/schedule.json"
+        plan = json.loads(schedule.read_text())
+        plan["watch"] = []
+        schedule.write_text(json.dumps(plan))
+        _condition_lock(job, "one", task)
+        for sample in manifest["samples"]:
+            sample["paths"] = {}
+    elif source == "missing_file":
+        for sample in manifest["samples"]:
+            sample["paths"]["/work/output"] = {
+                "state": "missing",
+                "sha256": None,
+                "copy": None,
+            }
+    else:
+        manifest["samples"][-1]["paths"] = {}
+    path.write_text(json.dumps(manifest))
+    repeated = compare([job])["pairs"][0]["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["observed_updates"] == updates
 
 
 @pytest.mark.parametrize(

@@ -241,8 +241,12 @@ leave these measurements unknown. They describe evidence, not task correctness.
 
 `mechanism` prefers saved Sapiens routines (`count`, sorted `minutes`). Otherwise
 it examines saved Codex `exec_command`, `shell` and `shell_command` function-call
-`cmd`/`command` arguments, bounded to 4096 commands and 8192 characters per
-argument/command. The bounded lexical patterns recognize command-start
+`cmd`/`command` arguments. Native `custom_tool_call` named `exec` also supports the
+single literal wrapper `text(await tools.exec_command({cmd:"..."}));` with a
+JSON double-quoted command, optional whitespace/semicolon and quoted `"cmd"` key.
+Other native JavaScript inputs remain `unknown`; the report never executes them.
+Reads are bounded to 4096 commands and 8192 characters per argument, command or
+native input. The bounded lexical patterns recognize command-start
 `crontab`/`cron`/`crond` (including paths and `sudo`) as `cron`; command-start
 `nohup`, `setsid`, `sleep`, `python` with an optional version, `bash`, `sh`,
 `while` or `for` together with a standalone background `&` as
@@ -250,13 +254,20 @@ argument/command. The bounded lexical patterns recognize command-start
 `none_observed`. Missing, invalid, truncated or over-limit sources yield
 `unknown`. This heuristic does not prove that the mechanism ran.
 
+Missing or inconsistent observations of the verified plan's watched paths leave
+updates and reaction latency unknown; a sampled `missing` file is a valid
+observation.
+
 `llm_firings` counts routine-origin turns created strictly after Harbor's
 `agent_execution.finished_at`; matching workload records are not counted again.
 If turns are unavailable, routine-origin workloads need their own creation time;
-an absent timestamp is unknown (the current export retains turn creation times).
+an absent timestamp or explicitly malformed origin is unknown (the current export
+retains turn creation times). Valid admin origins do not count as firings.
 `window_tokens` sums each session's last cumulative input/cached/output totals
-when its first event is strictly after that phase end. It requires valid,
-untruncated Sapiens state and readable session evidence; Codex window LLM usage
+when its first event is strictly after that phase end. Rate-only `token_count`
+notifications (`info: null`, `rate_limits` object) do not replace cumulative totals;
+sessions without totals and malformed actual totals remain unknown. It requires
+valid, untruncated Sapiens state and readable session evidence; Codex window LLM usage
 is not observable in its agent logs. `tokens_per_firing`, `window_cost_usd`
 (with `--prices`) and `cost_per_firing_usd` use those totals; a zero or unknown
 firing denominator leaves per-firing values unknown. Pair numeric summaries

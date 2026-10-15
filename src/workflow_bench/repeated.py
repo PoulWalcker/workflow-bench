@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict, cast
 from workflow_bench.data import DataError, decode_json, read_json
 from workflow_bench.pricing import PriceEntry, estimate_cost_usd
 from workflow_bench.transcript import SapiensState, read_sapiens_state, read_sessions
-from workflow_bench.window import WindowFacts, read_window
+from workflow_bench.window import MAX_PATH_LENGTH, MAX_WATCH, WindowFacts, read_window
 
 if TYPE_CHECKING:
     from workflow_bench.comparison import PairReport
@@ -24,6 +24,10 @@ _BACKGROUND = re.compile(
     _COMMAND_START + r"(?:nohup|setsid|sleep|python[0-9.]*|bash|sh|while|for)\b"
 )
 _BACKGROUND_AMPERSAND = re.compile(r"(?<![&>])&(?![&>0-9])")
+_LITERAL_EXEC = re.compile(
+    r'\s*text\(\s*await\s+tools\.exec_command\(\s*\{\s*(?:cmd|"cmd")\s*:\s*'
+    r'(?P<command>"(?:[^"\\]|\\.)*")\s*\}\s*\)\s*\)\s*;?\s*'
+)
 
 
 class WindowMetrics(TypedDict):
@@ -130,6 +134,7 @@ class _Plan(TypedDict):
     tail_sec: float
     drops: int
     snapshots: int
+    watch: set[str]
 
 
 def measure_repeated(
@@ -189,7 +194,9 @@ def measure_repeated(
         window["tail_sec"] = plan["tail_sec"]
         window["drops_planned"] = plan["drops"]
         window["snapshots_planned"] = plan["snapshots"]
-        changes = _changed_offsets(facts, plan["duration_sec"] + plan["tail_sec"])
+        changes = _changed_offsets(
+            facts, plan["duration_sec"] + plan["tail_sec"], plan["watch"]
+        )
         if changes is not None:
             metrics["observed_updates"] = len(changes)
             metrics["reaction_latency_sec"] = _reaction_latency(
@@ -528,6 +535,11 @@ class _PostPhaseUsage:
         # creation times. Prefer turns to avoid counting matching workloads twice.
         if self.finished_at is None:
             return None
+        if any(
+            _is_routine_origin(record) is None
+            for record in state["turns"] + state["workloads"]
+        ):
+            return None
         turns = [turn for turn in state["turns"] if _is_routine_origin(turn)]
         records = turns or [
             work for work in state["workloads"] if _is_routine_origin(work)
@@ -561,6 +573,12 @@ class _PostPhaseUsage:
                 ):
                     continue
                 info = payload.get("info")
+                if (
+                    "info" in payload
+                    and info is None
+                    and isinstance(payload.get("rate_limits"), dict)
+                ):
+                    continue
                 counts = (
                     info.get("total_token_usage") if isinstance(info, dict) else None
                 )
@@ -596,19 +614,28 @@ class _PostPhaseUsage:
                 return "unknown"
             for row in rows:
                 payload = row.get("payload")
-                if (
-                    not isinstance(payload, dict)
-                    or payload.get("type") != "function_call"
-                ):
+                if not isinstance(payload, dict):
                     continue
                 name = payload.get("name")
-                if not isinstance(name, str) or name.split(".")[-1] not in {
+                if not isinstance(name, str):
+                    continue
+                name = name.split(".")[-1]
+                if payload.get("type") == "custom_tool_call" and name == "exec":
+                    source = payload.get("input")
+                    if not isinstance(source, str) or len(source) > _MAX_COMMAND_CHARS:
+                        return "unknown"
+                    match = _LITERAL_EXEC.fullmatch(source)
+                    if match is None:
+                        return "unknown"
+                    arguments = '{"cmd":' + match["command"] + "}"
+                elif payload.get("type") == "function_call" and name in {
                     "exec_command",
                     "shell",
                     "shell_command",
                 }:
+                    arguments = payload.get("arguments")
+                else:
                     continue
-                arguments = payload.get("arguments")
                 if (
                     not isinstance(arguments, str)
                     or len(arguments) > _MAX_COMMAND_CHARS
@@ -640,13 +667,17 @@ class _PostPhaseUsage:
         return "background_process" if has_background else "none_observed"
 
 
-def _is_routine_origin(record: Mapping[str, object]) -> bool:
+def _is_routine_origin(record: Mapping[str, object]) -> bool | None:
+    """Distinguish routine/admin work; None means an explicitly invalid origin."""
+    if "origin" not in record:
+        return False
     origin = record.get("origin")
-    return (
-        isinstance(origin, dict)
-        and isinstance(origin.get("routine"), str)
-        and bool(origin["routine"])
-    )
+    if not isinstance(origin, dict):
+        return None
+    if "routine" not in origin:
+        return False
+    routine = origin["routine"]
+    return True if isinstance(routine, str) and routine else None
 
 
 def _timestamp(value: object) -> datetime | None:
@@ -680,6 +711,20 @@ def _read_plan(path: Path | None) -> _Plan | None:
         return None
     if len(drops) > 128 or len(snapshots) > 128:
         return None
+    watch = plan.get("watch")
+    if (
+        not isinstance(watch, list)
+        or len(watch) > MAX_WATCH
+        or any(
+            not isinstance(path, str)
+            or not path.startswith("/")
+            or len(path) > MAX_PATH_LENGTH
+            or ".." in Path(path).parts
+            or "\x00" in path
+            for path in watch
+        )
+    ):
+        return None
     for action in drops + snapshots:
         if not isinstance(action, dict) or not _bounded_number(
             action.get("at_sec"), duration
@@ -690,23 +735,28 @@ def _read_plan(path: Path | None) -> _Plan | None:
         "tail_sec": float(tail),
         "drops": len(drops),
         "snapshots": len(snapshots),
+        "watch": {str(Path(path)) for path in cast(list[str], watch)},
     }
 
 
 def _bounded_number(value: object, maximum: float) -> bool:
     return (
         type(value) in (int, float)
-        and math.isfinite(cast(float, value))
         and 0 <= cast(float, value) <= maximum
+        and math.isfinite(cast(float, value))
     )
 
 
-def _changed_offsets(facts: WindowFacts, end_sec: float) -> list[float] | None:
+def _changed_offsets(
+    facts: WindowFacts, end_sec: float, watch: set[str]
+) -> list[float] | None:
     previous: dict[str, str | None] | None = None
     changes = []
     for sample in sorted(facts.samples, key=lambda item: item.actual_offset_sec):
         if sample.actual_offset_sec > end_sec:
             continue
+        if set(sample.paths) != watch:
+            return None
         digests = {}
         for path, observation in sample.paths.items():
             if observation["state"] not in {"regular", "directory", "missing"}:
@@ -715,8 +765,6 @@ def _changed_offsets(facts: WindowFacts, end_sec: float) -> list[float] | None:
                 return None
             digests[path] = observation["sha256"]
         if previous is not None:
-            if set(previous) != set(digests):
-                return None
             if digests != previous:
                 changes.append(sample.actual_offset_sec)
         previous = digests
