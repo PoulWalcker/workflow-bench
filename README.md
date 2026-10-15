@@ -220,6 +220,59 @@ has a snapshot. Markdown adds a `Delegated` column (`x/n`, plus unknown Trials)
 and a per-Trial delegation section. The state snapshot is produced inside the
 agent environment and is diagnostic; it does not affect outcomes or comparability.
 
+Each Trial and task × configuration pair also has `repeated`: `null` without
+collected `artifacts/window-evidence`, otherwise observation-window diagnostics.
+`window` reports the driver's validated status (`not_started`, `running`,
+`completed`, `failed`, or a safe `invalid`/`too large` marker), actual elapsed
+seconds and delivered drops/snapshots. Planned duration, tail and action counts
+come from `environment/schedule.json` only when the saved Trial lock's Harbor
+Task digest still matches the local Task. Missing, changed or invalid plans leave
+those fields, observed updates and reaction latency unknown; the manifest does
+not retain the plan. Preserve that Task directory alongside a saved repeated job
+to reproduce these metrics.
+
+`observed_updates` counts changed watched-path digests between consecutive samples
+through `duration + tail`; the first sample establishes a baseline. It counts
+changed samples, so simultaneous path changes count once. `reaction_latency_sec`
+contains one value per actual drop and its known-value median: seconds to the
+first changed sample at or after that drop, strictly before the next drop and
+through the window end, or `null`. Unsafe/truncated watched-path observations
+leave these measurements unknown. They describe evidence, not task correctness.
+
+`mechanism` prefers saved Sapiens routines (`count`, sorted `minutes`). Otherwise
+it examines saved Codex `exec_command`, `shell` and `shell_command` function-call
+`cmd`/`command` arguments, bounded to 4096 commands and 8192 characters per
+argument/command. The bounded lexical patterns recognize command-start
+`crontab`/`cron`/`crond` (including paths and `sudo`) as `cron`; command-start
+`nohup`, `setsid`, `sleep`, `python` with an optional version, `bash`, `sh`,
+`while` or `for` together with a standalone background `&` as
+`background_process`. Cron takes precedence; other readable commands yield
+`none_observed`. Missing, invalid, truncated or over-limit sources yield
+`unknown`. This heuristic does not prove that the mechanism ran.
+
+`llm_firings` counts routine-origin turns created strictly after Harbor's
+`agent_execution.finished_at`; matching workload records are not counted again.
+If turns are unavailable, routine-origin workloads need their own creation time;
+an absent timestamp is unknown (the current export retains turn creation times).
+`window_tokens` sums each session's last cumulative input/cached/output totals
+when its first event is strictly after that phase end. It requires valid,
+untruncated Sapiens state and readable session evidence; Codex window LLM usage
+is not observable in its agent logs. `tokens_per_firing`, `window_cost_usd`
+(with `--prices`) and `cost_per_firing_usd` use those totals; a zero or unknown
+firing denominator leaves per-firing values unknown. Pair numeric summaries
+contain `median`, `known` and `unknown`; mechanisms have separate known counts
+and unknown Trials. Native outcome, verdict, comparability, pass^3, cost and
+delegation fields retain their meanings.
+
+Markdown adds an “Observation window” section only with window evidence, with
+pair medians and per-Trial rows. Harbor's token and agent time columns cover the
+agent phase only. Window evidence is produced inside the agent environment
+(candidate-reachable, diagnostic); these metrics cannot establish completeness
+or absence of tampering. When a routine is observed, the report states:
+“in the current Sapiens, repetition is only via an LLM call per tick”. Summary
+mode includes the same Trial `repeated` object; transcripts list Sapiens routine
+ids, minutes and `runCount`, and mark routine-origin workloads.
+
 JSON and Markdown include an estimated USD cost per Trial and the
 median, total and known Trial count per task × configuration. The tracked
 [price file](prices/openai-api-2026-10-14.json) records the Standard short-context

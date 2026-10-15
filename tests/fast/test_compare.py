@@ -23,8 +23,10 @@ from harbor.models.verifier.result import VerifierResult
 from harbor.publisher.packager import Packager
 
 from workflow_bench.cli import main
+from workflow_bench.comparison import Outcome, TrialOutcome, compare
 from workflow_bench.contracts import Criterion
 from workflow_bench.evaluation import write_evaluation
+from workflow_bench.pricing import PriceEntry
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 CODEX = {
@@ -1505,8 +1507,11 @@ def test_summary_reports_agent_exception_as_safe_error(
 
 
 def _trial_outcome(
-    trial: str, outcome: str, reason: str | None = None, exception: str | None = None
-) -> dict[str, str | None]:
+    trial: str,
+    outcome: Outcome,
+    reason: str | None = None,
+    exception: str | None = None,
+) -> TrialOutcome:
     return {
         "job": "job-a",
         "trial": trial,
@@ -1514,6 +1519,7 @@ def _trial_outcome(
         "reason": reason,
         "exception": exception,
         "delegation": None,
+        "repeated": None,
     }
 
 
@@ -2522,3 +2528,470 @@ def test_invalid_price_file_exits_two_without_report(
     assert error.value.code == 2
     assert captured.out == ""
     assert "invalid price file" in captured.err
+
+
+def test_repeated_reports_observed_changes_and_reaction_latency(tmp_path: Path) -> None:
+    job = _job(tmp_path, "repeated")
+    _trial(job, "one", criteria=_criteria("pass"))
+    _repeated_window(job, "one")
+    repeated = compare([job])["pairs"][0]["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["window"] == {
+        "status": "completed",
+        "planned_duration_sec": 60,
+        "tail_sec": 10,
+        "actual_duration_sec": 70,
+        "drops_done": 3,
+        "drops_planned": 3,
+        "snapshots_done": 3,
+        "snapshots_planned": 3,
+    }
+    assert repeated["observed_updates"] == 3
+    assert repeated["reaction_latency_sec"] == {"per_drop": [2, 4, 20], "median": 4}
+
+
+def test_repeated_reports_post_phase_routine_usage_and_prices(tmp_path: Path) -> None:
+    job = _job(tmp_path, "routines")
+    _trial(
+        job, "one", criteria=_criteria("pass"), harness="sapiens", tokens=(90, 10, 9)
+    )
+    _repeated_window(job, "one")
+    _routine_state(job, "one")
+    agent = job / "one/agent"
+    _usage_session(agent, "before.jsonl", "2026-01-01T00:00:00Z", (9000, 1000, 900))
+    _usage_session(agent, "after-a.jsonl", "2026-01-01T00:00:15Z", (200, 50, 20))
+    _usage_session(agent, "after-b.jsonl", "2026-01-01T00:00:25Z", (300, 100, 30))
+    rate: PriceEntry = {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.1,
+        "output_per_million": 10.0,
+        "tier": "standard",
+        "context_band": "short",
+        "source_url": "https://example.test/prices",
+        "retrieved_on": "2026-10-14",
+    }
+    report = compare([job], prices={"openai/gpt-5": rate})
+    repeated = report["pairs"][0]["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["mechanism"] == {"kind": "routine", "count": 1, "minutes": [2]}
+    assert repeated["llm_firings"] == 5
+    assert repeated["window_tokens"] == {"input": 500, "cached": 150, "output": 50}
+    assert repeated["tokens_per_firing"] == {"input": 100, "cached": 30, "output": 10}
+    assert repeated["window_cost_usd"] == pytest.approx(0.001215)
+    assert repeated["cost_per_firing_usd"] == pytest.approx(0.000243)
+    assert report["pairs"][0]["input_tokens"]["median"] == 90
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("nohup python3 /work/poll.py >/tmp/poll.log 2>&1 &", "background_process"),
+        ("crontab /work/schedule", "cron"),
+        ("python3 /work/once.py", "none_observed"),
+    ],
+)
+def test_repeated_detects_codex_mechanisms_without_claiming_window_llm_usage(
+    tmp_path: Path,
+    command: str,
+    expected: str,
+) -> None:
+    job = _job(tmp_path, "codex-window")
+    _trial(job, "one", criteria=_criteria("pass"))
+    _repeated_window(job, "one")
+    _session(
+        job / "one/agent",
+        "setup.jsonl",
+        [
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "arguments": json.dumps({"cmd": command}),
+                },
+            }
+        ],
+    )
+    repeated = compare([job])["pairs"][0]["trials"][0]["repeated"]
+    assert repeated is not None
+    assert repeated["mechanism"] == {"kind": expected, "count": None, "minutes": None}
+    assert repeated["llm_firings"] is None
+    assert repeated["window_tokens"] is None
+
+
+def test_repeated_aggregates_known_usage_apart_from_truncated_state(
+    tmp_path: Path,
+) -> None:
+    job = _job(tmp_path, "mixed")
+    for name, counts in (
+        ("one", (500, 150, 50)),
+        ("two", (1000, 350, 150)),
+        ("unknown", (1, 0, 1)),
+    ):
+        _trial(job, name, criteria=_criteria("pass"), harness="sapiens")
+        _repeated_window(job, name)
+        _routine_state(job, name)
+        _usage_session(
+            job / name / "agent", "after.jsonl", "2026-01-01T00:00:15Z", counts
+        )
+    state_path = job / "unknown/agent/sapiens-state.json"
+    state = json.loads(state_path.read_text())
+    state["truncated"]["turns"] = True
+    state_path.write_text(json.dumps(state))
+    pair = compare([job])["pairs"][0]
+    repeated = pair["repeated"]
+    assert repeated is not None
+    assert repeated["llm_firings"] == {"median": 5, "known": 2, "unknown": 1}
+    assert repeated["window_tokens"]["input"] == {
+        "median": 750,
+        "known": 2,
+        "unknown": 1,
+    }
+    assert repeated["window_tokens"]["cached"] == {
+        "median": 250,
+        "known": 2,
+        "unknown": 1,
+    }
+    assert repeated["window_tokens"]["output"] == {
+        "median": 100,
+        "known": 2,
+        "unknown": 1,
+    }
+    assert repeated["mechanism"] == {"counts": {"routine": 2}, "known": 2, "unknown": 1}
+    assert repeated["window"]["completed"] == 3
+    unknown = pair["trials"][2]["repeated"]
+    assert unknown is not None
+    assert unknown["llm_firings"] is None
+    assert unknown["window_tokens"] is None
+    assert unknown["tokens_per_firing"] is None
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "not_started",
+        "empty_samples",
+        "invalid_manifest",
+        "oversized_manifest",
+        "no_plan",
+        "invalid_state",
+        "state_symlink",
+        "truncated_state",
+        "invalid_sessions",
+        "empty_session",
+        "missing_session_time",
+        "missing_usage",
+        "bad_cached_usage",
+        "bounded_command",
+        "workload_without_start",
+    ],
+)
+def test_repeated_preserves_unknowns_for_incomplete_sources(
+    tmp_path: Path, source: str
+) -> None:
+    job = _job(tmp_path, "incomplete")
+    _trial(job, "one", criteria=_criteria("pass"), harness="sapiens")
+    evidence = _repeated_window(job, "one")
+    _routine_state(job, "one")
+    agent = job / "one/agent"
+    _usage_session(agent, "after.jsonl", "2026-01-01T00:00:15Z", (500, 150, 50))
+    manifest_path = evidence / "manifest.json"
+    state_path = agent / "sapiens-state.json"
+    session_path = agent / "sessions/after.jsonl"
+    if source == "not_started":
+        manifest = json.loads(manifest_path.read_text())
+        for field in ("started_at", "ended_at", "elapsed_sec"):
+            manifest[field] = None
+        for field in ("drops", "snapshots", "samples"):
+            manifest[field] = []
+        manifest["status"] = "not_started"
+        manifest_path.write_text(json.dumps(manifest))
+    elif source == "empty_samples":
+        manifest = json.loads(manifest_path.read_text())
+        manifest["samples"] = []
+        manifest_path.write_text(json.dumps(manifest))
+    elif source == "invalid_manifest":
+        manifest_path.write_text("{}")
+    elif source == "oversized_manifest":
+        manifest_path.write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    elif source == "no_plan":
+        (job / "one/lock.json").unlink()
+    elif source == "invalid_state":
+        state_path.write_text("{}")
+    elif source == "state_symlink":
+        state_path.rename(agent / "unsafe-state.json")
+        state_path.symlink_to("unsafe-state.json")
+    elif source == "truncated_state":
+        state = json.loads(state_path.read_text())
+        state["truncated"]["routines"] = True
+        state_path.write_text(json.dumps(state))
+    elif source == "invalid_sessions":
+        session_path.write_text("{broken")
+    elif source == "empty_session":
+        state_path.unlink()
+        session_path.write_text("")
+    elif source == "missing_session_time":
+        rows = [json.loads(line) for line in session_path.read_text().splitlines()]
+        rows[0].pop("timestamp")
+        session_path.write_text("\n".join(json.dumps(row) for row in rows))
+    elif source == "missing_usage":
+        session_path.write_text(json.dumps({"timestamp": "2026-01-01T00:00:15Z"}))
+    elif source == "bad_cached_usage":
+        _usage_session(agent, "after.jsonl", "2026-01-01T00:00:15Z", (5, 10, 1))
+    elif source == "bounded_command":
+        state_path.unlink()
+        session_path.write_text(
+            json.dumps(
+                {
+                    "payload": {
+                        "type": "function_call",
+                        "name": "exec_command",
+                        "arguments": json.dumps({"cmd": "x" * 8193}),
+                    }
+                }
+            )
+        )
+    elif source == "workload_without_start":
+        state = json.loads(state_path.read_text())
+        state["turns"] = []
+        state_path.write_text(json.dumps(state))
+    repeated = compare([job])["pairs"][0]["trials"][0]["repeated"]
+    assert repeated is not None
+    if source in {
+        "not_started",
+        "empty_samples",
+        "invalid_manifest",
+        "oversized_manifest",
+        "no_plan",
+    }:
+        assert repeated["observed_updates"] is None
+        assert repeated["reaction_latency_sec"]["per_drop"] is None
+    if source == "not_started":
+        assert repeated["window"]["status"] == "not_started"
+        assert all(
+            value is None
+            for key, value in repeated["window"].items()
+            if key != "status"
+        )
+    if source in {"invalid_manifest", "oversized_manifest"}:
+        assert repeated["window"]["status"] == (
+            "invalid" if source == "invalid_manifest" else "too large"
+        )
+    if source in {
+        "not_started",
+        "invalid_manifest",
+        "oversized_manifest",
+        "invalid_state",
+        "state_symlink",
+        "truncated_state",
+        "empty_session",
+        "bounded_command",
+        "workload_without_start",
+    }:
+        assert repeated["llm_firings"] is None
+    if source not in {"no_plan", "empty_samples", "workload_without_start"}:
+        assert repeated["window_tokens"] is None
+        assert repeated["tokens_per_firing"] is None
+    if source in {"state_symlink", "empty_session", "bounded_command"}:
+        assert repeated["mechanism"]["kind"] == "unknown"
+
+
+def test_repeated_markdown_summary_and_transcript_are_deterministic(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    job = _job(tmp_path, "report")
+    _trial(job, "one", criteria=_criteria("pass"), harness="sapiens")
+    _repeated_window(job, "one")
+    _routine_state(job, "one")
+    _usage_session(
+        job / "one/agent", "after.jsonl", "2026-01-01T00:00:15Z", (500, 150, 50)
+    )
+    assert main(["compare", "--format", "summary", str(job)]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["trials"][0]["repeated"]["llm_firings"] == 5
+    assert main(["compare", "--format", "markdown", str(job)]) == 0
+    markdown = capsys.readouterr().out
+    assert "## Observation window" in markdown
+    assert "routine 1 of 1" in markdown
+    assert "candidate-reachable, diagnostic" in markdown
+    assert "agent phase only" in markdown
+    assert "Codex window LLM usage is not observable" in markdown
+    assert (
+        "in the current Sapiens, repetition is only via an LLM call per tick"
+        in markdown
+    )
+    assert main(["compare", "--format", "markdown", str(job)]) == 0
+    assert capsys.readouterr().out == markdown
+    assert main(["compare", "--transcript", str(job)]) == 0
+    transcript = capsys.readouterr().out
+    assert "Routine r1: minutes=2, runCount=6" in transcript
+    assert "Routine-origin workload 1: r1" in transcript
+    assert main(["compare", "--transcript", str(job)]) == 0
+    assert capsys.readouterr().out == transcript
+    assert main(["compare", str(job)]) == 0
+    first = capsys.readouterr().out
+    assert main(["compare", str(job)]) == 0
+    assert capsys.readouterr().out == first
+
+
+def _repeated_window(job: Path, trial: str) -> Path:
+    """Save three inputs and output changes at independently chosen offsets."""
+    evidence = job / trial / "artifacts/window-evidence"
+    evidence.mkdir(parents=True)
+    snapshots = []
+    for index, offset in enumerate((20, 40, 60)):
+        directory = f"snapshots/{index}"
+        (evidence / directory).mkdir(parents=True)
+        snapshots.append(
+            {
+                "planned_offset_sec": offset,
+                "actual_offset_sec": offset,
+                "directory": directory,
+                "entries": 0,
+                "bytes": 0,
+                "truncated": False,
+            }
+        )
+    samples = []
+    for offset, digest in (
+        (0, None),
+        (12, "a"),
+        (14, "a"),
+        (34, "b"),
+        (70, "c"),
+        (71, "d"),
+    ):
+        samples.append(
+            {
+                "actual_offset_sec": offset,
+                "paths": {
+                    "/work/output": {
+                        "state": "missing" if digest is None else "regular",
+                        "sha256": None if digest is None else digest * 64,
+                        "copy": None,
+                    }
+                },
+            }
+        )
+    (evidence / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "completed",
+                "started_at": "2026-01-01T00:00:10+00:00",
+                "ended_at": "2026-01-01T00:01:20+00:00",
+                "elapsed_sec": 70,
+                "error_code": None,
+                "drops": [
+                    {
+                        "planned_offset_sec": offset,
+                        "actual_offset_sec": offset,
+                        "target": f"/work/inbox/{offset}",
+                        "sha256": "f" * 64,
+                    }
+                    for offset in (10, 30, 50)
+                ],
+                "snapshots": snapshots,
+                "samples": samples,
+                "skipped": [],
+                "skipped_truncated": False,
+            }
+        )
+    )
+    task = _task_directory(job.parent / f"task-{trial}")
+    (task / "environment").mkdir()
+    (task / "environment/schedule.json").write_text(
+        json.dumps(
+            {
+                "duration_sec": 60,
+                "tail_sec": 10,
+                "sample_interval_sec": 2,
+                "watch": ["/work/output"],
+                "drops": [
+                    {
+                        "at_sec": offset,
+                        "source": f"/opt/drops/{offset}",
+                        "target": f"/work/inbox/{offset}",
+                    }
+                    for offset in (10, 30, 50)
+                ],
+                "snapshots": [
+                    {"at_sec": offset, "paths": ["/work/output"]}
+                    for offset in (20, 40, 60)
+                ],
+            }
+        )
+    )
+    _condition_lock(job, trial, task)
+    return evidence
+
+
+def _usage_session(
+    agent: Path, name: str, at: str, counts: tuple[int, int, int]
+) -> None:
+    """Save last cumulative input/cached/output totals after an earlier count."""
+    _session(
+        agent,
+        name,
+        [
+            {"timestamp": at, "type": "session_meta", "payload": {"id": name}},
+            {
+                "timestamp": at,
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "total_token_usage": {
+                            "input_tokens": 1,
+                            "cached_input_tokens": 0,
+                            "output_tokens": 1,
+                        }
+                    },
+                },
+            },
+            {
+                "timestamp": at,
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "total_token_usage": {
+                            "input_tokens": counts[0],
+                            "cached_input_tokens": counts[1],
+                            "output_tokens": counts[2],
+                        }
+                    },
+                },
+            },
+        ],
+    )
+
+
+def _routine_state(job: Path, trial: str) -> None:
+    turns = []
+    workloads = []
+    for offset in (5, 15, 25, 35, 45, 55):
+        created = (START + timedelta(seconds=offset)).isoformat()
+        origin = {"routine": "r1", "taskType": "automated"}
+        turns.append({"id": f"t{offset}", "created": created, "origin": origin})
+        workloads.append(
+            {
+                "origin": origin,
+                "calls": [],
+                "decisions": [
+                    {"created": created, "agent": "chief", "node": "Execution"},
+                ],
+            }
+        )
+    _state(
+        job,
+        trial,
+        {
+            "agents": [{"id": "chief"}],
+            "turns": turns,
+            "workloads": workloads,
+            "routines": [{"id": "r1", "minutes": 2, "runCount": 6}],
+            "truncated": {"turns": False, "workloads": False, "routines": False},
+        },
+    )
