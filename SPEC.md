@@ -67,8 +67,11 @@ No model trial starts before readiness passes. Public instructions give intent,
 constraints and result location without prescribing an algorithm or a tool when
 tool choice is measured. The oracle proves solvability and validates the check;
 the agent's output need not match the oracle's implementation.
-For repeated tasks, Execution → Evidence → Evaluation repeats per step, followed
-by an aggregate; later steps may omit agent execution in the configure-once form.
+For repeated tasks with agent participation at each step, Execution → Evidence →
+Evaluation repeats per step, followed by an aggregate. In the configure-once form,
+the task gathers scheduled evidence during one observation window and evaluates
+that evidence once afterward. This is current-work wording of the same horizon,
+not a new outcome rule.
 
 ## 4. Outcomes and evaluation
 

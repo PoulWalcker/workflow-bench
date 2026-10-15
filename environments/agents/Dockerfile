@@ -35,7 +35,8 @@ RUN --mount=type=bind,from=project,source=uv.lock,target=/tmp/uv.lock \
     && rm /tmp/helper-requirements.txt
 COPY --from=project src/workflow_bench/__init__.py src/workflow_bench/contracts.py \
     src/workflow_bench/data.py src/workflow_bench/evaluation.py \
+    src/workflow_bench/window.py \
     /usr/local/lib/python3.12/site-packages/workflow_bench/
 COPY --from=project src/workflow_bench/resources/wire.schema.json \
     /usr/local/lib/python3.12/site-packages/workflow_bench/resources/
-RUN python -c "import workflow_bench.evaluation"
+RUN python -c "import workflow_bench.evaluation, workflow_bench.window"

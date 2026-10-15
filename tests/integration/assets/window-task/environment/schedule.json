@@ -1,0 +1,1 @@
+{"duration_sec":60,"tail_sec":2,"sample_interval_sec":2,"watch":["/work/output"],"drops":[{"at_sec":10,"source":"/opt/window/drops/a.txt","target":"/work/inbox/a.txt"},{"at_sec":30,"source":"/opt/window/drops/b.txt","target":"/work/inbox/b.txt"}],"snapshots":[{"at_sec":10,"paths":["/work/output"]},{"at_sec":30,"paths":["/work/output"]}]}
