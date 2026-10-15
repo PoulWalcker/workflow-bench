@@ -203,6 +203,84 @@ def test_unchanged_directory_preserves_entries_for_late_change(
     )
 
 
+@pytest.mark.parametrize("initial_kind", ["file", "directory"])
+@pytest.mark.parametrize("nested", [True, False], ids=["nested", "root"])
+def test_entry_kind_change_is_copied_at_first_seen_sample(
+    tmp_path: Path, initial_kind: str, nested: bool
+) -> None:
+    watched = tmp_path / "watched"
+    if nested:
+        watched.mkdir()
+    entry = watched / "row" if nested else watched
+    if initial_kind == "file":
+        entry.touch()
+    else:
+        entry.mkdir()
+    schedule = _schedule(
+        tmp_path / "schedule.json", duration_sec=4, tail_sec=0, watch=[str(watched)]
+    )
+    clock = FakeClock()
+    changed = False
+
+    def advance(seconds: float) -> None:
+        nonlocal changed
+        clock.sleep(seconds)
+        if clock.elapsed >= 2 and not changed:
+            if initial_kind == "file":
+                entry.unlink()
+                entry.mkdir()
+            else:
+                entry.rmdir()
+                entry.touch()
+            changed = True
+
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    facts = read_window(evidence)
+    observations = [sample.paths[str(watched)] for sample in facts.samples]
+
+    assert facts.status == "completed"
+    assert [sample.actual_offset_sec for sample in facts.samples] == [0, 1, 2, 3, 4]
+    assert [item["copy"] is not None for item in observations] == [
+        True,
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert observations[0]["sha256"] == observations[1]["sha256"]
+    assert (
+        observations[2]["sha256"]
+        == observations[3]["sha256"]
+        == observations[4]["sha256"]
+    )
+    if nested:
+        assert [item["state"] for item in observations] == ["directory"] * 5
+        assert observations[0]["sha256"] != observations[2]["sha256"]
+    else:
+        initial_state = "regular" if initial_kind == "file" else "directory"
+        changed_state = "directory" if initial_kind == "file" else "regular"
+        assert [item["state"] for item in observations] == [initial_state] * 2 + [
+            changed_state
+        ] * 3
+    for index in (0, 2):
+        copy = observations[index]["copy"]
+        assert copy is not None
+        stored = evidence / copy
+        if nested:
+            stored /= "row"
+        is_file = (initial_kind == "file") == (index == 0)
+        assert stored.is_file() == is_file
+        assert stored.is_dir() != is_file
+        if is_file:
+            assert stored.read_bytes() == b""
+        else:
+            assert list(stored.iterdir()) == []
+    assert sum(
+        1 for sample in (evidence / "samples").iterdir() for _ in sample.rglob("*")
+    ) == (4 if nested else 2)
+
+
 def test_reappearing_watch_is_copied_even_with_same_bytes(tmp_path: Path) -> None:
     watched = tmp_path / "status.log"
     watched.write_text("same\n")

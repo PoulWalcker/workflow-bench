@@ -300,7 +300,7 @@ class _EvidenceWriter:
         byte_count = 0
         truncated = destination is None
         incomplete = False
-        fingerprints: list[str] = []
+        fingerprints: list[tuple[str, int, str]] = []
         remaining = MAX_ENTRIES - self.observed.scanned
         children = list(itertools.islice(source.iterdir(), remaining + 1))
         if len(children) > remaining:
@@ -321,8 +321,10 @@ class _EvidenceWriter:
             byte_count += child_bytes
             truncated |= child_truncated
             incomplete |= child_digest == "truncated"
-            fingerprints.append(f"{child.name}:{child_digest}")
-        digest = hashlib.sha256("\n".join(fingerprints).encode()).hexdigest()
+            fingerprints.append(
+                (child.name, stat.S_IFMT(child.lstat().st_mode), child_digest)
+            )
+        digest = hashlib.sha256(json.dumps(fingerprints).encode()).hexdigest()
         return (
             count,
             byte_count,
@@ -355,7 +357,7 @@ def run_window(
     schedule = _read_schedule(schedule_path)
     start = clock()
     writer = _EvidenceWriter(evidence_dir, start, clock)
-    previous_digests: dict[str, str] = {}
+    previous_identities: dict[str, tuple[str, str]] = {}
     events: list[tuple[float, int, str, object]] = []
     for index, snapshot in enumerate(schedule.snapshots):
         events.append((snapshot.at_sec, 0, "snapshot", (index, snapshot)))
@@ -374,7 +376,7 @@ def run_window(
             elif kind == "snapshot":
                 _execute_snapshot(writer, plan)
             else:
-                _execute_sample(writer, schedule.watch, previous_digests, plan)
+                _execute_sample(writer, schedule.watch, previous_identities, plan)
             writer.save()
         _wait_until(start + total, clock, sleep)
         writer.manifest["status"] = "completed"
@@ -776,7 +778,7 @@ def _execute_snapshot(writer: _EvidenceWriter, item: object) -> None:
 def _execute_sample(
     writer: _EvidenceWriter,
     watch: tuple[Path, ...],
-    previous: dict[str, str],
+    previous: dict[str, tuple[str, str]],
     index: object,
 ) -> None:
     index = cast(int, index)
@@ -800,7 +802,8 @@ def _execute_sample(
             else:
                 _, size, truncated, digest = writer.copy_path(path, destination)
                 state = "directory" if stat.S_ISDIR(mode) else "regular"
-                if previous.get(str(path)) == digest:
+                identity = (state, digest)
+                if previous.get(str(path)) == identity:
                     writer.storage.entries -= _remove_copy(destination)
                     writer.storage.bytes -= size
                     copied = None
@@ -813,7 +816,7 @@ def _execute_sample(
                         else None
                     )
                 if _digest(digest):
-                    previous[str(path)] = digest
+                    previous[str(path)] = identity
                 else:
                     previous.pop(str(path), None)
                     digest = None
