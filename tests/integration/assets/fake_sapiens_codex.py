@@ -4,8 +4,11 @@
 import json
 import os
 import re
+import shlex
+import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -54,6 +57,36 @@ def _decision(prompt: str) -> dict[str, object]:
             },
         }
     if node == "Execution":
+        if scenario == "routine":
+            if "This call executes one Scheduled Routine" in prompt:
+                with Path("/logs/agent/routine-firings.jsonl").open("a") as stream:
+                    stream.write(
+                        json.dumps({"at": datetime.now(UTC).isoformat()}) + "\n"
+                    )
+            else:
+                command_match = re.search(r"Run (.+?) 'JSON'", prompt)
+                if command_match is None:
+                    raise ValueError("missing host-control command")
+                subprocess.run(
+                    [
+                        *shlex.split(command_match.group(1)),
+                        json.dumps(
+                            {
+                                "op": "routine_create",
+                                "minutes": 1,
+                                "prompt": "Write the basket answer once.",
+                            }
+                        ),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=20,
+                )
+                # Pulse rounds due routines to minute ticks; leave two firings
+                # inside the subsequent 150-second observation hook.
+                time.sleep(45)
+
         if scenario == "stop":
             if os.fork() == 0:
                 os.setsid()
@@ -97,6 +130,7 @@ def main() -> int:
         raise ValueError("expected codex exec")
     if os.environ.get("WB_SAPIENS_SCENARIO") not in {
         "direct",
+        "routine",
         "delegate",
         "unclear",
         "stop",
