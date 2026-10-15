@@ -97,6 +97,112 @@ def test_changed_watch_is_copied_once_per_change(tmp_path: Path) -> None:
     assert (evidence / str(observations[1]["copy"])).read_text() == "first\nsecond\n"
 
 
+def test_unchanged_large_watch_preserves_capacity_for_late_change(
+    tmp_path: Path,
+) -> None:
+    watched = tmp_path / "large.bin"
+    watched.write_bytes(b"x" * (20 * 1024 * 1024))
+    schedule = _schedule(
+        tmp_path / "schedule.json", duration_sec=3, tail_sec=0, watch=[str(watched)]
+    )
+    clock = FakeClock()
+    changed = False
+
+    def advance(seconds: float) -> None:
+        nonlocal changed
+        clock.sleep(seconds)
+        if clock.elapsed >= 2 and not changed:
+            watched.write_bytes(b"late change\n")
+            changed = True
+
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    facts = read_window(evidence)
+    observations = [sample.paths[str(watched)] for sample in facts.samples]
+
+    assert facts.status == "completed"
+    assert [item["copy"] is not None for item in observations] == [
+        True,
+        False,
+        True,
+        False,
+    ]
+    assert [item["state"] for item in observations] == ["regular"] * 4
+    assert observations[0]["sha256"] == observations[1]["sha256"]
+    assert observations[2]["sha256"] == observations[3]["sha256"]
+    assert facts.samples[2].actual_offset_sec == 2
+    assert observations[0]["copy"] is not None
+    assert (evidence / observations[0]["copy"]).read_bytes() == b"x" * (
+        20 * 1024 * 1024
+    )
+    assert observations[2]["copy"] is not None
+    assert (evidence / observations[2]["copy"]).read_bytes() == b"late change\n"
+    assert (
+        sum(
+            path.stat().st_size
+            for path in (evidence / "samples").rglob("*")
+            if path.is_file()
+        )
+        == 20971532
+    )
+
+
+@pytest.mark.parametrize("entry_kind", ["file", "directory"])
+def test_unchanged_directory_preserves_entries_for_late_change(
+    tmp_path: Path, entry_kind: str
+) -> None:
+    watched = tmp_path / "watched"
+    watched.mkdir()
+    for index in range(2050):
+        child = watched / f"{index:04d}"
+        if entry_kind == "directory":
+            child.mkdir()
+        else:
+            child.touch()
+    schedule = _schedule(
+        tmp_path / "schedule.json", duration_sec=3, tail_sec=0, watch=[str(watched)]
+    )
+    clock = FakeClock()
+    changed = False
+
+    def advance(seconds: float) -> None:
+        nonlocal changed
+        clock.sleep(seconds)
+        if clock.elapsed >= 2 and not changed:
+            for child in watched.iterdir():
+                if entry_kind == "directory":
+                    child.rmdir()
+                else:
+                    child.unlink()
+            (watched / "late.txt").write_text("late")
+            changed = True
+
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    facts = read_window(evidence)
+    observations = [sample.paths[str(watched)] for sample in facts.samples]
+
+    assert facts.status == "completed"
+    assert [item["copy"] is not None for item in observations] == [
+        True,
+        False,
+        True,
+        False,
+    ]
+    assert [item["state"] for item in observations] == ["directory"] * 4
+    assert observations[0]["sha256"] == observations[1]["sha256"]
+    assert observations[2]["sha256"] == observations[3]["sha256"]
+    assert facts.samples[2].actual_offset_sec == 2
+    assert observations[0]["copy"] is not None
+    assert len(list((evidence / observations[0]["copy"]).iterdir())) == 2050
+    assert observations[2]["copy"] is not None
+    assert (evidence / observations[2]["copy"] / "late.txt").read_text() == "late"
+    assert (
+        sum(1 for sample in (evidence / "samples").iterdir() for _ in sample.rglob("*"))
+        == 2053
+    )
+
+
 def test_reappearing_watch_is_copied_even_with_same_bytes(tmp_path: Path) -> None:
     watched = tmp_path / "status.log"
     watched.write_text("same\n")

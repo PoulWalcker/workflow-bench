@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -166,6 +167,15 @@ class _Schedule:
     snapshots: tuple[_SnapshotPlan, ...]
 
 
+@dataclass
+class _CopyBudget:
+    """Bound bytes, entries and child visits for one copy or observation pass."""
+
+    bytes: int = 0
+    entries: int = 0
+    scanned: int = 0
+
+
 class _EvidenceWriter:
     """Own one window's manifest and aggregate copy limits."""
 
@@ -173,9 +183,8 @@ class _EvidenceWriter:
         self.root = root
         self.start = start
         self.clock = clock
-        self.bytes = 0
-        self.entries = 0
-        self.scanned = 0
+        self.storage = _CopyBudget()
+        self.observed = _CopyBudget()
         self.manifest: _Manifest = {
             "schema_version": SCHEMA_VERSION,
             "status": "running",
@@ -223,12 +232,16 @@ class _EvidenceWriter:
         finally:
             temporary.unlink(missing_ok=True)
 
-    def copy_path(self, source: Path, destination: Path) -> tuple[int, int, bool, str]:
-        """Copy regular entries within aggregate storage and current-action scan bounds.
+    def copy_path(
+        self, source: Path, destination: Path | None
+    ) -> tuple[int, int, bool, str]:
+        """Copy within aggregate storage while hashing within independent action bounds.
 
-        Return copied file count, bytes, truncation, and content SHA-256. For a
-        missing, linked, special, or uncopyable path, the last value is its
-        status word instead of a digest.
+        Return stored file count, stored bytes, copy truncation, and observed content
+        SHA-256. Observation reads at most 32 MiB and visits at most 4096 children
+        per action, even when storage is exhausted. Incomplete observations return
+        a status word instead of a digest; storage truncation alone does not change
+        content identity. A null destination observes without storing.
         """
         if _has_symlink_component(source):
             self.record_skip(source, "symlink")
@@ -237,55 +250,85 @@ class _EvidenceWriter:
             mode = source.lstat().st_mode
         except FileNotFoundError:
             return 0, 0, False, "missing"
-        if stat.S_ISREG(mode):
-            if self.entries >= MAX_ENTRIES or self.bytes >= MAX_EVIDENCE_BYTES:
-                return 0, 0, True, "truncated"
-            self.entries += 1
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            remaining = MAX_EVIDENCE_BYTES - self.bytes
-            written = 0
-            digest = hashlib.sha256()
-            with source.open("rb") as input_stream, destination.open("wb") as output:
-                while written < remaining:
-                    chunk = input_stream.read(min(CHUNK_BYTES, remaining - written))
-                    if not chunk:
-                        break
-                    output.write(chunk)
-                    digest.update(chunk)
-                    written += len(chunk)
-                truncated = bool(input_stream.read(1))
-            self.bytes += written
-            return 1, written, truncated, digest.hexdigest()
-        if not stat.S_ISDIR(mode):
+        if not stat.S_ISREG(mode) and not stat.S_ISDIR(mode):
             self.record_skip(source, "special")
             return 0, 0, False, "special"
-        if self.entries >= MAX_ENTRIES:
+        if self.observed.entries >= MAX_ENTRIES:
             return 0, 0, True, "truncated"
-        self.entries += 1
-        destination.mkdir(parents=True, exist_ok=True)
+        self.observed.entries += 1
+        if self.storage.entries >= MAX_ENTRIES:
+            destination = None
+        if stat.S_ISREG(mode):
+            if self.storage.bytes >= MAX_EVIDENCE_BYTES:
+                destination = None
+            if destination is not None:
+                self.storage.entries += 1
+                destination.parent.mkdir(parents=True, exist_ok=True)
+            remaining = MAX_EVIDENCE_BYTES - self.observed.bytes
+            observed = 0
+            written = 0
+            digest = hashlib.sha256()
+            with (
+                source.open("rb") as input_stream,
+                destination.open("wb")
+                if destination is not None
+                else nullcontext() as output,
+            ):
+                while observed < remaining:
+                    chunk = input_stream.read(min(CHUNK_BYTES, remaining - observed))
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    observed += len(chunk)
+                    if output is not None:
+                        stored = chunk[: MAX_EVIDENCE_BYTES - self.storage.bytes]
+                        output.write(stored)
+                        written += len(stored)
+                        self.storage.bytes += len(stored)
+                incomplete = bool(input_stream.read(1))
+            self.observed.bytes += observed
+            return (
+                int(destination is not None),
+                written,
+                incomplete or destination is None or written < observed,
+                "truncated" if incomplete else digest.hexdigest(),
+            )
+        if destination is not None:
+            self.storage.entries += 1
+            destination.mkdir(parents=True, exist_ok=True)
         count = 0
         byte_count = 0
-        truncated = False
+        truncated = destination is None
+        incomplete = False
         fingerprints: list[str] = []
-        remaining = MAX_ENTRIES - self.scanned
+        remaining = MAX_ENTRIES - self.observed.scanned
         children = list(itertools.islice(source.iterdir(), remaining + 1))
         if len(children) > remaining:
-            truncated = True
+            incomplete = True
             children.pop()
         for child in sorted(children):
-            if self.scanned >= MAX_ENTRIES or self.bytes >= MAX_EVIDENCE_BYTES:
-                truncated = True
+            if (
+                self.observed.scanned >= MAX_ENTRIES
+                or self.observed.bytes >= MAX_EVIDENCE_BYTES
+            ):
+                incomplete = True
                 break
-            self.scanned += 1
+            self.observed.scanned += 1
             child_count, child_bytes, child_truncated, child_digest = self.copy_path(
-                child, destination / child.name
+                child, destination / child.name if destination is not None else None
             )
             count += child_count
             byte_count += child_bytes
             truncated |= child_truncated
+            incomplete |= child_digest == "truncated"
             fingerprints.append(f"{child.name}:{child_digest}")
         digest = hashlib.sha256("\n".join(fingerprints).encode()).hexdigest()
-        return count, byte_count, truncated, digest
+        return (
+            count,
+            byte_count,
+            truncated or incomplete,
+            "truncated" if incomplete else digest,
+        )
 
     def record_skip(self, path: Path, kind: Literal["symlink", "special"]) -> None:
         """Keep bounded metadata for entries intentionally left uncopied."""
@@ -704,7 +747,7 @@ def _execute_drop(writer: _EvidenceWriter, item: object) -> None:
 
 def _execute_snapshot(writer: _EvidenceWriter, item: object) -> None:
     index, plan = cast(tuple[int, _SnapshotPlan], item)
-    writer.scanned = 0
+    writer.observed = _CopyBudget()
     directory = f"snapshots/{index:03d}"
     destination = writer.root / directory
     destination.mkdir(parents=True)
@@ -737,7 +780,7 @@ def _execute_sample(
     index: object,
 ) -> None:
     index = cast(int, index)
-    writer.scanned = 0
+    writer.observed = _CopyBudget()
     paths: dict[str, Observation] = {}
     for path_index, path in enumerate(watch):
         destination = writer.root / f"samples/{index:04d}/{path_index:02d}-{path.name}"
@@ -757,13 +800,13 @@ def _execute_sample(
             else:
                 _, size, truncated, digest = writer.copy_path(path, destination)
                 state = "directory" if stat.S_ISDIR(mode) else "regular"
-                if truncated:
-                    state = "truncated"
                 if previous.get(str(path)) == digest:
-                    writer.entries -= _remove_copy(destination)
-                    writer.bytes -= size
+                    writer.storage.entries -= _remove_copy(destination)
+                    writer.storage.bytes -= size
                     copied = None
                 else:
+                    if truncated:
+                        state = "truncated"
                     copied = (
                         destination.relative_to(writer.root).as_posix()
                         if destination.exists()
