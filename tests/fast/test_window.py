@@ -97,6 +97,55 @@ def test_changed_watch_is_copied_once_per_change(tmp_path: Path) -> None:
     assert (evidence / str(observations[1]["copy"])).read_text() == "first\nsecond\n"
 
 
+@pytest.mark.parametrize("duplicate_count", [2, 32])
+@pytest.mark.parametrize("dotted_path", [False, True])
+def test_duplicate_watch_preserves_first_seen_copies(
+    tmp_path: Path, duplicate_count: int, dotted_path: bool
+) -> None:
+    watched = tmp_path / "status.log"
+    watched.write_text("first\n")
+    repeated = f"{tmp_path}/./status.log" if dotted_path else str(watched)
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        watch=[str(watched)] + [repeated] * (duplicate_count - 1),
+    )
+    clock = FakeClock()
+
+    def advance(seconds: float) -> None:
+        clock.sleep(seconds)
+        if clock.elapsed >= 1:
+            watched.write_text("first\nsecond\n")
+
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    facts = read_window(evidence)
+    assert facts.status == "completed"
+    assert [sample.actual_offset_sec for sample in facts.samples] == [0, 1, 2, 3]
+    assert all(list(sample.paths) == [str(watched)] for sample in facts.samples)
+    observations = [sample.paths[str(watched)] for sample in facts.samples]
+    assert [item["copy"] is not None for item in observations] == [
+        True,
+        True,
+        False,
+        False,
+    ]
+    assert observations[0]["sha256"] != observations[1]["sha256"]
+    assert (
+        observations[1]["sha256"]
+        == observations[2]["sha256"]
+        == observations[3]["sha256"]
+    )
+    for observation, content in zip(
+        observations[:2], ["first\n", "first\nsecond\n"], strict=True
+    ):
+        assert observation["copy"] is not None
+        assert (evidence / observation["copy"]).read_text() == content
+    stored_files = [
+        path for path in (evidence / "samples").rglob("*") if path.is_file()
+    ]
+    assert len(stored_files) == 2
+
+
 def test_unchanged_large_watch_preserves_capacity_for_late_change(
     tmp_path: Path,
 ) -> None:
@@ -495,6 +544,11 @@ def test_watch_under_symlinked_parent_is_not_followed(tmp_path: Path) -> None:
         {"drops": [{"at_sec": -1, "source": "/a", "target": "/b"}]},
         {"unknown": 1},
         {"watch": [f"/tmp/watch-{index}" for index in range(33)]},
+        {"duration_sec": 10**1000},
+        {"tail_sec": 10**1000},
+        {"sample_interval_sec": 10**1000},
+        {"drops": [{"at_sec": 10**1000, "source": "/a", "target": "/b"}]},
+        {"snapshots": [{"at_sec": 10**1000, "paths": ["/a"]}]},
     ],
 )
 def test_invalid_schedule_has_no_effect(
@@ -630,4 +684,46 @@ def test_reader_rejects_wrong_snapshot_size_and_non_utc_time(tmp_path: Path) -> 
     record["started_at"] = "2026-10-14T12:00:00+04:00"
     manifest.write_text(json.dumps(record))
     with pytest.raises(DataError, match="invalid_schema"):
+        read_window(evidence)
+
+
+@pytest.mark.parametrize(
+    "number", [10**1000, -(10**1000)], ids=["positive", "negative"]
+)
+@pytest.mark.parametrize(
+    ("section", "field"),
+    [
+        ("", "elapsed_sec"),
+        ("drops", "planned_offset_sec"),
+        ("drops", "actual_offset_sec"),
+        ("snapshots", "planned_offset_sec"),
+        ("snapshots", "actual_offset_sec"),
+        ("samples", "actual_offset_sec"),
+    ],
+)
+def test_reader_rejects_unrepresentable_json_times(
+    tmp_path: Path, section: str, field: str, number: int
+) -> None:
+    source = tmp_path / "source"
+    source.write_text("input")
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        drops=[
+            {"at_sec": 0, "source": str(source), "target": str(tmp_path / "target")}
+        ],
+        snapshots=[{"at_sec": 0, "paths": [str(source)]}],
+    )
+    evidence = tmp_path / "evidence"
+    clock = FakeClock()
+    run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+    assert read_window(evidence).status == "completed"
+    manifest = evidence / "manifest.json"
+    record = json.loads(manifest.read_text())
+    if section:
+        record[section][0][field] = number
+    else:
+        record[field] = number
+    manifest.write_text(json.dumps(record))
+
+    with pytest.raises(DataError, match="invalid_schema: manifest.json"):
         read_window(evidence)

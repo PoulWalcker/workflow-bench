@@ -711,7 +711,7 @@ def _read_schedule(path: Path) -> _Schedule:
         cast(float, duration),
         cast(float, tail),
         cast(float, interval),
-        tuple(Path(cast(str, p)) for p in watch),
+        tuple(dict.fromkeys(Path(cast(str, p)) for p in watch)),
         tuple(planned_drops),
         tuple(planned_snapshots),
     )
@@ -854,8 +854,8 @@ def _nonnegative_number(value: object) -> bool:
     return (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
+        and 0 <= value <= sys.float_info.max
         and math.isfinite(value)
-        and value >= 0
     )
 
 
