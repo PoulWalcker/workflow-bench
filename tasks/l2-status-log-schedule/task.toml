@@ -1,0 +1,27 @@
+schema_version = "1.4"
+artifacts = ["/work", "/window-evidence"]
+
+[metadata]
+level = "L2"
+horizon = "repeated"
+author = "Workflow Bench"
+source = "Original task; no external source"
+contamination = "Not applicable: original authored task"
+notes = "Method-neutral; rerun when Sapiens gains Cron, Callback or Pipeline (a new revision requires a separate decision). Window evidence is candidate-reachable. No data-integrity criterion is added."
+
+[environment]
+build_timeout_sec = 600.0
+network_mode = "no-network"
+
+[agent]
+timeout_sec = 900.0
+
+[verifier]
+environment_mode = "separate"
+network_mode = "no-network"
+timeout_sec = 120.0
+
+[[verifier.collect]]
+service = "main"
+command = "python3 -m workflow_bench.window /opt/window/schedule.json /window-evidence"
+timeout_sec = 780.0

@@ -1,0 +1,8 @@
+{
+  "duration_sec": 600,
+  "tail_sec": 60,
+  "sample_interval_sec": 10,
+  "watch": ["/work/output/status.log"],
+  "drops": [],
+  "snapshots": [{"at_sec": 600, "paths": ["/work/output"]}]
+}
