@@ -1,0 +1,45 @@
+{
+  "duration_sec": 600,
+  "tail_sec": 60,
+  "sample_interval_sec": 10,
+  "watch": [
+    "/work/output"
+  ],
+  "drops": [
+    {
+      "at_sec": 60,
+      "source": "/opt/window/drops/orders-1.csv",
+      "target": "/work/inbox/orders-1.csv"
+    },
+    {
+      "at_sec": 240,
+      "source": "/opt/window/drops/orders-2.csv",
+      "target": "/work/inbox/orders-2.csv"
+    },
+    {
+      "at_sec": 420,
+      "source": "/opt/window/drops/orders-3.csv",
+      "target": "/work/inbox/orders-3.csv"
+    }
+  ],
+  "snapshots": [
+    {
+      "at_sec": 240,
+      "paths": [
+        "/work/output"
+      ]
+    },
+    {
+      "at_sec": 420,
+      "paths": [
+        "/work/output"
+      ]
+    },
+    {
+      "at_sec": 600,
+      "paths": [
+        "/work/output"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+order_id,customer,sku,quantity,unit_price_cents
+A001,Ada Chen,PEN-BLUE,3,125
+A002,Ben Ortiz,BOOK-A5,2,640
+A003,Cleo Reed,MUG-WHITE,1,1299
+A004,Dara Singh,TEA-GREEN,4,525
+A005,Eli Park,CLIP-BOX,2,275
+A006,Faye Hall,LAMP-DESK,1,3299
