@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 
 from workflow_bench.contracts import Criterion
@@ -74,7 +75,7 @@ def _orders(path: Path) -> tuple[list[Order], str]:
     return rows, "pass"
 
 
-def _window_criteria(batches: list[set[Order]]) -> list[Criterion]:
+def _window_criteria(batches: Sequence[set[Order]]) -> list[Criterion]:
     facts = read_window(EVIDENCE)
     if (
         facts.status != "completed"
@@ -141,7 +142,7 @@ def _window_criteria(batches: list[set[Order]]) -> list[Criterion]:
     ]
 
 
-def _duplicates(rows: list[Order]) -> str:
+def _duplicates(rows: Sequence[Order]) -> str:
     identifiers = [row[0] for row in rows]
     return "duplicate_orders" if len(set(identifiers)) != len(identifiers) else "pass"
 
