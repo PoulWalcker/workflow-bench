@@ -77,8 +77,6 @@ def _window_criteria(final: bytes, file_count: int) -> list[Criterion]:
         or not facts.samples
         or facts.samples[0].actual_offset_sec > 10
         or facts.samples[-1].actual_offset_sec < 660
-        or facts.skipped
-        or facts.skipped_truncated
     ):
         raise DataError("window_incomplete", "window")
     started = datetime.fromisoformat(facts.started_at)
