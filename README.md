@@ -347,6 +347,24 @@ the procedural violation is documented in the ignored local evidence at
 public Terminal-Bench tasks may be present in model training data, and their
 rebased task conditions differ from the published benchmark.
 
+## First repeated-task report (2026-10-17)
+
+Twelve Trials covered two local configure-once Tasks. Codex passed 3/3 scheduled
+status-report Trials and 3/3 inbox-processing Trials; Sapiens passed 0/3 and 3/3,
+respectively. Sapiens left all status-report routines paused. Both used
+`openai/gpt-6.1-sol`, medium effort, summaries `auto`, web search disabled,
+Codex CLI 0.162.1 and the same network policy; Sapiens revision was
+`71e93cb3de00183c263ec440919b313cf92ed8af`. All observation windows completed.
+Reproducible offline reports are `runs/r-07-report.json` and `runs/r-07-report.md`;
+ignored local evidence, transcripts, cost coverage and context are in `runs/r-07/`.
+
+The three Trials per task/configuration are descriptive. Window evidence is
+candidate-reachable. As implemented, "in the current Sapiens, repetition is only
+via an LLM call per tick"; Codex used background scripts without per-update model
+calls. Native Harbor removes Codex credentials after `codex exec` while Sapiens
+retains them for routines. This approved credential and cost asymmetry is disclosed;
+API-list cost estimates describe usage, not subscription charges.
+
 ## Navigation
 
 | Document | Owner |
