@@ -71,15 +71,13 @@ class BoundedCopy:
 
         A changed path is read again for its stored copy. Its returned fingerprint
         describes that second read, which may differ from the initial observation.
-        Both passes are bounded; only the retained pass consumes the action budget.
+        Both reads consume the same per-sample traversal and byte budget.
         """
         if previous is not None:
-            before = replace(self.observed)
             skipped_before, truncated_before = self.skipped, self.skipped_truncated
             probe = self.copy_path(source, None)
             if (probe.kind, probe.sha256) == previous:
                 return replace(probe, truncated=False)
-            self.observed = before
             self.skipped, self.skipped_truncated = skipped_before, truncated_before
         return self.copy_path(source, destination)
 

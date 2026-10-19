@@ -1123,13 +1123,15 @@ def test_cli_contains_filesystem_failures_and_preserves_original_code(
     injection = tmp_path / "injection"
     injection.mkdir()
     (injection / "sitecustomize.py").write_text(
-        "import os\nfrom pathlib import Path\n"
+        "import os\nfrom pathlib import Path\nfrom typing import IO, Any\n"
         "original_open = Path.open\noriginal_replace = os.replace\n"
-        "def open_path(path, *args, **kwargs):\n"
+        "def open_path(path: Path, *args: Any, **kwargs: Any) -> IO[Any]:\n"
         f"    if {failure == 'schedule_read'!r} and path == Path({str(schedule)!r}):\n"
         "        raise OSError('injected schedule read failure')\n"
         "    return original_open(path, *args, **kwargs)\n"
-        "def replace(source, target):\n"
+        "def replace(\n"
+        "    source: str | os.PathLike[str], target: str | os.PathLike[str]\n"
+        ") -> None:\n"
         "    if Path(target).name == 'manifest.json':\n"
         "        import json\n"
         "        if json.loads(Path(source).read_text())['ended_at'] is not None:\n"
@@ -1222,3 +1224,61 @@ def test_snapshot_directories_keep_schedule_indices_when_offsets_are_unsorted(
         (0, "snapshots/001"),
         (2, "snapshots/000"),
     ]
+
+
+@pytest.mark.parametrize("replace_children", [False, True])
+def test_changed_watch_shares_traversal_limit_across_probe_and_retention(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replace_children: bool
+) -> None:
+    watched = tmp_path / "watched"
+    watched.mkdir()
+    for index in range(2100):
+        (watched / f"a-{index:04}").write_bytes(b"old")
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=2,
+        tail_sec=0,
+        watch=[str(watched)],
+    )
+    clock = FakeClock()
+    reads: list[list[str]] = [[], [], []]
+    original_open = os.open
+
+    def open_then_replace_children(
+        path: str | os.PathLike[str], flags: int, *args: Any, **kwargs: Any
+    ) -> int:
+        descriptor = original_open(path, flags, *args, **kwargs)
+        source = Path(path)
+        if source.parent == watched:
+            sample = int(clock.elapsed)
+            reads[sample].append(source.name)
+            if replace_children and sample == 1 and len(reads[sample]) == 2100:
+                for child in watched.iterdir():
+                    child.unlink()
+                for index in range(2100):
+                    (watched / f"b-{index:04}").write_bytes(b"new")
+        return descriptor
+
+    def advance(seconds: float) -> None:
+        clock.sleep(seconds)
+        if clock.elapsed == 1:
+            (watched / "a-0000").write_bytes(b"changed")
+
+    monkeypatch.setattr(os, "open", open_then_replace_children)
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    monkeypatch.undo()
+    facts = read_window(evidence)
+    assert facts.status == "completed"
+    assert len(reads[0]) == 2100
+    assert all(len(sample_reads) <= 4096 for sample_reads in reads)
+    assert len(set(reads[1])) <= 4096
+    assert reads[2]
+    assert facts.samples[1].paths[str(watched)]["state"] == "truncated"
+    if replace_children:
+        assert any(name.startswith("b-") for name in reads[1])
+        retained = facts.samples[1].paths[str(watched)]["copy"]
+        assert retained is not None
+        assert all(
+            child.read_bytes() == b"new" for child in (evidence / retained).iterdir()
+        )
