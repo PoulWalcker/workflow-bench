@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
-from workflow_bench._window_common import (
+from workflow_bench.window.common import (
     CHUNK_BYTES,
     MAX_ENTRIES,
     MAX_EVIDENCE_BYTES,
@@ -20,7 +20,7 @@ from workflow_bench._window_common import (
     MAX_SKIPPED,
     _has_symlink_component,
 )
-from workflow_bench._window_evidence import Skipped
+from workflow_bench.window.evidence import Skipped
 
 
 @dataclass

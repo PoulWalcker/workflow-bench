@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from workflow_bench._window_common import (
+from workflow_bench.data import DataError, decode_json, read_bytes
+from workflow_bench.window.common import (
     MAX_ACTIONS,
     MAX_DURATION_SEC,
     MAX_SAMPLES,
@@ -14,7 +15,6 @@ from workflow_bench._window_common import (
     _absolute_path,
     _nonnegative_number,
 )
-from workflow_bench.data import DataError, decode_json, read_bytes
 
 
 @dataclass(frozen=True)

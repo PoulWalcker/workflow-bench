@@ -4,7 +4,8 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
-from workflow_bench._window_common import (
+from workflow_bench.data import DataError, decode_json, read_bytes
+from workflow_bench.window.common import (
     MAX_ACTIONS,
     MAX_ENTRIES,
     MAX_EVIDENCE_BYTES,
@@ -20,7 +21,6 @@ from workflow_bench._window_common import (
     _relative_path,
     _utc_time,
 )
-from workflow_bench.data import DataError, decode_json, read_bytes
 
 
 class Observation(TypedDict):

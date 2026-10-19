@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-import workflow_bench._window_copy as window_copy
+import workflow_bench.window.copying as window_copy
 from workflow_bench.data import DataError
 from workflow_bench.window import read_window, run_window
 
