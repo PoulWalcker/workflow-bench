@@ -1,6 +1,5 @@
 """Diagnostic observation-window metrics from saved Trial evidence."""
 
-import math
 import re
 import statistics
 from collections.abc import Mapping, Sequence
@@ -8,10 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
-from workflow_bench.data import DataError, decode_json, read_json
+from workflow_bench.data import DataError, decode_json
 from workflow_bench.pricing import PriceEntry, estimate_cost_usd
 from workflow_bench.transcript import SapiensState, read_sapiens_state, read_sessions
-from workflow_bench.window import MAX_PATH_LENGTH, MAX_WATCH, WindowFacts, read_window
+from workflow_bench.window import WindowFacts, read_schedule, read_window
 
 if TYPE_CHECKING:
     from workflow_bench.comparison import PairReport
@@ -694,57 +693,16 @@ def _read_plan(path: Path | None) -> _Plan | None:
     if path is None:
         return None
     try:
-        plan = read_json(path, "schedule")
+        plan = read_schedule(path)
     except (OSError, DataError):
         return None
-    if not isinstance(plan, dict):
-        return None
-    duration = plan.get("duration_sec")
-    tail = plan.get("tail_sec")
-    if not _bounded_number(duration, 3600) or not _bounded_number(tail, 600):
-        return None
-    duration = cast(float, duration)
-    tail = cast(float, tail)
-    drops = plan.get("drops")
-    snapshots = plan.get("snapshots")
-    if not isinstance(drops, list) or not isinstance(snapshots, list):
-        return None
-    if len(drops) > 128 or len(snapshots) > 128:
-        return None
-    watch = plan.get("watch")
-    if (
-        not isinstance(watch, list)
-        or len(watch) > MAX_WATCH
-        or any(
-            not isinstance(path, str)
-            or not path.startswith("/")
-            or len(path) > MAX_PATH_LENGTH
-            or ".." in Path(path).parts
-            or "\x00" in path
-            for path in watch
-        )
-    ):
-        return None
-    for action in drops + snapshots:
-        if not isinstance(action, dict) or not _bounded_number(
-            action.get("at_sec"), duration
-        ):
-            return None
     return {
-        "duration_sec": float(duration),
-        "tail_sec": float(tail),
-        "drops": len(drops),
-        "snapshots": len(snapshots),
-        "watch": {str(Path(path)) for path in cast(list[str], watch)},
+        "duration_sec": float(plan.duration_sec),
+        "tail_sec": float(plan.tail_sec),
+        "drops": len(plan.drops),
+        "snapshots": len(plan.snapshots),
+        "watch": {str(path) for path in plan.watch},
     }
-
-
-def _bounded_number(value: object, maximum: float) -> bool:
-    return (
-        type(value) in (int, float)
-        and 0 <= cast(float, value) <= maximum
-        and math.isfinite(cast(float, value))
-    )
 
 
 def _changed_offsets(

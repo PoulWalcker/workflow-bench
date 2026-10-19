@@ -142,7 +142,19 @@ snapshots, and 32 MiB/4096 copied files and directories of evidence. Each sample
 or snapshot processes at most 4096 directory children (with bounded lookahead
 to detect truncation); this traversal limit resets for the
 next observation, so earlier unchanged samples do not consume later scan capacity.
-Symlinks and special files are not copied. Set the hook timeout to
+Symlinks and special files are not copied. A listed entry that cannot be read
+because it vanishes or changes kind is omitted (`missing` with null digest/copy
+when watched directly); any partial copy of that entry is removed. Successfully
+read replacements are recorded with their observed kind and content. A regular
+file already open is recorded from the bytes actually read, even if its name
+then vanishes or is replaced. Directory fingerprints include only entries observed in that scan;
+observations are bounded views rather than atomic filesystem snapshots. These
+races do not fail the window.
+
+Drops are written to a hidden temporary sibling with no target suffix, then
+published complete by `os.replace`; temporary files are removed on success or
+failure. Existing non-regular or symlink targets still fail with `unsafe_file`.
+Set the hook timeout to
 `duration + tail + 60` seconds.
 
 Use `workflow_bench.window.read_window` in the separate verifier. Missing,

@@ -7,10 +7,13 @@ import socket
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+import workflow_bench._window_copy as window_copy
 from workflow_bench.data import DataError
 from workflow_bench.window import read_window, run_window
 
@@ -937,3 +940,285 @@ def test_reader_rejects_unrepresentable_json_times(
 
     with pytest.raises(DataError, match="invalid_schema: manifest.json"):
         read_window(evidence)
+
+
+@pytest.mark.parametrize("replacement", ["missing", "directory"])
+def test_scan_race_keeps_only_content_actually_copied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    watched = tmp_path / "watched"
+    watched.mkdir()
+    child = watched / "changing.txt"
+    child.write_text("before")
+    original_iterdir = Path.iterdir
+    changed = False
+
+    def list_then_change(path: Path) -> Iterator[Path]:
+        nonlocal changed
+        children = list(original_iterdir(path))
+        if path == watched and not changed:
+            changed = True
+            child.unlink()
+            if replacement == "directory":
+                child.mkdir()
+        return iter(children)
+
+    monkeypatch.setattr(Path, "iterdir", list_then_change)
+    schedule = _schedule(tmp_path / "schedule.json", watch=[str(watched)])
+    evidence = tmp_path / "evidence"
+    clock = FakeClock()
+    run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+    facts = read_window(evidence)
+    assert facts.status == "completed"
+    first = facts.samples[0].paths[str(watched)]
+    assert first["state"] == "directory"
+    assert first["copy"] is not None
+    stored_child = evidence / first["copy"] / child.name
+    if replacement == "missing":
+        assert not stored_child.exists()
+    else:
+        assert stored_child.is_dir()
+
+
+@pytest.mark.parametrize("fail_write", [False, True])
+def test_drop_publishes_complete_content_and_cleans_temporary_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_write: bool
+) -> None:
+    source = tmp_path / "source.csv"
+    source.write_bytes(b"complete input\n")
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    target = inbox / "orders.csv"
+    original_open = Path.open
+    original_temporary = tempfile.NamedTemporaryFile
+    original_replace = os.replace
+    publications: list[bytes] = []
+
+    def guard_write(stream: Any) -> Any:
+        original_write = stream.write
+
+        def write(content: bytes) -> int:
+            if fail_write:
+                original_write(content[:3])
+                raise OSError("injected write failure")
+            assert not target.exists()
+            return original_write(content)
+
+        stream.write = write
+        return stream
+
+    def open_path(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        stream = original_open(path, mode, *args, **kwargs)
+        return guard_write(stream) if path == target and mode == "wb" else stream
+
+    def temporary(*args: Any, **kwargs: Any) -> Any:
+        stream = original_temporary(*args, **kwargs)
+        if Path(stream.name).parent == inbox:
+            guard_write(stream)
+        return stream
+
+    def replace(source_path: str | Path, destination_path: str | Path) -> None:
+        if Path(destination_path) == target:
+            staged = Path(source_path)
+            assert not target.exists()
+            assert staged.parent == inbox
+            assert staged.name.startswith(".")
+            assert staged.suffix != target.suffix
+            publications.append(staged.read_bytes())
+        original_replace(source_path, destination_path)
+
+    monkeypatch.setattr(Path, "open", open_path)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", temporary)
+    monkeypatch.setattr(os, "replace", replace)
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        drops=[{"at_sec": 0, "source": str(source), "target": str(target)}],
+    )
+    evidence = tmp_path / "evidence"
+    clock = FakeClock()
+    if fail_write:
+        with pytest.raises(DataError, match="window_action_failed"):
+            run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+        assert not target.exists()
+        assert not publications
+        assert read_window(evidence).status == "failed"
+    else:
+        run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+        assert publications == [b"complete input\n"]
+        assert target.read_bytes() == b"complete input\n"
+        assert read_window(evidence).status == "completed"
+    assert list(inbox.iterdir()) == ([] if fail_write else [target])
+
+
+def test_unchanged_watch_leaves_budget_for_later_changed_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(window_copy, "MAX_EVIDENCE_BYTES", 12)
+    stable = tmp_path / "stable"
+    stable.write_bytes(b"123456")
+    changing = tmp_path / "changing"
+    changing.write_bytes(b"old")
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=1,
+        tail_sec=0,
+        watch=[str(stable), str(changing)],
+    )
+    clock = FakeClock()
+
+    def advance(seconds: float) -> None:
+        clock.sleep(seconds)
+        changing.write_bytes(b"new")
+
+    original_open = Path.open
+
+    def open_without_redundant_copy(
+        path: Path, mode: str = "r", *args: Any, **kwargs: Any
+    ) -> Any:
+        if mode == "wb" and path.name == "00-stable" and path.parent.name == "0001":
+            raise OSError("no storage for redundant unchanged copy")
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_without_redundant_copy)
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=advance)
+    monkeypatch.undo()
+    facts = read_window(evidence)
+    unchanged = facts.samples[1].paths[str(stable)]
+    changed = facts.samples[1].paths[str(changing)]
+    assert facts.status == "completed"
+    assert unchanged["state"] == "regular"
+    assert unchanged["copy"] is None
+    assert changed["state"] == "regular"
+    assert changed["copy"] is not None
+    assert (evidence / changed["copy"]).read_bytes() == b"new"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        ("schedule_read", "window_action_failed"),
+        ("final_save", "window_action_failed"),
+        ("final_dataerror", "too_large"),
+        ("both", "unsafe_file"),
+    ],
+)
+def test_cli_contains_filesystem_failures_and_preserves_original_code(
+    tmp_path: Path, failure: str, expected: str
+) -> None:
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        duration_sec=0.01,
+        tail_sec=0,
+        drops=[
+            {
+                "at_sec": 0,
+                "source": str(tmp_path / "missing"),
+                "target": str(tmp_path / "target"),
+            }
+        ]
+        if failure == "both"
+        else [],
+    )
+    injection = tmp_path / "injection"
+    injection.mkdir()
+    (injection / "sitecustomize.py").write_text(
+        "import os\nfrom pathlib import Path\n"
+        "original_open = Path.open\noriginal_replace = os.replace\n"
+        "def open_path(path, *args, **kwargs):\n"
+        f"    if {failure == 'schedule_read'!r} and path == Path({str(schedule)!r}):\n"
+        "        raise OSError('injected schedule read failure')\n"
+        "    return original_open(path, *args, **kwargs)\n"
+        "def replace(source, target):\n"
+        "    if Path(target).name == 'manifest.json':\n"
+        "        import json\n"
+        "        if json.loads(Path(source).read_text())['ended_at'] is not None:\n"
+        f"            if {failure == 'final_dataerror'!r}:\n"
+        "                from workflow_bench.data import DataError\n"
+        "                raise DataError('too_large', 'manifest.json')\n"
+        "            raise OSError('injected final save failure')\n"
+        "    return original_replace(source, target)\n"
+        "Path.open = open_path\nos.replace = replace\n"
+    )
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(injection), str(Path(__file__).parents[2] / "src")]
+    )
+    evidence = tmp_path / "evidence"
+    completed = subprocess.run(
+        [sys.executable, "-m", "workflow_bench.window", str(schedule), str(evidence)],
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=5,
+    )
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert "Traceback" not in completed.stderr
+    assert [
+        line for line in completed.stderr.splitlines() if line.startswith("window:")
+    ] == [f"window: {expected}"]
+    if failure == "schedule_read":
+        assert not evidence.exists()
+    else:
+        assert read_window(evidence).status == "running"
+        assert not list(evidence.glob(".manifest-*"))
+
+
+@pytest.mark.parametrize("replacement", ["missing", "directory", "symlink", "fifo"])
+def test_file_replaced_after_classification_is_not_misrecorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    watched = tmp_path / "watched"
+    watched.write_text("original")
+    outside = tmp_path / "outside"
+    outside.write_text("private")
+    schedule = _schedule(tmp_path / "schedule.json", watch=[str(watched)])
+    original_lstat = Path.lstat
+    calls = 0
+
+    def classify_then_replace(path: Path, *args: Any, **kwargs: Any) -> os.stat_result:
+        nonlocal calls
+        info = original_lstat(path, *args, **kwargs)
+        if path == watched:
+            calls += 1
+            if calls == 2:
+                watched.unlink()
+                if replacement == "directory":
+                    watched.mkdir()
+                elif replacement == "symlink":
+                    watched.symlink_to(outside)
+                elif replacement == "fifo":
+                    os.mkfifo(watched)
+        return info
+
+    monkeypatch.setattr(Path, "lstat", classify_then_replace)
+    clock = FakeClock()
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+    facts = read_window(evidence)
+    first = facts.samples[0].paths[str(watched)]
+    assert facts.status == "completed"
+    assert first == {"state": "missing", "sha256": None, "copy": None}
+
+
+def test_snapshot_directories_keep_schedule_indices_when_offsets_are_unsorted(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.write_text("input")
+    schedule = _schedule(
+        tmp_path / "schedule.json",
+        snapshots=[
+            {"at_sec": 2, "paths": [str(source)]},
+            {"at_sec": 0, "paths": [str(source)]},
+        ],
+    )
+    clock = FakeClock()
+    evidence = tmp_path / "evidence"
+    run_window(schedule, evidence, clock=clock.now, sleep=clock.sleep)
+    facts = read_window(evidence)
+    assert [(item.planned_offset_sec, item.directory) for item in facts.snapshots] == [
+        (0, "snapshots/001"),
+        (2, "snapshots/000"),
+    ]
