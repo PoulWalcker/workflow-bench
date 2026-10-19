@@ -1,4 +1,4 @@
-"""Run and read bounded task-owned observation windows."""
+"""Execute observation schedules and atomically retain window evidence."""
 
 import hashlib
 import json
@@ -13,61 +13,24 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
-from workflow_bench._window_common import (
-    CHUNK_BYTES,
-    MAX_ACTIONS,
-    MAX_DURATION_SEC,
-    MAX_ENTRIES,
+from workflow_bench.data import DataError, read_bytes
+from workflow_bench.window.common import (
     MAX_EVIDENCE_BYTES,
     MAX_MANIFEST_BYTES,
-    MAX_PATH_LENGTH,
-    MAX_SAMPLES,
-    MAX_SCHEDULE_BYTES,
-    MAX_SKIPPED,
-    MAX_TAIL_SEC,
-    MAX_WATCH,
     SCHEMA_VERSION,
     _has_symlink_component,
 )
-from workflow_bench._window_copy import BoundedCopy
-from workflow_bench._window_evidence import (
+from workflow_bench.window.copying import BoundedCopy
+from workflow_bench.window.evidence import (
     Drop,
     Observation,
     Sample,
-    Skipped,
     Snapshot,
     WindowFacts,
-    read_window,
 )
-from workflow_bench._window_schedule import DropPlan, SnapshotPlan, read_schedule
-from workflow_bench.data import DataError, read_bytes
+from workflow_bench.window.schedule import DropPlan, SnapshotPlan, read_schedule
 
-__all__ = [
-    "CHUNK_BYTES",
-    "MAX_ACTIONS",
-    "MAX_DURATION_SEC",
-    "MAX_ENTRIES",
-    "MAX_EVIDENCE_BYTES",
-    "MAX_MANIFEST_BYTES",
-    "MAX_SAMPLES",
-    "MAX_SCHEDULE_BYTES",
-    "MAX_SKIPPED",
-    "MAX_TAIL_SEC",
-    "SCHEMA_VERSION",
-    "Skipped",
-    "MAX_PATH_LENGTH",
-    "MAX_WATCH",
-    "Observation",
-    "Drop",
-    "Snapshot",
-    "Sample",
-    "WindowFacts",
-    "read_window",
-    "read_schedule",
-    "run_window",
-]
-
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger("workflow_bench.window")
 
 
 def run_window(
@@ -339,7 +302,3 @@ def _execute_sample(
             Sample(actual_offset_sec=writer.offset(), paths=paths),
         ),
     )
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
