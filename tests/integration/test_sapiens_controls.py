@@ -221,7 +221,10 @@ def _run_job(
     timeout_seconds: float = 60,
     provider_url: str | None = None,
 ) -> Path:
-    """Run a bounded Trial, cancelling after the late child starts if asked."""
+    """Run a bounded Trial, cancelling after the late child starts if asked.
+
+    Declared collect-hook timeouts extend the outer process budget.
+    """
     config = yaml.safe_load(EXAMPLE.read_text())
     config["tasks"] = [{"path": str(task)}]
     config["jobs_dir"] = str(directory / "jobs")
@@ -257,7 +260,12 @@ def _run_job(
                         pytest.fail("late child did not start; inspect harbor.log")
                     time.sleep(0.1)
                 process.send_signal(signal.SIGINT)
-            process.wait(timeout=180)
+            task_config = tomllib.loads((task / "task.toml").read_text())
+            collect_seconds = sum(
+                hook.get("timeout_sec", 60)
+                for hook in task_config.get("verifier", {}).get("collect", [])
+            )
+            process.wait(timeout=180 + collect_seconds)
         finally:
             if process.poll() is None:
                 process.send_signal(signal.SIGINT)

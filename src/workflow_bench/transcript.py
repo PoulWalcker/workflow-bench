@@ -58,6 +58,7 @@ class SapiensState(TypedDict):
     turns: list[dict[str, object]]
     workloads: list[dict[str, object]]
     truncated: NotRequired[dict[str, bool]]
+    routines: NotRequired[list[dict[str, object]]]
 
 
 def render_transcripts(
@@ -245,11 +246,16 @@ def read_sapiens_state(path: Path) -> tuple[SapiensState | None, str | None]:
             isinstance(item, dict) for item in records
         ):
             return None, "invalid"
+    routines = state.get("routines", [])
+    if not isinstance(routines, list) or not all(
+        isinstance(item, dict) for item in routines
+    ):
+        return None, "invalid"
     truncated = state.get("truncated")
     if "truncated" in state and (
         not isinstance(truncated, dict)
         or not all(
-            key in {"agents", "turns", "workloads", "calls", "decisions"}
+            key in {"agents", "turns", "workloads", "calls", "decisions", "routines"}
             and type(value) is bool
             for key, value in truncated.items()
         )
@@ -359,6 +365,19 @@ def _sapiens_steps(
 ) -> tuple[list[str], int]:
     """Render steps and count state decisions without an aligned session."""
     lines = ["## Sapiens steps"]
+    if state is not None:
+        for routine in state.get("routines", []):
+            lines.append(
+                f"Routine {_safe(str(routine.get('id', 'unknown')))}: "
+                f"minutes={_safe(str(routine.get('minutes', 'unknown')))}, "
+                f"runCount={_safe(str(routine.get('runCount', 'unknown')))}"
+            )
+        for index, workload in enumerate(state["workloads"], 1):
+            origin = workload.get("origin")
+            if isinstance(origin, dict) and isinstance(origin.get("routine"), str):
+                lines.append(
+                    f"Routine-origin workload {index}: {_safe(origin['routine'])}"
+                )
     decisions = _state_decisions(state)
     aligned, unmatched = _aligned_decisions(sessions, decisions)
     if not sessions:

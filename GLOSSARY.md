@@ -23,7 +23,13 @@ of the strategy the agent chooses.
 
 **Horizon**:
 The single or repeated execution dimension of a task; repeated tasks assess results
-across successive steps rather than one isolated occasion.
+across successive occasions rather than one isolated occasion.
+
+<a id="observation-window"></a>
+
+**Observation window**:
+A task-owned period after the agent's setup turn during which scheduled inputs and
+observations reveal whether behavior continues without the agent present.
 
 <a id="harness"></a>
 
@@ -98,5 +104,5 @@ and actions over real mutable state within the benchmark environment.
 <a id="step"></a>
 
 **Step**:
-One successive execution-and-assessment occasion within a repeated task, with the
-state and agent participation prescribed by that task's horizon.
+One successive occasion within a repeated task. A task may invoke the agent at
+each step or assess scheduled effects after one setup turn.

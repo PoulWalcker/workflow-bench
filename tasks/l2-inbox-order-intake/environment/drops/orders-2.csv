@@ -1,0 +1,7 @@
+order_id,customer,sku,quantity,unit_price_cents
+A001,Ada Chen,PEN-BLUE,3,125
+A002,Ben Ortiz,BOOK-A5,2,640
+A007,Gus Lane,PEN-BLUE,6,125
+A008,Hana Wu,BAG-CANVAS,2,1890
+A009,Ivo Costa,BOOK-A5,5,640
+A010,Jade King,TEA-GREEN,1,525

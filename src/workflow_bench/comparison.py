@@ -38,6 +38,13 @@ from workflow_bench.pricing import (
     estimate_cost_usd,
     price_estimate_label,
 )
+from workflow_bench.repeated import (
+    PairRepeated,
+    RepeatedMetrics,
+    aggregate_repeated,
+    measure_repeated,
+    render_observation_window,
+)
 from workflow_bench.transcript import SapiensState, read_sapiens_state, read_sessions
 
 LOGGER = logging.getLogger(__name__)
@@ -96,6 +103,7 @@ class TrialOutcome(TypedDict):
         reason: Safe code for an ``infra_error``; None for a verdict.
         exception: Harbor's recorded exception type, kept as a fact even when
             the outcome is a verdict (an agent timeout is judged by its state).
+        repeated: Observation-window diagnostics; None without collected evidence.
     """
 
     job: str
@@ -104,6 +112,7 @@ class TrialOutcome(TypedDict):
     reason: str | None
     exception: str | None
     delegation: DelegationMetrics | None
+    repeated: RepeatedMetrics | None
 
 
 class TrialCost(TypedDict):
@@ -163,6 +172,8 @@ class PairReport(TypedDict):
             matching explicit API price; None without a known estimate.
         trial_costs: Per-Trial estimates without changing outcome records.
         delegation: Snapshot-only counts; None when no Trial saved a snapshot.
+        repeated: Known-value window medians and unknown counts; None when no
+            Trial saved window evidence.
     """
 
     task: str
@@ -191,6 +202,7 @@ class PairReport(TypedDict):
     session_evidence_missing_trials: int
     level: str
     delegation: PairDelegation | None
+    repeated: PairRepeated | None
 
 
 class IncompleteTrial(TypedDict):
@@ -304,6 +316,7 @@ class TrialSummary(TypedDict):
     artifact_manifest: ManifestSummary
     paths: TrialPaths
     delegation: DelegationMetrics | None
+    repeated: RepeatedMetrics | None
 
 
 class SummaryReport(TypedDict):
@@ -593,6 +606,7 @@ def render_markdown(report: ComparisonReport) -> str:
             f"| {level['unknown']} | {level['infra_error']} "
             f"| {_format_failed_criteria(level['failed_criteria'])} |"
         )
+    lines += render_observation_window(report["pairs"])
     if report["incomplete_trials"]:
         lines += ["", "## Incomplete trials", "", "| Job | Trial | Reason |"]
         lines.append("|---|---|---|")
@@ -658,6 +672,7 @@ def _summarize_trial(
         "artifact_manifest": _manifest_summary(trial_dir),
         "paths": paths,
         "delegation": outcome["delegation"],
+        "repeated": outcome["repeated"],
     }
 
 
@@ -755,6 +770,17 @@ def _measure_trial(
     session_observations = _observe_sessions(trial_dir)
     conditions = _effective_conditions(trial_dir)
     recorded_session_count = _reported_session_count(usage)
+    schedule_path = None
+    evidence = trial_dir / "artifacts/window-evidence"
+    if evidence.exists() or evidence.is_symlink():
+        recorded = _trial_conditions(trial_dir)
+        if (
+            recorded.task_path is not None
+            and _verified_task_config(recorded.task_path, recorded.task_digest)
+            is not None
+        ):
+            schedule_path = recorded.task_path / "environment" / "schedule.json"
+
     return _Trial(
         task=result.task_name,
         task_checksum=result.task_checksum,
@@ -766,6 +792,12 @@ def _measure_trial(
             "reason": reason,
             "exception": None if exception is None else exception.exception_type,
             "delegation": _delegation_metrics(trial_dir),
+            "repeated": measure_repeated(
+                trial_dir,
+                None if execution is None else execution.finished_at,
+                schedule_path,
+                model_price,
+            ),
         },
         agent_sec=agent_sec,
         input_tokens=None if usage is None else usage.n_input_tokens,
@@ -1463,6 +1495,7 @@ def _pair_report(trials: Sequence[_Trial]) -> PairReport:
         if all(trial.level == first.level for trial in trials)
         else "unknown",
         "delegation": _pair_delegation(trials),
+        "repeated": aggregate_repeated([trial.outcome["repeated"] for trial in trials]),
     }
 
 
